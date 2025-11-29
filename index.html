@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DaveLLM Router UI</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Top bar: router URL selector and manual refresh -->
+  <header class="topbar">
+    <div class="brand">DaveLLM Router UI</div>
+    <div class="top-controls">
+      <label class="field">
+        <span>Router URL</span>
+        <input id="router-url" type="text" value="http://localhost:8000" />
+      </label>
+      <button id="refresh-nodes" class="primary">Refresh Nodes</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Left sidebar: node list with status indicators and metrics -->
+    <section class="panel nodes" aria-label="Nodes">
+      <div class="panel-header">
+        <h2>Nodes</h2>
+        <span class="info" id="node-count">0 online</span>
+      </div>
+      <div id="node-list" class="node-list"></div>
+    </section>
+
+    <!-- Center column: prompt editor and parameters -->
+    <section class="panel prompt" aria-label="Prompt">
+      <div class="panel-header">
+        <h2>Prompt</h2>
+        <div class="settings-toggle" id="toggle-settings" role="button" tabindex="0">⚙️ Settings</div>
+      </div>
+
+      <label class="field">
+        <span>Target Node</span>
+        <select id="node-select"></select>
+      </label>
+
+      <label class="field">
+        <span>Prompt</span>
+        <textarea id="prompt" rows="8" placeholder="Enter your prompt"></textarea>
+      </label>
+
+      <div id="settings-panel" class="settings hidden">
+        <div class="settings-grid">
+          <label class="field">
+            <span>Temperature</span>
+            <input id="temperature" type="number" step="0.1" min="0" max="2" value="0.7" />
+          </label>
+          <label class="field">
+            <span>Top K</span>
+            <input id="top-k" type="number" min="0" value="40" />
+          </label>
+          <label class="field">
+            <span>Top P</span>
+            <input id="top-p" type="number" step="0.01" min="0" max="1" value="0.9" />
+          </label>
+          <label class="field">
+            <span>Max Tokens</span>
+            <input id="max-tokens" type="number" min="1" value="200" />
+          </label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="send" class="primary">Send</button>
+        <button id="clear-output" class="secondary">Clear Output</button>
+      </div>
+    </section>
+
+    <!-- Right column: streamed output viewer -->
+    <section class="panel output" aria-label="Response">
+      <div class="panel-header">
+        <h2>Response</h2>
+        <div class="output-actions">
+          <button id="copy-output" class="secondary">Copy</button>
+        </div>
+      </div>
+      <pre id="response" class="response"></pre>
+    </section>
+  </main>
+
+  <!-- Bottom console: log messages -->
+  <section class="panel console" aria-label="Console">
+    <div class="panel-header">
+      <h2>Console</h2>
+    </div>
+    <div id="console-log" class="console-log"></div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
