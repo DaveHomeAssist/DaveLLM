@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DaveLLM Monitoring</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --text: #e6edf3;
+      --muted: #9ba4b5;
+      --accent: #58a6ff;
+      --border: #252a33;
+      --radius: 10px;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+    }
+    h1 { margin: 0 0 12px 0; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    button {
+      border: 1px solid var(--border);
+      background: #1f2631;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover {
+      border-color: var(--accent);
+    }
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+    .spinner.visible {
+      display: inline-block;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    pre {
+      background: #0f1621;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      overflow-x: auto;
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>DaveLLM Monitoring</h1>
+  <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center;">
+    <button id="refreshBtn">Refresh</button>
+    <div id="spinner" class="spinner"></div>
+    <a href="index.html" style="color:var(--accent); text-decoration:none;">← Back to main</a>
+    <span id="statusMsg" style="margin-left:auto;color:var(--muted);"></span>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>Nodes</h3>
+      <div id="nodes"></div>
+    </div>
+    <div class="card">
+      <h3>Model Health</h3>
+      <div id="modelHealth"></div>
+    </div>
+    <div class="card">
+      <h3>Cost Analytics</h3>
+      <div id="costs"></div>
+    </div>
+    <div class="card">
+      <h3>Recent Errors</h3>
+      <div id="errors"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "";
+    const FETCH_TIMEOUT_MS = 8000;
+
+    async function fetchJson(path) {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(API_BASE + path, { headers: { "X-API-Key": localStorage.getItem("dave_api_key") || "" }, signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        return data;
+      } finally {
+        clearTimeout(t);
+      }
+    }
+
+    function renderNodes(data) {
+      const container = document.getElementById("nodes");
+      container.innerHTML = "";
+      if (!data || !Array.isArray(data.nodes)) {
+        container.textContent = "No node data.";
+        return;
+      }
+      data.nodes.forEach((n) => {
+        const div = document.createElement("div");
+        div.className = "row";
+        div.innerHTML = `<span>${n.name} (${n.node_id})</span><span>${n.status} ${n.latency ? n.latency + " ms" : ""}</span>`;
+        container.appendChild(div);
+      });
+    }
+
+    function renderModelHealth(data) {
+      const container = document.getElementById("modelHealth");
+      container.innerHTML = "";
+      const health = (data && data.model_health) || {};
+      if (!Object.keys(health).length) {
+        container.textContent = "No failures recorded.";
+        return;
+      }
+      Object.entries(health).forEach(([model, info]) => {
+        const div = document.createElement("div");
+        div.className = "row";
+        div.innerHTML = `<span>${model}</span><span>${info.failures} failures (${info.last_error || "-"})</span>`;
+        container.appendChild(div);
+      });
+    }
+
+    function renderCosts(data) {
+      const container = document.getElementById("costs");
+      container.innerHTML = "";
+      const total = (data && data.total_cost) || 0;
+      const byModel = (data && data.by_model) || {};
+      container.innerHTML = `<div class="row"><strong>Total</strong><span>$${total.toFixed(4)}</span></div>`;
+      Object.entries(byModel).forEach(([model, cost]) => {
+        const div = document.createElement("div");
+        div.className = "row";
+        div.innerHTML = `<span>${model}</span><span>$${cost.toFixed(4)}</span>`;
+        container.appendChild(div);
+      });
+    }
+
+    function renderErrors(data) {
+      const container = document.getElementById("errors");
+      container.innerHTML = "";
+      const errs = (data && data.recent_errors) || [];
+      if (!errs.length) {
+        container.textContent = "No recent errors.";
+        return;
+      }
+      errs.slice(-10).reverse().forEach(e => {
+        const pre = document.createElement("pre");
+        pre.textContent = `${e.timestamp} — ${e.event}: ${e.detail}`;
+        container.appendChild(pre);
+      });
+    }
+
+    async function refresh() {
+      const status = document.getElementById("statusMsg");
+      const spinner = document.getElementById("spinner");
+      status.textContent = "Refreshing...";
+      spinner.classList.add("visible");
+      try {
+        const [health, costs] = await Promise.all([
+          fetchJson("/monitoring/health"),
+          fetchJson("/analytics/costs")
+        ]);
+        renderNodes(health);
+        renderModelHealth(health);
+        renderErrors(health);
+        renderCosts(costs);
+        status.textContent = "Updated.";
+      } catch (e) {
+        console.error("Monitoring fetch failed:", e);
+        status.textContent = `Error: ${e.message}`;
+      }
+      spinner.classList.remove("visible");
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    refresh();
+  </script>
+</body>
+</html>

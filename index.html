@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DaveLLM</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="brand">DaveLLM</div>
+        <div class="topbar-actions">
+            <button id="themeToggle" class="icon-btn" title="Toggle theme">🌙</button>
+            <a href="monitoring.html" class="topbar-link" title="Monitoring">
+                📈 <span id="monitorBadge" class="badge hidden">!</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- THREE COLUMN LAYOUT -->
+    <div class="layout">
+
+        <!-- LEFT COLUMN: Conversations -->
+        <div class="panel conversations">
+            <div class="panel-header">
+                <h3>Conversations</h3>
+                <button id="newConvoBtn" class="icon-btn" title="New Conversation">+</button>
+            </div>
+            <div class="project-row">
+                <select id="projectSelect">
+                    <option value="">All Projects</option>
+                </select>
+                <button id="resyncProject" class="icon-btn" title="Re-apply project instructions to this conversation">🔄</button>
+                <button id="editProject" class="icon-btn" title="Edit project instructions">✏️</button>
+            </div>
+            <div class="template-row">
+                <select id="templateSelect">
+                    <option value="general">General</option>
+                    <option value="code_review">Code Review</option>
+                    <option value="brainstorm">Brainstorm</option>
+                </select>
+                <button id="createFromTemplate" class="icon-btn" title="Start from template">🚀</button>
+            </div>
+            <div id="convoList"></div>
+            <div class="panel-subheader">Router Stats</div>
+            <div id="statsContainer" class="stats-box">
+                <div class="stat-line"><strong>Decisions:</strong> <span id="statDecisions">0</span></div>
+                <div class="stat-line"><strong>Total tokens (est):</strong> <span id="statTokens">0</span></div>
+                <div class="stat-line"><strong>Avg tokens/msg:</strong> <span id="statTokensPerMsg">0</span></div>
+                <div class="stat-line"><strong>Avg confidence:</strong> <span id="statConfidence">–</span></div>
+                <div class="stat-line"><strong>Last route:</strong> <span id="statLastRoute">–</span></div>
+            </div>
+            <div class="panel-subheader">Memories</div>
+            <div id="memoryBox" class="memory-box hidden"></div>
+        </div>
+
+        <!-- MIDDLE COLUMN: Chat -->
+        <div class="panel prompt">
+            <div class="panel-header">
+                <h3>Chat</h3>
+            </div>
+
+            <div id="responseBox" class="response"></div>
+            <button id="scrollBottomBtn" class="scroll-bottom-btn" title="Jump to latest">⬇️</button>
+
+            <div id="toolsBox" class="tools-box hidden"></div>
+
+            <!-- model selectors now on right -->
+
+            <div class="chat-footer">
+                <div class="footer-inputs">
+                    <textarea id="promptInput" placeholder="Type your message..." rows="3"></textarea>
+                    <div class="tool-row">
+                        <label for="imageInput" class="image-upload-btn">📷 Image</label>
+                        <input id="imageInput" type="file" accept="image/*" hidden />
+                        <label for="audioInput" class="image-upload-btn">🎤 Audio</label>
+                        <input id="audioInput" type="file" accept="audio/*" hidden />
+                        <button id="transcribeBtn" class="icon-btn" title="Transcribe audio file to text">🗣️→✍️</button>
+                        <button id="dictateBtn" class="icon-btn" title="Dictate via mic">🎙️</button>
+                        <label for="fileInput" class="image-upload-btn">📎 File</label>
+                        <input id="fileInput" type="file" hidden />
+                        <label class="support-flag">
+                            <input type="checkbox" id="supportFlag" />
+                            <span>Support</span>
+                        </label>
+                    </div>
+                    <div class="tool-status">
+                        <span id="imageStatus" class="image-status"></span>
+                        <span id="audioStatus" class="image-status"></span>
+                        <span id="fileStatus" class="image-status"></span>
+                        <span id="dictateStatus" class="image-status"></span>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button id="sendBtn" class="primary">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Nodes -->
+        <div class="panel nodes">
+            <div class="panel-header">
+                <h3>Nodes</h3>
+                <button id="refreshNodes" class="icon-btn" title="Refresh Nodes">🔄</button>
+            </div>
+            <div id="nodesContainer" class="node-list"></div>
+            <div class="panel-subheader">Models</div>
+            <div class="model-selector-row">
+                <select id="targetNodeSelect" class="node-select"></select>
+                <button id="loadModelsBtn" class="icon-btn" title="Load models from selected node">📦</button>
+            </div>
+            <select id="modelSelect" class="model-select"></select>
+            <div class="routing-controls">
+                <label>Max cost ($/1k tokens)
+                    <input id="routeCost" type="number" step="0.0005" min="0.0005" max="0.05" value="0.01" />
+                </label>
+                <label>Min quality (0.7–1.0)
+                    <input id="routeQuality" type="number" step="0.01" min="0.7" max="1" value="0.85" />
+                </label>
+                <div id="routeStatus" class="route-status"></div>
+            </div>
+
+            <div class="panel-subheader">Model Fetcher</div>
+            <div id="modelFetcher" class="fetcher-box">
+                <label class="fetcher-label">Hugging Face file URL</label>
+                <input id="hfUrlInput" type="text" placeholder="https://huggingface.co/.../model.gguf" />
+                <label class="fetcher-label">Destination (optional, inside models/)</label>
+                <input id="hfDestInput" type="text" placeholder="models/model.gguf" />
+                <button id="hfDownloadBtn" class="primary" style="width:100%;">Download</button>
+                <div id="hfStatus" class="fetcher-status"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
