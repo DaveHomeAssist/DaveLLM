@@ -1,26 +1,13 @@
-# Python
+.venv/
 __pycache__/
 *.pyc
-.venv/
-hf-env/
-
-# Data (local state, not version controlled)
 *.db
+*.tmp
 *.jsonl
 dave_conversations.json
+dave_data.json
 knowledge_chunks.json
-
-# Models (too large for git)
-models/
-Kimi-K2-Thinking/
-whisper.cpp/
-
-# Node/Electron
 node_modules/
-package-lock.json
-
-# OS
+dist/
 .DS_Store
-
-# Secrets
-.env
+tmp_audio_*

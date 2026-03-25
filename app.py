@@ -117,25 +117,9 @@ SYSTEM_PROMPT = (
     "Your job is to operate as an extension of Dave's brain: fast, capable, structured, deeply technical, and context-aware.\n\n"
     
     "USER IDENTITY\n"
-    "Name: Dave Robertson\n"
-    "Location: Pennsylvania & Philadelphia metro\n\n"
-    
-    "Roles & Work:\n"
-    "• Video Technician & Video Engineer (IATSE Local 8)\n"
-    "• Freelance Lighting Designer at the Lansdowne Theater (reopened 2024)\n"
-    "• Owner of Digital Footprints LLC\n\n"
-    
-    "Broad technical specialist with deep experience in:\n"
-    "• Broadcast & live video systems\n"
-    "• LED walls, processing, switching, routing\n"
-    "• Stage lighting (ETC, MA2/3, rigging, show networks)\n"
-    "• Power distribution & on-site troubleshooting\n"
-    "• Networking, VLANs, servers, and home automation\n"
-    "• Local LLMs, multimodal models, custom AI tooling\n"
-    "• Low-level tech, DIY fabrication, 3D printing, workflow engineering\n"
-    "• AV automation, scripting, and field diagnostics\n\n"
-    
-    "Dave is a high-bandwidth operator. He switches domains quickly and expects the assistant to keep up.\n\n"
+    "The user is a broad technical specialist across AV/video, lighting, networking, "
+    "local AI, home automation, and software engineering. High-bandwidth operator who "
+    "switches domains quickly and expects the assistant to keep up.\n\n"
     
     "YOUR ROLE\n"
     "You act as:\n"
@@ -194,8 +178,6 @@ SYSTEM_PROMPT = (
     "• Networking domains, VLANs, addressing, subnets\n"
     "• 3D printing workflow (MakerWorld + Bambu)\n"
     "• Project naming conventions, Notion structures, task trees\n"
-    "• People in Dave's world: Connor, Nick, Sean, Corina, Pete, family\n\n"
-    
     "When Dave refers to 'the node,' 'the router,' 'the UI,' 'the gig,' 'the cluster,' 'the garage,' 'the theater,' etc., "
     "assume conversation continuity from prior messages.\n\n"
     
@@ -324,6 +306,25 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+# ============================================================
+# RATE LIMITING
+# ============================================================
+
+RATE_LIMIT_WINDOW = int(os.getenv("DAVE_RATE_WINDOW", "60"))  # seconds
+RATE_LIMIT_MAX = int(os.getenv("DAVE_RATE_MAX", "30"))  # requests per window
+_rate_buckets: Dict[str, list] = {}
+
+def check_rate_limit(client_ip: str):
+    """Simple sliding-window rate limiter per IP."""
+    now = time.time()
+    bucket = _rate_buckets.setdefault(client_ip, [])
+    # Prune expired entries
+    _rate_buckets[client_ip] = [t for t in bucket if now - t < RATE_LIMIT_WINDOW]
+    bucket = _rate_buckets[client_ip]
+    if len(bucket) >= RATE_LIMIT_MAX:
+        raise HTTPException(429, "Rate limit exceeded. Try again shortly.")
+    bucket.append(now)
 
 
 # ============================================================
@@ -1773,12 +1774,14 @@ def resync_conversation_project(conversation_id: str, req: ResyncRequest, user_i
     }
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest, user_id: str = Depends(get_current_user)):
+def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):
     """
     Send a message while maintaining persistent conversation history.
     Supports text-only, image-only, or multimodal (text + images) requests.
     Automatically updates metadata and saves to disk after each interaction.
     """
+    if request:
+        check_rate_limit(request.client.host)
     user_text = (req.prompt or "").strip()
     
     # Validate: require either text or images
@@ -1942,11 +1945,13 @@ def chat(req: ChatRequest, user_id: str = Depends(get_current_user)):
     )
 
 @app.post("/chat/stream")
-async def chat_stream(req: ChatRequest, user_id: str = Depends(get_current_user)):
+async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):
     """
     Streaming endpoint using SSE (Server-Sent Events).
     Supports text-only, image-only, or multimodal (text + images) requests.
     """
+    if request:
+        check_rate_limit(request.client.host)
     user_text = (req.prompt or "").strip()
     
     # Validate: require either text or images
