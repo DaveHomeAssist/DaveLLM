@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DaveLLM — Local-First LLM Dev Server</title>
+<meta name="description" content="Run models locally. Test prompts. Ship faster. A local-first LLM development server with an OpenAI-compatible API.">
+<meta name="theme-color" content="#08090d">
+<link rel="canonical" href="https://davehomeassist.github.io/DaveLLM/">
+<meta property="og:title" content="DaveLLM — Local-First LLM Dev Server">
+<meta property="og:description" content="Run models locally. Test prompts. Ship faster.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://davehomeassist.github.io/DaveLLM/">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08090d;
+    --bg-raised: #0e1018;
+    --bg-surface: #131620;
+    --bg-glow: rgba(56, 189, 248, 0.04);
+    --border: #1c1f2e;
+    --border-bright: #2a2e42;
+    --text: #d4d7e5;
+    --text-dim: #7a7f96;
+    --text-faint: #4a4e63;
+    --cyan: #38bdf8;
+    --cyan-dim: rgba(56, 189, 248, 0.15);
+    --green: #4ade80;
+    --green-dim: rgba(74, 222, 128, 0.12);
+    --amber: #fbbf24;
+    --amber-dim: rgba(251, 191, 36, 0.12);
+    --red: #f87171;
+    --purple: #a78bfa;
+    --mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --sans: 'Space Grotesk', -apple-system, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Scanline + noise ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  .page { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 0 28px; }
+
+  /* ── Nav ── */
+  nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-brand {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--cyan);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .nav-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .nav-links { display: flex; gap: 24px; }
+
+  .nav-links a {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--cyan); }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 96px 0 72px;
+    position: relative;
+  }
+
+  /* Glow orb behind hero */
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 500px;
+    height: 300px;
+    background: radial-gradient(ellipse, rgba(56,189,248,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .hero-label .tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--amber-dim);
+    color: var(--amber);
+    letter-spacing: 0.06em;
+  }
+
+  .hero h1 {
+    font-size: clamp(44px, 7vw, 68px);
+    font-weight: 700;
+    line-height: 1.0;
+    letter-spacing: -0.03em;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #e2e8f0 30%, var(--cyan) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    font-size: 18px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    max-width: 520px;
+    font-weight: 400;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 36px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+    border: none;
+  }
+
+  .btn-primary {
+    background: var(--cyan);
+    color: var(--bg);
+  }
+
+  .btn-primary:hover {
+    background: #60ccfa;
+    box-shadow: 0 0 24px rgba(56,189,248,0.25);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border-bright);
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+  }
+
+  /* ── Terminal block ── */
+  .terminal {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 0 0 96px;
+    box-shadow: 0 16px 64px rgba(0,0,0,0.3);
+  }
+
+  .terminal-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .terminal-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border-bright);
+  }
+
+  .terminal-dot:nth-child(1) { background: #f87171; }
+  .terminal-dot:nth-child(2) { background: #fbbf24; }
+  .terminal-dot:nth-child(3) { background: #4ade80; }
+
+  .terminal-title {
+    flex: 1;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+
+  .terminal-body {
+    padding: 24px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.8;
+    overflow-x: auto;
+  }
+
+  .t-prompt { color: var(--cyan); }
+  .t-cmd { color: var(--text); }
+  .t-flag { color: var(--purple); }
+  .t-ok { color: var(--green); }
+  .t-dim { color: var(--text-faint); }
+  .t-val { color: var(--amber); }
+  .t-comment { color: var(--text-faint); font-style: italic; }
+
+  .t-line {
+    display: block;
+    min-height: 1.8em;
+    white-space: pre;
+  }
+
+  .t-line.blank { min-height: 0.8em; }
+
+  .cursor-blink {
+    display: inline-block;
+    width: 8px;
+    height: 16px;
+    background: var(--cyan);
+    vertical-align: text-bottom;
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* ── Features ── */
+  .features {
+    padding: 0 0 96px;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-faint);
+    margin-bottom: 32px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .feature {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .feature:hover {
+    border-color: var(--border-bright);
+    background: var(--bg-surface);
+  }
+
+  .feature::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+  }
+
+  .feature:nth-child(1)::before { background: linear-gradient(90deg, var(--green), transparent 60%); }
+  .feature:nth-child(2)::before { background: linear-gradient(90deg, var(--cyan), transparent 60%); }
+  .feature:nth-child(3)::before { background: linear-gradient(90deg, var(--purple), transparent 60%); }
+  .feature:nth-child(4)::before { background: linear-gradient(90deg, var(--amber), transparent 60%); }
+
+  .feature-icon {
+    font-size: 20px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-weight: 700;
+  }
+
+  .feature:nth-child(1) .feature-icon { background: var(--green-dim); color: var(--green); }
+  .feature:nth-child(2) .feature-icon { background: var(--cyan-dim); color: var(--cyan); }
+  .feature:nth-child(3) .feature-icon { background: rgba(167,139,250,0.12); color: var(--purple); }
+  .feature:nth-child(4) .feature-icon { background: var(--amber-dim); color: var(--amber); }
+
+  .feature h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .feature p {
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ── Architecture ── */
+  .architecture {
+    padding: 0 0 96px;
+  }
+
+  .arch-diagram {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    overflow-x: auto;
+  }
+
+  .arch-node {
+    text-align: center;
+    padding: 16px 20px;
+    border-radius: 8px;
+    min-width: 120px;
+  }
+
+  .arch-node-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    margin-bottom: 6px;
+  }
+
+  .arch-node-name {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .arch-node.client { border: 1px solid var(--border-bright); }
+  .arch-node.client .arch-node-name { color: var(--text); }
+
+  .arch-node.server { border: 1px solid rgba(56,189,248,0.3); background: var(--cyan-dim); }
+  .arch-node.server .arch-node-name { color: var(--cyan); }
+
+  .arch-node.runtime { border: 1px solid rgba(167,139,250,0.3); background: rgba(167,139,250,0.08); }
+  .arch-node.runtime .arch-node-name { color: var(--purple); }
+
+  .arch-node.model { border: 1px solid rgba(74,222,128,0.3); background: var(--green-dim); }
+  .arch-node.model .arch-node-name { color: var(--green); }
+
+  .arch-arrow {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--text-faint);
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+
+  /* ── Quickstart ── */
+  .quickstart {
+    padding: 0 0 96px;
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 16px;
+    align-items: start;
+    padding: 20px 24px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .step-num {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-bright);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cyan);
+  }
+
+  .step-content h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .step-code {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--cyan);
+    background: var(--bg);
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: inline-block;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    position: relative;
+  }
+
+  .step-code:hover { border-color: var(--cyan); }
+
+  .step-code::after {
+    content: 'copy';
+    position: absolute;
+    right: -44px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--text-faint);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .step-code:hover::after { opacity: 1; }
+
+  /* ── Status banner ── */
+  .status-banner {
+    background: var(--amber-dim);
+    border: 1px solid rgba(251,191,36,0.2);
+    border-radius: 10px;
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 96px;
+  }
+
+  .status-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .status-text {
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .status-text strong { color: var(--amber); font-weight: 600; }
+
+  /* ── Footer ── */
+  footer {
+    padding: 32px 0 48px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-left {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+
+  .footer-left a {
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .footer-left a:hover { color: var(--cyan); }
+
+  .footer-links {
+    display: flex;
+    gap: 20px;
+  }
+
+  .footer-links a {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .footer-links a:hover { color: var(--cyan); }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    .page { padding: 0 18px; }
+    .hero { padding: 56px 0 48px; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .arch-diagram { flex-direction: column; gap: 8px; padding: 24px; }
+    .arch-arrow { transform: rotate(90deg); padding: 4px 0; }
+    .hero-actions { flex-direction: column; }
+    .btn { justify-content: center; }
+    footer { flex-direction: column; gap: 16px; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Nav -->
+  <nav>
+    <a href="#" class="nav-brand">
+      <span class="nav-dot"></span>
+      DaveLLM
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#quickstart">Install</a>
+      <a href="https://github.com/DaveHomeAssist/DaveLLM" target="_blank">GitHub</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-label">
+      Local LLM Dev Server
+      <span class="tag">Alpha</span>
+    </div>
+    <h1>Run models.<br>Test prompts.<br>Ship faster.</h1>
+    <p class="hero-sub">A local-first LLM development server. No API keys, no cloud dependency, no data leaving your machine. Just models running on your hardware with a clean API.</p>
+    <div class="hero-actions">
+      <a href="#quickstart" class="btn btn-primary">Get started</a>
+      <a href="https://github.com/DaveHomeAssist/DaveLLM" target="_blank" class="btn btn-ghost">View source</a>
+    </div>
+  </section>
+
+  <!-- Terminal -->
+  <div class="terminal">
+    <div class="terminal-bar">
+      <span class="terminal-dot"></span>
+      <span class="terminal-dot"></span>
+      <span class="terminal-dot"></span>
+      <span class="terminal-title">~/projects/DaveLLM</span>
+    </div>
+    <div class="terminal-body" id="terminalBody">
+      <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">davellm start</span> <span class="t-flag">--model mistral-7b</span></span>
+      <span class="t-line blank"></span>
+      <span class="t-line"><span class="t-dim">  Loading model...</span></span>
+      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">Model loaded</span> <span class="t-val">mistral-7b-instruct-v0.2.Q4_K_M</span> <span class="t-dim">(4.2 GB)</span></span>
+      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">API server</span> <span class="t-val">http://localhost:3000/v1</span></span>
+      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">Playground</span> <span class="t-val">http://localhost:3000/ui</span></span>
+      <span class="t-line blank"></span>
+      <span class="t-line"><span class="t-comment">  # OpenAI-compatible — drop in anywhere</span></span>
+      <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">curl</span> <span class="t-val">localhost:3000/v1/chat/completions</span> <span class="t-flag">\</span></span>
+      <span class="t-line"><span class="t-dim">    -H</span> <span class="t-val">"Content-Type: application/json"</span> <span class="t-flag">\</span></span>
+      <span class="t-line"><span class="t-dim">    -d</span> <span class="t-val">'{"model":"local","messages":[{"role":"user","content":"hello"}]}'</span></span>
+      <span class="t-line blank"></span>
+      <span class="t-line"><span class="t-ok">  200 OK</span> <span class="t-dim">— 142 tokens in 1.3s (109 tok/s)</span></span>
+      <span class="t-line blank"></span>
+      <span class="t-line"><span class="t-prompt">$</span> <span class="cursor-blink"></span></span>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="section-label">// What it does</div>
+    <div class="feature-grid">
+      <div class="feature">
+        <div class="feature-icon">⊘</div>
+        <h3>Local-first</h3>
+        <p>Runs entirely on your machine. No API keys to manage, no usage caps, no data transmitted externally. Your prompts stay yours.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">/v1</div>
+        <h3>OpenAI-compatible API</h3>
+        <p>Drop-in replacement for OpenAI endpoints. Existing SDKs, scripts, and tools work without modification — just change the base URL.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">↔</div>
+        <h3>Model-agnostic</h3>
+        <p>Swap models via config. Point it at any GGUF model file and go. Switch between models without restarting the server.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">▶</div>
+        <h3>Built-in playground</h3>
+        <p>Web UI at <code style="color:var(--amber);background:var(--amber-dim);padding:1px 6px;border-radius:3px;font-size:12px;">/ui</code> for testing prompts interactively. No curl required for iteration.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section class="architecture">
+    <div class="section-label">// How it works</div>
+    <div class="arch-diagram">
+      <div class="arch-node client">
+        <div class="arch-node-label">Client</div>
+        <div class="arch-node-name">Your app / curl / SDK</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node server">
+        <div class="arch-node-label">Server</div>
+        <div class="arch-node-name">DaveLLM API</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node runtime">
+        <div class="arch-node-label">Runtime</div>
+        <div class="arch-node-name">Inference Engine</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node model">
+        <div class="arch-node-label">Model</div>
+        <div class="arch-node-name">GGUF / Local weights</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart -->
+  <section class="quickstart" id="quickstart">
+    <div class="section-label">// Get running</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Clone</h4>
+          <div class="step-code" onclick="copyToClipboard(this, 'git clone https://github.com/DaveHomeAssist/DaveLLM && cd DaveLLM')">
+            git clone https://github.com/DaveHomeAssist/DaveLLM && cd DaveLLM
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>Install</h4>
+          <div class="step-code" onclick="copyToClipboard(this, 'npm install')">
+            npm install
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Start</h4>
+          <div class="step-code" onclick="copyToClipboard(this, 'npx davellm start')">
+            npx davellm start
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Status -->
+  <div class="status-banner">
+    <span class="status-icon">⚡</span>
+    <div class="status-text">
+      <strong>Active development.</strong> Built for personal use, shared for anyone who finds it useful. Expect rough edges. Contributions welcome — check the repo for open issues.
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-left">
+      DaveLLM &middot; by <a href="https://davehomeassist.github.io">Dave Robertson</a>
+    </div>
+    <div class="footer-links">
+      <a href="https://davehomeassist.github.io">← All Projects</a>
+      <a href="https://github.com/DaveHomeAssist/DaveLLM" target="_blank">GitHub</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+function copyToClipboard(el, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = el.textContent;
+    el.textContent = 'copied!';
+    el.style.color = 'var(--green)';
+    setTimeout(() => {
+      el.textContent = orig;
+      el.style.color = '';
+    }, 1500);
+  });
+}
+
+/* Staggered terminal line reveal */
+document.addEventListener('DOMContentLoaded', () => {
+  const lines = document.querySelectorAll('.t-line');
+  lines.forEach((line, i) => {
+    line.style.opacity = '0';
+    line.style.transform = 'translateX(-4px)';
+    line.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    setTimeout(() => {
+      line.style.opacity = '1';
+      line.style.transform = 'translateX(0)';
+    }, 200 + i * 80);
+  });
+});
+</script>
+</body>
+</html>
