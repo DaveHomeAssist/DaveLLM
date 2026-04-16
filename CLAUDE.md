@@ -1,6 +1,33 @@
 # DaveLLM Router
 
-Local LLM routing server. FastAPI backend (app.py) + vanilla JS frontend (app.js) in Electron shell.
+## Project Overview
+
+Local LLM routing server that load-balances inference requests across a 4-node LAN Ollama cluster. FastAPI backend handles routing and model selection. Electron desktop UI provides the chat interface.
+
+## Stack
+
+- Python (FastAPI, uvicorn, httpx, numpy, pydantic)
+- SQLite for vector memory (`dave_vectors.db`) and feedback/performance DBs
+- Electron 30 with vanilla JS frontend (no React, no frontend framework)
+- Ollama on 4 LAN inference nodes (port 11434 each)
+
+## Key Decisions
+
+- Mac runs the router only. All inference happens on dedicated LAN GPU nodes.
+- Tool execution uses `shlex` (no `shell=True`) for security.
+- Thread-safe node selection via `itertools.cycle` round-robin.
+- Prompt length capped at 100k characters. PII stripped from system prompts sent to inference nodes.
+- No cloud dependency when local nodes are available. Ollama localhost:11434 as fallback.
+
+## Documentation Maintenance
+
+- **Issues**: Track in CLAUDE.md issue tracker table below
+- **Session log**: Append to `/Users/daverobertson/Desktop/Code/95-docs-personal/today.csv` after each meaningful change
+
+## Issue Tracker
+
+| ID | Severity | Status | Title | Notes |
+|----|----------|--------|-------|-------|
 
 ## Architecture
 
