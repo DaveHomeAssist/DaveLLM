@@ -417,14 +417,18 @@ from collections import defaultdict
 MODEL_FEEDBACK = defaultdict(list)  # cached; persisted to SQLite
 
 def load_feedback_cache():
-    conn = sqlite3.connect(str(FEEDBACK_DB))
-    c = conn.cursor()
-    c.execute("SELECT model_id, score, complexity FROM feedback ORDER BY id DESC LIMIT 500")
-    for model_id, score, complexity in c.fetchall():
-        MODEL_FEEDBACK[model_id].append({"score": score, "complexity": complexity})
-    conn.close()
+    try:
+        conn = sqlite3.connect(str(FEEDBACK_DB))
+        c = conn.cursor()
+        c.execute("SELECT model_id, score, complexity FROM feedback ORDER BY id DESC LIMIT 500")
+        for model_id, score, complexity in c.fetchall():
+            MODEL_FEEDBACK[model_id].append({"score": score, "complexity": complexity})
+        conn.close()
+    except sqlite3.OperationalError:
+        # Table may not exist yet on first run; init_feedback_db() will create it later
+        pass
 
-load_feedback_cache()
+# load_feedback_cache() is called after init_feedback_db() below (near line 842)
 
 def log_performance(user_id: str, conversation_id: str, model_id: str, tokens: int, cost: float, latency_ms: float, complexity: float):
     try:
@@ -838,6 +842,9 @@ init_vector_db()
 init_feedback_db()
 init_performance_db()
 
+# Load feedback cache after DB tables exist
+load_feedback_cache()
+
 # ============================================================
 # TOOL EXECUTION SYSTEM
 # ============================================================
@@ -925,23 +932,36 @@ async def tool_file_read(params: Dict) -> ToolResult:
         return ToolResult(tool="file.read", status="error", result="", error=str(e))
 
 async def tool_file_write(params: Dict) -> ToolResult:
-    """Write to file with size limit."""
+    """Write to file with size limit and subdirectory allowlist."""
     try:
         path = params.get("path", "")
         content = params.get("content", "")
-        
+
         if not path:
             return ToolResult(tool="file.write", status="error", result="", error="Missing path")
-        
+
         # Check content size
         if len(content) > MAX_FILE_SIZE:
             return ToolResult(tool="file.write", status="error", result="", error=f"Content too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)")
-        
-        # Safety: restrict to home directory
+
+        # Safety: restrict to explicit allowlist of writable subdirectories
         safe_path = Path(path).expanduser().resolve()
-        if not str(safe_path).startswith(str(Path.home())):
-            return ToolResult(tool="file.write", status="error", result="", error="Access denied: only home directory allowed")
-        
+        home = Path.home()
+        allowed_roots = [
+            home / "Desktop" / "Code",
+            home / "Documents" / "Claude",
+            home / ".readout",
+            home / "dave-llm-output",
+        ]
+        if not any(
+            str(safe_path).startswith(str(root.resolve()))
+            for root in allowed_roots
+        ):
+            return ToolResult(
+                tool="file.write", status="error", result="",
+                error=f"Access denied: writes restricted to {[str(r) for r in allowed_roots]}"
+            )
+
         safe_path.parent.mkdir(parents=True, exist_ok=True)
         with open(safe_path, "w") as f:
             f.write(content)
@@ -1932,6 +1952,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
         actual_tokens = estimate_tokens(assistant_msg) + (estimate_tokens(user_text) if user_text else 0)
         cost = (actual_tokens / 1000) * model_meta.get("cost_per_1k", 0)
         latency_val = locals().get("latency_ms", None)
+        comp_score = complexity_score(user_text, len(history))
         log_performance(user_id, req.conversation_id, preferred_model, actual_tokens, cost, latency_val, comp_score)
     except Exception:
         pass
@@ -2113,6 +2134,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                     actual_tokens = estimate_tokens(full_response) + (estimate_tokens(user_text) if user_text else 0)
                     cost = (actual_tokens / 1000) * model_meta.get("cost_per_1k", 0)
                     latency_ms = (time.time() - start_time) * 1000
+                    comp_score = complexity_score(user_text, len(history))
                     log_performance(user_id, req.conversation_id, preferred_model, actual_tokens, cost, latency_ms, comp_score)
                 except Exception as e:
                     record_error("perf_log", str(e))
