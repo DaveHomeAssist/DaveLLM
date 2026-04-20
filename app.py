@@ -104,6 +104,18 @@ DEFAULT_ORIGINS = [
 ]
 API_KEY = os.getenv("DAVE_API_KEY")
 USER_DB: Dict[str, str] = {}  # api_key -> user_id (placeholder; default user if none)
+
+# Log a startup warning when the router is running without an API key.
+# The request-time guard (require_api_key) fails closed in that case so
+# the service stays reachable for /health diagnostics but refuses any
+# guarded endpoint until DAVE_API_KEY is set.
+if API_KEY is None:
+    import logging as _logging
+    _logging.getLogger("dave_llm").warning(
+        "DAVE_API_KEY env var is not set. All guarded endpoints will return "
+        "503 until it is configured. Set DAVE_API_KEY in the environment "
+        "and restart the router."
+    )
 RAW_CORS = os.getenv("DAVE_CORS_ORIGINS")
 ALLOWED_ORIGINS = (
     [o.strip() for o in RAW_CORS.split(",") if o.strip()]
@@ -334,10 +346,18 @@ def check_rate_limit(client_ip: str):
 
 def require_api_key(x_api_key: Optional[str] = Header(default=None)):
     """
-    Optional API key guard. If DAVE_API_KEY is unset, endpoint stays open.
+    API key guard. Fails closed when DAVE_API_KEY is unset so a
+    misconfigured server does not silently expose every guarded endpoint.
+    503 (not 401) is returned in that case because the failure is on the
+    server side, not the caller. /health remains unguarded so ops can
+    still check process liveness.
     """
     if API_KEY is None:
-        return "default"
+        raise HTTPException(
+            503,
+            "Router is not configured: DAVE_API_KEY env var is unset. "
+            "Set it and restart the router.",
+        )
     if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(401, "Invalid API key")
     return USER_DB.get(x_api_key, "default")
