@@ -1,36 +1,82 @@
-# DaveLLM Desktop (Electron + FastAPI)
+# DaveLLM Desktop
 
-## Prereqs
-- Python 3.x
-- Node.js (npm)
-- Local models in `models/` (or use the built-in Hugging Face downloader)
+DaveLLM is an Electron desktop client backed by a FastAPI router. The router discovers models from configured Ollama nodes, streams OpenAI-compatible chat responses, and persists conversations, projects, vector indexes, feedback, performance, and cost data on the router host.
+
+## Requirements
+
+- Python 3
+- Node.js and npm
+- One or more reachable Ollama nodes
+- `DAVE_API_KEY` set to a non-empty local secret
+
+The repository does not include models, Whisper assets, credentials, or runtime data.
 
 ## Setup
+
 ```bash
-# Python
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
-
-# Node/Electron
-npm install
+python -m pip install -r requirements.txt
+npm ci
 ```
 
-## Run (desktop shell)
+Configure the process environment before starting. Values below are placeholders, not working cluster inventory:
+
 ```bash
+export DAVE_API_KEY='<local-secret>'
+export DAVE_NODES='[{"id":"<node-id>","name":"<display-name>","url":"http://<ollama-host>:11434"}]'
 npm start
 ```
-This spawns uvicorn (FastAPI backend) and opens the Electron window pointed at `http://127.0.0.1:8000`.
 
-## Config
-- `DAVE_PORT` to change backend port (default 8000)
-- `DAVE_PYTHON` to override Python executable (default `venv/bin/python`)
-- `DAVE_DATA_DIR` to relocate conversations/logs/vectors (default current dir)
+Electron starts uvicorn, waits up to 15 seconds for public `/health`, injects `X-API-Key` only into requests to its exact loopback backend origin, and then loads the UI. Override the Python executable with `DAVE_PYTHON`, the port with `DAVE_PORT`, or the readiness timeout with `DAVE_STARTUP_TIMEOUT_MS`.
 
-## Models
-Place GGUFs under `models/` or use the UI Hugging Face downloader (`Model Fetcher`). Ensure paths/nodes are configured in `app.py` if you add more models.
+## Browser mode
 
-## Notes
-- On macOS, if port 8000 is busy, set `DAVE_PORT=8010` before `npm start`.
-- The app uses whisper.cpp (bundled) for audio transcription; ensure `ffmpeg` is installed.
-- Routing base in the UI respects `window.__API_BASE__` injected by Electron preload.
+```bash
+source venv/bin/activate
+export DAVE_API_KEY='<local-secret>'
+export DAVE_NODES='[...]'
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000`. Browser mode prompts for the key and keeps it in `sessionStorage`; it is not written to persistent `localStorage`. `/health` is public. Protected endpoints fail with `503` when the server key is unset and `401` when the supplied key is missing or wrong.
+
+## Ollama contract
+
+The UI loads nodes from `GET /nodes`, then loads the selected node's inventory from `GET /nodes/{node_id}/models`. The router queries Ollama `GET /api/tags`. Chat requests are accepted only when `node_id` is a configured node and `model` appears in the loaded inventory for that node. Inference uses Ollama's OpenAI-compatible `POST /v1/chat/completions` endpoint.
+
+The repository intentionally contains no real node addresses or verified model inventory. Cluster reachability and installed models remain runtime-dependent.
+
+## Data and tools
+
+`DAVE_DATA_DIR` relocates all six persistence artifacts. When unset, the current working directory remains the default.
+
+- `dave_conversations.json`
+- `dave_projects.json`
+- `dave_vectors.db`
+- `feedback.db`
+- `performance.db`
+- `cost_log.jsonl`
+
+Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and provide `DAVE_TOOL_ROOTS` as a JSON array of absolute paths. File read, write, and append operations share the same containment check. `shell.exec` remains disabled unless `DAVE_ENABLE_SHELL_TOOL=true` is also set. `web.fetch` accepts only bounded public HTTP/HTTPS responses and validates DNS plus each redirect target.
+
+## Validation
+
+```bash
+source venv/bin/activate
+python -m py_compile app.py
+python -m pytest -q
+node --check static/app.js
+node --check static/prompt-contract.js
+node --check desktop/main.js
+node --check desktop/preload.js
+bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
+npm ci
+npm ls --depth=0
+```
+
+Runtime UI files are under `static/`; only that directory is mounted at `/`. The separate `docs/` content is unchanged and is not used by the desktop runtime.
+
+## Dependency note
+
+`package.json` intentionally retains Electron `^30.0.0`. The generated lockfile currently resolves Electron 30.5.1. Current `npm audit` data reports a high-severity advisory set that requires a major Electron upgrade to clear; that upgrade is a separate compatibility decision.

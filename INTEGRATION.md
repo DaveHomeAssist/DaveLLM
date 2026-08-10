@@ -1,180 +1,115 @@
-# DaveLLM Frontend-Backend Integration Guide
+# DaveLLM Frontend and Backend Integration
 
-## Overview
-The DaveLLM system consists of a FastAPI backend router and a browser-based frontend for managing persistent conversations with multiple llama.cpp inference nodes.
+## Runtime flow
 
-## Architecture
+1. Electron spawns uvicorn on loopback, or an operator starts uvicorn for browser mode.
+2. Electron waits for public `GET /health` before loading the UI.
+3. Protected UI requests receive `X-API-Key` from the Electron main process or browser `sessionStorage`.
+4. The UI loads `GET /nodes`.
+5. The UI loads `GET /nodes/{node_id}/models`; the router queries that Ollama node at `GET /api/tags` and records the returned inventory.
+6. The UI submits `/chat` or `/chat/stream` only with the selected configured node and a model in that node's loaded inventory.
+7. The router sends an OpenAI-compatible request to the selected Ollama node at `/v1/chat/completions`.
 
-### Backend (`app.py`) - Pydantic V2
-- **FastAPI** server on `http://127.0.0.1:8000`
-- **Round-robin** node selection via `NODE_CYCLE`
-- **In-memory** conversation storage (ephemeral)
-- **OpenAI-compatible** chat format
+There is no `/api` prefix.
 
-### Frontend (`app.js` + `index.html`)
-- **Browser-based** UI with persistent localStorage
-- **Session management** via `session_id`
-- **Conversation history** stored locally
-- **Real-time node discovery** and status display
+## Authentication
 
-## API Contracts
+`GET /health` is public. All operational, conversation, chat, monitoring, export, project, model, and tool routes are protected.
 
-### GET `/nodes`
-```json
-[
-  {
-    "id": "mac-node",
-    "name": "Mac Test Node",
-    "url": "http://127.0.0.1:9001"
-  }
-]
-```
+- Server missing `DAVE_API_KEY`: protected route returns `503`.
+- Missing or wrong `X-API-Key`: protected route returns `401`.
+- Correct `X-API-Key`: request proceeds.
 
-### POST `/chat`
-**Request:**
-```json
-{
-  "session_id": "default",
-  "messages": [
-    {"role": "user", "content": "Hello"},
-    {"role": "assistant", "content": "Hi there"}
-  ],
-  "max_tokens": 256
-}
-```
+Electron stores no renderer credential. `desktop/main.js` injects the environment key only for the exact `http://127.0.0.1:<DAVE_PORT>` origin. `desktop/preload.js` never receives the key. Non-Electron browser use prompts for a session-only value.
 
-**Response:**
-```json
-{
-  "response": "Assistant's answer",
-  "node": "Mac Test Node",
-  "conversation_id": "default"
-}
-```
+## Core contracts
 
-### GET `/health`
+### `GET /health`
+
 ```json
 {
   "status": "ok",
-  "nodes": [
-    {
-      "id": "mac-node",
-      "name": "Mac Test Node",
-      "url": "http://127.0.0.1:9001"
-    }
+  "nodes": [],
+  "active_conversations": 0
+}
+```
+
+### `GET /nodes`
+
+Returns configured node objects with `id`, `name`, and `url`.
+
+### `GET /nodes/{node_id}/models`
+
+```json
+{
+  "node_id": "<configured-node-id>",
+  "node_name": "<configured-display-name>",
+  "models": [
+    {"id": "<ollama-model-id>", "vision": false}
   ]
 }
 ```
 
-## Frontend Data Flow
+The model IDs are taken from Ollama `/api/tags`; they are not synthesized by the router.
 
-1. **User Input** → User types prompt in textarea
-2. **Local History** → Message saved to `state.history[]`
-3. **API Request** → POST to `/chat` with full conversation
-4. **Backend Processing** → Router selects node, sends to llama.cpp
-5. **Response Parsing** → Extract `data.response`
-6. **UI Update** → Display response in textarea
-7. **Persistence** → Save to localStorage
+### `POST /conversations/from_template`
 
-## State Management
-
-### Global State (`state` object)
-```javascript
+```json
 {
-  nodes: [],                  // Available inference nodes
-  selectedNode: null,         // Currently selected node ID
-  isStreaming: false,         // Request in flight
-  sessionId: "default",       // Conversation session
-  history: [],                // Full message history [{role, content}, ...]
-  autoRefreshId: null         // Auto-refresh interval ID
+  "template_name": "code_review",
+  "project_id": null
 }
 ```
 
-### LocalStorage Keys
-- `routerUrl`: Backend API endpoint
-- `history_<sessionId>`: Conversation messages for session
-- `activeConversation`: Last used session ID
+The body is validated by Pydantic. Existing templates remain `general`, `code_review`, and `brainstorm`. There is no template CRUD API.
 
-## Required HTML Elements
+### `POST /chat`
 
-| ID | Type | Purpose |
-|---|---|---|
-| `router-url` | input | Configure backend URL |
-| `refresh-nodes` | button | Reload node list |
-| `node-list` | div | Node display container |
-| `node-count` | span | Active node count |
-| `node-select` | select | Node dropdown selector |
-| `prompt` | textarea | User input field |
-| `send` | button | Submit message |
-| `clear-output` | button | Clear response display |
-| `response` | textarea | Conversation display |
-| `reset-conversation` | button | Clear history |
-| `toggle-settings` | button | Show/hide settings |
-| `settings-panel` | div | Settings container |
-| `console-log` | div | Logging output |
-
-## Error Handling
-
-### Frontend Error Scenarios
-- **No prompt**: Validation check blocks empty sends
-- **Router unreachable**: Fetch error caught, logged
-- **JSON parse error**: Try-catch wraps response parsing
-- **HTTP error**: Non-200 status throws, caught
-
-### Backend Error Scenarios
-- **No nodes**: HTTP 503 from `pick_node()`
-- **Node unreachable**: HTTP 502 with error message
-- **Malformed response**: HTTP 502 with format error
-
-## Integration Checklist
-
-- ✅ Backend accepts `{session_id, messages[], max_tokens}`
-- ✅ Frontend sends full conversation history per request
-- ✅ Response format: `{response, node, conversation_id}`
-- ✅ Session persistence: localStorage with key `history_<sessionId>`
-- ✅ Node discovery: Auto-refresh every 3 seconds
-- ✅ Error logging: Console log display in UI
-- ✅ CORS enabled on backend for localhost
-- ✅ Pydantic V2 migrations complete
-
-## Deployment
-
-### Development
-```bash
-# Terminal 1: Backend
-cd /Users/daverobertson/Desktop/Dave-LLM
-uvicorn app:app --reload
-
-# Terminal 2: Static Server
-python3 -m http.server 5500
-
-# Browser
-Open http://localhost:5500
-Enter router URL: http://127.0.0.1:8000
+```json
+{
+  "conversation_id": "<conversation-id>",
+  "prompt": "Exact text displayed in the UI",
+  "node_id": "<configured-node-id>",
+  "model": "<model-id-from-that-node>",
+  "max_tokens": 2048,
+  "temperature": 0.7,
+  "project_id": null,
+  "images": []
+}
 ```
 
-### Production
-- Use HTTPS
-- Configure CORS origins whitelist
-- Replace in-memory storage with database
-- Add authentication
-- Use environment variables for configuration
+`node_id` and `model` are required at runtime. An unloaded inventory returns `409`; an unavailable model returns `400`; an unknown node returns `404`. Attached text and the Support prefix are incorporated into one effective prompt used both for display and the backend request.
 
-## Known Limitations
+### `POST /chat/stream`
 
-1. **Ephemeral Memory**: Backend conversations lost on restart
-2. **No Real Persistence**: Use database for production
-3. **Single Session**: Frontend manages one session at a time
-4. **No Streaming**: Response waits for full completion
-5. **Manual Node Config**: Add nodes by editing `DEFAULT_NODES`
+Success token:
 
-## Future Improvements
+```text
+data: {"token":"partial text","done":false}
+```
 
-- [ ] Multiple concurrent sessions
-- [ ] Streaming responses
-- [ ] User authentication
-- [ ] Database persistence
-- [ ] Model selection per node
-- [ ] Request history export
-- [ ] Conversation sharing
-- [ ] Custom system prompts
+Terminal event:
+
+```text
+data: {"token":"","done":true,"message_count":2}
+```
+
+Node failures are returned as SSE error events. The renderer promotes `error` events into the visible chat error state rather than treating them as JSON parse failures.
+
+### `GET /conversations/{conversation_id}/export`
+
+The renderer performs authenticated fetch, converts the response to a Markdown Blob, triggers a download, and revokes the object URL. Non-success responses are shown to the user.
+
+### `GET /tools` and `POST /tools/execute`
+
+Both return `403` unless `DAVE_ENABLE_TOOLS=true`. `DAVE_TOOL_ROOTS` must be a JSON array of absolute paths. File read, write, and append use the same resolved-path containment rule. `shell.exec` also requires `DAVE_ENABLE_SHELL_TOOL=true`.
+
+## Persistence and static serving
+
+All persistence artifacts resolve under `DAVE_DATA_DIR`, with the current directory retained as the unset default. Runtime UI files are served only from `static/`. Requests for source, `.git`, JSON, SQLite, and log paths return `404` unless a separately declared API route owns the path.
+
+## Verified versus runtime-dependent
+
+Automated tests verify auth states, static isolation, Ollama-compatible inventory and chat transports, stream success and failure events, templates, export, tools default-off behavior, title generation, raw embedding indexes, exact effective-prompt construction, and data-directory containment.
+
+Real cluster reachability, actual model inventory, Whisper binaries, inference performance, and end-to-end hardware behavior remain runtime-dependent and require an authorized cluster check.

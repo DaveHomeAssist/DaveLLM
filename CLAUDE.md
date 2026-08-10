@@ -1,76 +1,72 @@
 # DaveLLM Router
 
-## Project Overview
+## Product
 
-Local LLM routing server that load-balances inference requests across a 4-node LAN Ollama cluster. FastAPI backend handles routing and model selection. Electron desktop UI provides the chat interface.
+DaveLLM is a FastAPI router with an Electron and browser UI for authenticated chat against configured Ollama nodes. The repository preserves conversation and project JSON semantics, SQLite vector/feedback/performance stores, streamed chat, attachments, export, monitoring, and optional local tools.
 
-## Stack
+## Source layout
 
-- Python (FastAPI, uvicorn, httpx, numpy, pydantic)
-- SQLite for vector memory (`dave_vectors.db`) and feedback/performance DBs
-- Electron 30 with vanilla JS frontend (no React, no frontend framework)
-- Ollama on 4 LAN inference nodes (port 11434 each)
+- `app.py`: FastAPI routes, persistence, inventory, chat, tools, monitoring
+- `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
+- `desktop/`: Electron main process and preload bridge
+- `tests/`: source-aligned FastAPI, mocked Ollama transport, security, and renderer contract tests
+- `docs/`: separate existing documentation artifact; do not use it as the runtime static root
 
-## Key Decisions
+## Trust boundaries
 
-- Mac runs the router only. All inference happens on dedicated LAN GPU nodes.
-- Tool execution uses `shlex` (no `shell=True`) for security.
-- Thread-safe node selection via `itertools.cycle` round-robin.
-- Prompt length capped at 100k characters. PII stripped from system prompts sent to inference nodes.
-- No cloud dependency when local nodes are available. Ollama localhost:11434 as fallback.
+- `/health` is public for readiness.
+- Protected routes require `X-API-Key` and fail closed if `DAVE_API_KEY` is unset.
+- Electron reads the key only in `desktop/main.js` and injects it only for the exact loopback backend origin.
+- The preload exposes the API base and an Electron marker, never the key.
+- Browser credentials use `sessionStorage`, never persistent `localStorage`.
+- Only `static/` is mounted at `/`; source, Git metadata, JSON, SQLite, and logs must remain unreachable.
+- Tools default off. File tools require explicit absolute roots. Shell execution requires a second opt-in.
 
-## Documentation Maintenance
+## Ollama integration
 
-- **Issues**: Track in CLAUDE.md issue tracker table below
-- **Session log**: Append to `/Users/daverobertson/Desktop/Code/95-docs-personal/today.csv` after each meaningful change
+`DAVE_NODES` is the only runtime node inventory override. Do not add real addresses or fabricate aliases in source. Model discovery uses `/api/tags`; inference uses `/v1/chat/completions`. A chat must name a node returned by `/nodes` and a model returned for that node. Automatic routing is advisory and may replace a manual model only when the suggestion exists in the currently loaded inventory.
 
-## Issue Tracker
+## Persistence
 
-| ID | Severity | Status | Title | Notes |
-|----|----------|--------|-------|-------|
+Every runtime persistence path is based on `BASE_DIR`, which is derived from `DAVE_DATA_DIR` and defaults to the current directory:
 
-## Architecture
+- `dave_conversations.json`
+- `dave_projects.json`
+- `dave_vectors.db`
+- `feedback.db`
+- `performance.db`
+- `cost_log.jsonl`
 
-```
-Electron Desktop UI (app.js + index.html + style.css)
-    |
-FastAPI Router (app.py, port 8000)
-    |
-Ollama nodes on LAN (ports 11434 per machine)
-    |
-Local GGUF/Ollama models
-```
+Do not import, move, or infer legacy model or data locations.
 
-## Multi-Node Cluster
-
-4 inference nodes on LAN, all running Ollama:
-- **node-gp66**: MSI GP66 Leopard, RTX 3070 — fast general (7B)
-- **node-katana-1**: MSI Katana, RTX 4060 — code model
-- **node-katana-2**: MSI Katana, RTX 4060 — vision model
-- **node-duncan**: Duncan workstation, 80 GB RAM — large model (70B, CPU inference)
-
-Mac runs the router only. Ollama localhost:11434 available as fallback.
-
-## Running
+## Running and verification
 
 ```bash
-# Router (Mac)
-source .venv/bin/activate
-uvicorn app:app --host 0.0.0.0 --port 8000
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt -r requirements-dev.txt
+npm ci
 
-# Desktop UI
-cd desktop && npx electron .
+export DAVE_API_KEY='<local-secret>'
+export DAVE_NODES='[{"id":"<node-id>","name":"<display-name>","url":"http://<ollama-host>:11434"}]'
+npm start
 ```
 
-## Node config
+Required checks after relevant changes:
 
-Set `DAVE_NODES` env var as JSON array, or edit DEFAULT_NODES in app.py.
-Each node runs Ollama on port 11434 with `OLLAMA_HOST=0.0.0.0`.
+```bash
+python -m py_compile app.py
+python -m pytest -q
+node --check static/app.js static/prompt-contract.js desktop/main.js desktop/preload.js
+bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
+npm ci
+npm ls --depth=0
+git diff --check
+```
 
-## Key constraints
+## Current limits and open decisions
 
-- No cloud dependency when local nodes are available
-- Prompt length validated (100k char max)
-- Tool execution uses shlex (no shell=True)
-- Thread-safe node selection
-- PII removed from system prompt sent to inference nodes
+- Real node reachability, installed model inventory, inference quality, Whisper execution, and hardware performance require cluster access and are not proven by repository tests.
+- Electron remains at `^30.0.0` by explicit compatibility constraint. Current npm audit findings require a separately approved major upgrade.
+- FastAPI startup/shutdown event deprecation warnings are known; a lifespan migration is deferred because it is outside the P0 stabilization scope.
+- JSON conversation/project persistence is preserved. A SQLite migration is deferred.

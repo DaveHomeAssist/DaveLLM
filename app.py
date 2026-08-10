@@ -10,13 +10,15 @@ import time
 import asyncio
 import os
 import hashlib
+import ipaddress
 import sqlite3
+import socket
 import threading
 import shutil
 import numpy as np
 from itertools import cycle
 from typing import List, Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from pathlib import Path
 from datetime import datetime
 
@@ -35,12 +37,14 @@ import uuid
 # ============================================================
 
 BASE_DIR = Path(os.getenv("DAVE_DATA_DIR", ".")).expanduser().resolve()
+BASE_DIR.mkdir(parents=True, exist_ok=True)
 DATA_FILE = BASE_DIR / "dave_conversations.json"
 DEFAULT_CONVO_TITLE = "New Conversation"
 VECTOR_DB = BASE_DIR / "dave_vectors.db"
-FEEDBACK_DB = Path("feedback.db")
-PERFORMANCE_DB = Path("performance.db")
-PROJECTS_FILE = Path("dave_projects.json")
+FEEDBACK_DB = BASE_DIR / "feedback.db"
+PERFORMANCE_DB = BASE_DIR / "performance.db"
+PROJECTS_FILE = BASE_DIR / "dave_projects.json"
+COST_LOG = BASE_DIR / "cost_log.jsonl"
 BUDGET_DEFAULT = float(os.getenv("DAVE_BUDGET_DEFAULT", "100"))
 USER_BUDGETS = {}
 if os.getenv("DAVE_USER_BUDGETS"):
@@ -50,6 +54,8 @@ if os.getenv("DAVE_USER_BUDGETS"):
         USER_BUDGETS = {}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_TOOL_OUTPUT = 5000
+MAX_WEB_FETCH_BYTES = 1024 * 1024
+MAX_WEB_FETCH_REDIRECTS = 5
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB base64 ≈ 3.75MB binary
 MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20MB
 WHISPER_BIN = Path(os.getenv("DAVE_WHISPER_BIN", "./whisper.cpp/build/bin/whisper-cli"))
@@ -67,18 +73,50 @@ MODEL_CATALOG = {
         "vision": True,
         "cost_per_1k": 0.0015,
         "quality": 0.9,
-        "node": "qwen-node",
     },
     str(Path("./models/llama3.2-3b-instruct-q4_k_m.gguf").resolve()): {
         "vision": False,
         "cost_per_1k": 0.0006,
         "quality": 0.8,
-        "node": "mac-node",
     },
 }
 
 MODEL_HEALTH: Dict[str, dict] = {}
+MODEL_INVENTORY: Dict[str, set[str]] = {}
 RECENT_ERRORS: List[dict] = []
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _load_tool_roots() -> List[Path]:
+    raw = os.getenv("DAVE_TOOL_ROOTS", "[]")
+    try:
+        values = json.loads(raw)
+        if not isinstance(values, list):
+            raise ValueError("must be a JSON array")
+        roots = []
+        for value in values:
+            path = Path(value).expanduser()
+            if not path.is_absolute():
+                raise ValueError("every tool root must be an absolute path")
+            roots.append(path.resolve())
+        return roots
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        import logging as _logging
+        _logging.getLogger("dave_llm").warning(
+            "Ignoring invalid DAVE_TOOL_ROOTS configuration: %s", exc
+        )
+        return []
+
+
+TOOLS_ENABLED = _env_flag("DAVE_ENABLE_TOOLS")
+SHELL_TOOL_ENABLED = _env_flag("DAVE_ENABLE_SHELL_TOOL")
+TOOL_ROOTS = _load_tool_roots()
 
 def track_model_failure(model_id: str, error_type: str):
     if model_id not in MODEL_HEALTH:
@@ -308,7 +346,7 @@ PROJECTS: Dict[str, dict] = load_projects()
 app = FastAPI(
     title="DaveLLM Router",
     version="2.1",
-    description="Routes chat prompts to llama.cpp nodes with persistent conversation memory and metadata.",
+    description="Routes chat prompts to Ollama nodes with persistent conversation memory and metadata.",
 )
 
 app.add_middleware(
@@ -568,17 +606,14 @@ def choose_model_for_prompt(prompt: str, prefs: RoutePreferences, conversation_l
     )
 
 async def get_node_health(node: NodeConfig) -> dict:
-    """Check node health and latency."""
+    """Check Ollama node health and latency through its model inventory."""
     try:
         start = time.time()
-        resp = await asyncio.to_thread(
-            requests.get,
-            f"{node.url}/health",
-            timeout=3
-        )
+        async with httpx.AsyncClient(timeout=3) as client:
+            resp = await client.get(f"{node.url}/api/tags")
         latency = (time.time() - start) * 1000  # ms
 
-        if resp.ok:
+        if resp.is_success:
             return {
                 "status": "online",
                 "latency": round(latency, 1),
@@ -596,7 +631,7 @@ async def get_node_health(node: NodeConfig) -> dict:
     }
 
 async def get_node_models(node: NodeConfig) -> list:
-    """Fetch available models from a node and flag vision capability."""
+    """Fetch Ollama's available models and flag vision capability."""
 
     def detect_vision(model_obj, model_id: str) -> bool:
         """Heuristic detection of vision-capable models."""
@@ -635,28 +670,14 @@ async def get_node_models(node: NodeConfig) -> list:
         return False
 
     try:
-        resp = await asyncio.to_thread(
-            requests.get,
-            f"{node.url}/v1/models",
-            timeout=3
-        )
-        if resp.ok:
+        async with httpx.AsyncClient(timeout=3) as client:
+            resp = await client.get(f"{node.url}/api/tags")
+        if resp.is_success:
             data = resp.json()
 
-            # Merge both OpenAI-style "data" and llama.cpp "models" lists
             raw_models = []
-
-            data_models = data.get("data") or []
-            file_models = data.get("models") or []
-
-            # Normalize "data" entries (usually already OpenAI-style)
-            for m in data_models:
-                raw_models.append(m)
-
-            # Normalize "models" entries (llama.cpp file listing)
-            for m in file_models:
+            for m in data.get("models") or []:
                 if isinstance(m, dict) and "id" not in m:
-                    # Promote name/model to id so downstream logic can treat it uniformly
                     m = {
                         "id": m.get("id") or m.get("model") or m.get("name"),
                         **m,
@@ -700,9 +721,9 @@ async def get_node_models(node: NodeConfig) -> list:
 
             print(f"⚠️ Node {node.name} returned empty model list")
             return []
-    except requests.Timeout:
+    except httpx.TimeoutException:
         print(f"⚠️ Node {node.name} timed out fetching models")
-    except requests.ConnectionError:
+    except httpx.ConnectError:
         print(f"⚠️ Cannot connect to {node.name} at {node.url}")
     except Exception as e:
         print(f"⚠️ Error fetching models from {node.name}: {e}")
@@ -894,9 +915,56 @@ AVAILABLE_TOOLS = {
     "shell.exec": "Execute shell command (restricted)"
 }
 
+
+def validate_public_url(url: str) -> None:
+    """Resolve a URL hostname and reject every non-public address."""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Only absolute http/https URLs are allowed")
+    if parsed.username or parsed.password:
+        raise ValueError("URL credentials are not allowed")
+
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        resolved = socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError(f"Hostname resolution failed: {exc}") from exc
+    if not resolved:
+        raise ValueError("Hostname did not resolve")
+
+    for entry in resolved:
+        address = ipaddress.ip_address(entry[4][0])
+        if (
+            address.is_loopback
+            or address.is_private
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
+            or not address.is_global
+        ):
+            raise ValueError(f"Resolved address is not public: {address}")
+
+
+def resolve_tool_path(path: str) -> Path:
+    """Resolve a tool path and require containment in an explicit root."""
+    if not path:
+        raise ValueError("Missing path")
+    candidate = Path(path).expanduser().resolve()
+    if not any(candidate == root or candidate.is_relative_to(root) for root in TOOL_ROOTS):
+        raise PermissionError("Access denied: path is outside DAVE_TOOL_ROOTS")
+    return candidate
+
 async def execute_tool(tool_req: ToolRequest) -> ToolResult:
     """Execute a tool with safety checks."""
-    
+    if not TOOLS_ENABLED:
+        return ToolResult(
+            tool=tool_req.tool,
+            status="error",
+            result="",
+            error="Tools are disabled. Set DAVE_ENABLE_TOOLS=true to enable them.",
+        )
+
     try:
         tool = tool_req.tool
         params = tool_req.params
@@ -931,14 +999,7 @@ async def execute_tool(tool_req: ToolRequest) -> ToolResult:
 async def tool_file_read(params: Dict) -> ToolResult:
     """Read file contents with size limit."""
     try:
-        path = params.get("path", "")
-        if not path:
-            return ToolResult(tool="file.read", status="error", result="", error="Missing path")
-        
-        # Safety: restrict to home directory
-        safe_path = Path(path).expanduser().resolve()
-        if not str(safe_path).startswith(str(Path.home())):
-            return ToolResult(tool="file.read", status="error", result="", error="Access denied: only home directory allowed")
+        safe_path = resolve_tool_path(params.get("path", ""))
         
         # Check file size
         if safe_path.stat().st_size > MAX_FILE_SIZE:
@@ -957,30 +1018,11 @@ async def tool_file_write(params: Dict) -> ToolResult:
         path = params.get("path", "")
         content = params.get("content", "")
 
-        if not path:
-            return ToolResult(tool="file.write", status="error", result="", error="Missing path")
-
         # Check content size
         if len(content) > MAX_FILE_SIZE:
             return ToolResult(tool="file.write", status="error", result="", error=f"Content too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)")
 
-        # Safety: restrict to explicit allowlist of writable subdirectories
-        safe_path = Path(path).expanduser().resolve()
-        home = Path.home()
-        allowed_roots = [
-            home / "Desktop" / "Code",
-            home / "Documents" / "Claude",
-            home / ".readout",
-            home / "dave-llm-output",
-        ]
-        if not any(
-            str(safe_path).startswith(str(root.resolve()))
-            for root in allowed_roots
-        ):
-            return ToolResult(
-                tool="file.write", status="error", result="",
-                error=f"Access denied: writes restricted to {[str(r) for r in allowed_roots]}"
-            )
+        safe_path = resolve_tool_path(path)
 
         safe_path.parent.mkdir(parents=True, exist_ok=True)
         with open(safe_path, "w") as f:
@@ -996,13 +1038,11 @@ async def tool_file_append(params: Dict) -> ToolResult:
         path = params.get("path", "")
         content = params.get("content", "")
         
-        if not path:
-            return ToolResult(tool="file.append", status="error", result="", error="Missing path")
-        
-        safe_path = Path(path).expanduser().resolve()
-        if not str(safe_path).startswith(str(Path.home())):
-            return ToolResult(tool="file.append", status="error", result="", error="Access denied: only home directory allowed")
-        
+        if len(content) > MAX_FILE_SIZE:
+            return ToolResult(tool="file.append", status="error", result="", error=f"Content too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)")
+
+        safe_path = resolve_tool_path(path)
+        safe_path.parent.mkdir(parents=True, exist_ok=True)
         with open(safe_path, "a") as f:
             f.write(content)
         
@@ -1011,20 +1051,41 @@ async def tool_file_append(params: Dict) -> ToolResult:
         return ToolResult(tool="file.append", status="error", result="", error=str(e))
 
 async def tool_web_fetch(params: Dict) -> ToolResult:
-    """Fetch URL content."""
+    """Fetch bounded public HTTP content with redirect-by-redirect validation."""
     try:
         url = params.get("url", "")
         if not url:
             return ToolResult(tool="web.fetch", status="error", result="", error="Missing url")
-        
-        # Safety: whitelist common protocols
-        if not url.startswith(("http://", "https://")):
-            return ToolResult(tool="web.fetch", status="error", result="", error="Only http/https allowed")
-        
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        
-        return ToolResult(tool="web.fetch", status="success", result=resp.text[:MAX_TOOL_OUTPUT])
+
+        current_url = url
+        async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
+            for redirect_count in range(MAX_WEB_FETCH_REDIRECTS + 1):
+                await asyncio.to_thread(validate_public_url, current_url)
+                async with client.stream("GET", current_url) as resp:
+                    if resp.status_code in {301, 302, 303, 307, 308}:
+                        location = resp.headers.get("location")
+                        if not location:
+                            raise ValueError("Redirect response is missing Location")
+                        if redirect_count >= MAX_WEB_FETCH_REDIRECTS:
+                            raise ValueError("Too many redirects")
+                        current_url = urljoin(current_url, location)
+                        continue
+
+                    resp.raise_for_status()
+                    body = bytearray()
+                    async for chunk in resp.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > MAX_WEB_FETCH_BYTES:
+                            raise ValueError(
+                                f"Response exceeds {MAX_WEB_FETCH_BYTES} byte limit"
+                            )
+                    text = bytes(body).decode("utf-8", errors="replace")
+                    return ToolResult(
+                        tool="web.fetch",
+                        status="success",
+                        result=text[:MAX_TOOL_OUTPUT],
+                    )
+        raise ValueError("Fetch did not produce a response")
     except Exception as e:
         return ToolResult(tool="web.fetch", status="error", result="", error=str(e))
 
@@ -1052,6 +1113,13 @@ async def tool_system_info(params: Dict) -> ToolResult:
 async def tool_shell_exec(params: Dict) -> ToolResult:
     """Execute shell command (restricted whitelist only)."""
     try:
+        if not SHELL_TOOL_ENABLED:
+            return ToolResult(
+                tool="shell.exec",
+                status="error",
+                result="",
+                error="shell.exec is disabled. Set DAVE_ENABLE_SHELL_TOOL=true to enable it.",
+            )
         cmd = params.get("command", "")
         if not cmd:
             return ToolResult(tool="shell.exec", status="error", result="", error="Missing command")
@@ -1133,14 +1201,14 @@ def generate_conversation_summary(older_messages: List[dict]) -> str:
     if not older_messages:
         return ""
 
-    summary_model = "./models/llama3.2-3b-instruct-q4_k_m.gguf"
-    model_meta = get_model_meta(summary_model)
-    node_id = model_meta.get("node") or "mac-node"
-
-    try:
-        node = get_node_by_id(node_id)
-    except HTTPException:
-        node = NODE_CONFIGS[0]
+    available = [
+        (node, model_id)
+        for node in NODE_CONFIGS
+        for model_id in sorted(MODEL_INVENTORY.get(node.id, set()))
+    ]
+    if not available:
+        return f"[Earlier conversation summary over {len(older_messages)} messages]"
+    node, summary_model = available[0]
 
     condensed = "\n".join([f"{m.get('role','')}: {m.get('content','')[:200]}" for m in older_messages[-6:]])
     summary_prompt = f"Summarize the earlier conversation in 2-3 sentences. Keep key facts and decisions.\n\n{condensed}"
@@ -1246,6 +1314,10 @@ class ConversationInfo(BaseModel):
 class RenameRequest(BaseModel):
     title: str
 
+class TemplateConversationRequest(BaseModel):
+    template_name: str
+    project_id: Optional[str] = None
+
 class ModelDownloadRequest(BaseModel):
     url: str
     dest_path: Optional[str] = None
@@ -1292,7 +1364,7 @@ def health():
 
 @app.get("/nodes")
 def list_nodes(_auth=Depends(require_api_key)):
-    """List all available llama.cpp nodes."""
+    """List all configured Ollama nodes."""
     return [n.model_dump() for n in NODE_CONFIGS]
 
 @app.get("/nodes/status")
@@ -1311,6 +1383,7 @@ async def get_node_models_endpoint(node_id: str, _auth=Depends(require_api_key))
         raise HTTPException(404, f"Node '{node_id}' not found")
 
     models = await get_node_models(node)
+    MODEL_INVENTORY[node_id] = {model["id"] for model in models}
      
     return {
         "node_id": node_id,
@@ -1554,14 +1627,21 @@ def delete_project(project_id: str, user_id: str = Depends(get_current_user)):
 @app.get("/tools")
 def list_available_tools(_auth=Depends(require_api_key)):
     """List available tools for the LLM to use."""
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    tools = dict(AVAILABLE_TOOLS)
+    if not SHELL_TOOL_ENABLED:
+        tools.pop("shell.exec", None)
     return {
-        "tools": AVAILABLE_TOOLS,
+        "tools": tools,
         "instructions": "LLM can request tools by outputting JSON: {\"tool\": \"tool.name\", \"params\": {...}}"
     }
 
 @app.post("/tools/execute")
 async def execute_tool_endpoint(tool_req: ToolRequest, _auth=Depends(require_api_key)):
     """Execute a tool and return results."""
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
     result = await execute_tool(tool_req)
     return result.model_dump()
 
@@ -1614,15 +1694,14 @@ def submit_feedback(entry: FeedbackEntry, _auth=Depends(require_api_key)):
 @app.get("/analytics/costs")
 def get_cost_analytics(_auth=Depends(require_api_key)):
     """Get cost breakdown by model and conversation."""
-    log_path = Path("cost_log.jsonl")
-    if not log_path.exists():
+    if not COST_LOG.exists():
         return {"total_cost": 0, "by_model": {}, "by_conversation": {}}
 
     total = 0.0
     by_model: Dict[str, float] = {}
     by_convo: Dict[str, float] = {}
 
-    with open(log_path) as f:
+    with open(COST_LOG) as f:
         for line in f:
             try:
                 entry = json.loads(line)
@@ -1745,8 +1824,10 @@ def get_conversation(conversation_id: str, user_id: str = Depends(get_current_us
     }
 
 @app.post("/conversations/from_template")
-def create_from_template(template_name: str, project_id: Optional[str] = None, user_id: str = Depends(get_current_user)):
+def create_from_template(req: TemplateConversationRequest, user_id: str = Depends(get_current_user)):
     """Create a conversation from a predefined template."""
+    template_name = req.template_name
+    project_id = req.project_id
     if template_name not in TEMPLATES:
         raise HTTPException(404, "Template not found")
     template = TEMPLATES[template_name]
@@ -1822,10 +1903,10 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     """
     if request:
         check_rate_limit(request.client.host)
-    user_text = (req.prompt or "").strip()
+    user_text = req.prompt or ""
     
     # Validate: require either text or images
-    if not user_text and not req.images:
+    if not user_text.strip() and not req.images:
         raise HTTPException(400, "Prompt or images required")
     
     # Validate image sizes
@@ -1841,8 +1922,22 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     project_id = req.project_id or (existing_convo.get("project_id") if existing_convo else None)
     project_cfg = get_project(project_id, user_id) if project_id else {}
 
-    # Get conversation history and append user message
+    if not req.node_id or not req.model:
+        raise HTTPException(400, "node_id and model are required from the loaded inventory")
+    node = get_node_by_id(req.node_id)
+    inventory = MODEL_INVENTORY.get(node.id)
+    if inventory is None:
+        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
+    if req.model not in inventory:
+        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    preferred_model = req.model
+
+    # Get conversation history and preserve raw indexes before pruning.
     raw_history = get_history(req.conversation_id, user_id=user_id, project_id=project_id)
+    is_first_exchange = not any(
+        message.get("role") in {"user", "assistant"} for message in raw_history
+    )
+    user_msg_idx = len(raw_history)
     raw_history.append({"role": "user", "content": user_text if user_text else "[image]"})
     history = prune_conversation_history(raw_history)
 
@@ -1851,8 +1946,6 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
         if existing_convo
         else None
     ) or project_cfg.get("system_prompt") or SYSTEM_PROMPT
-    preferred_model = req.model or project_cfg.get("preferred_model") or DEFAULT_MODEL_ID
-
     # Build messages copy so we can adjust content shape for vision models without
     # mutating persisted history.
     messages_for_node = [{"role": "system", "content": system_prompt}] + [dict(m) for m in history]
@@ -1874,8 +1967,6 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     if spent + est_cost > budget:
         raise HTTPException(402, f"Budget exceeded. Spent ${spent:.4f} / ${budget:.4f}.")
 
-    # Select node (user-selected if provided)
-    node = get_node_by_id(req.node_id) if req.node_id else choose_node()
     endpoint = f"{node.url}/v1/chat/completions"
 
     # Build payload
@@ -1890,7 +1981,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     if req.images:
         payload["images"] = req.images
 
-    # Call llama.cpp node
+    # Call the selected Ollama node through its OpenAI-compatible endpoint.
     try:
         start = time.time()
         with httpx.Client(timeout=120) as client:
@@ -1931,7 +2022,8 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
             if img in assistant_msg:
                 assistant_msg = assistant_msg.replace(img, "[image]")
 
-    # Save assistant response to history
+    # Save assistant response to history using persisted raw-history indexes.
+    assistant_msg_idx = len(raw_history)
     raw_history.append({"role": "assistant", "content": assistant_msg})
 
     # Log approximate cost
@@ -1947,14 +2039,12 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
             "cost": cost,
             "timestamp": datetime.now().isoformat(),
         }
-        with open("cost_log.jsonl", "a") as f:
+        with open(COST_LOG, "a") as f:
             f.write(json.dumps(log_entry) + "\n")
     except Exception:
         pass
 
     # Store embeddings
-    user_msg_idx = len(history) - 2
-    assistant_msg_idx = len(history) - 1
     if user_text:
         store_message_embedding(req.conversation_id, user_msg_idx, "user", user_text)
     store_message_embedding(req.conversation_id, assistant_msg_idx, "assistant", assistant_msg)
@@ -1962,8 +2052,9 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     # Update metadata and title
     convo = CONVERSATIONS[req.conversation_id]
     convo["updated_at"] = datetime.now().isoformat()
-    if user_text and len(history) == 2 and convo.get("title") == DEFAULT_CONVO_TITLE:
-        convo["title"] = user_text[:30] + ("..." if len(user_text) > 30 else "")
+    title_text = user_text.strip()
+    if title_text and is_first_exchange and convo.get("title") == DEFAULT_CONVO_TITLE:
+        convo["title"] = title_text[:30] + ("..." if len(title_text) > 30 else "")
 
     save_conversations(CONVERSATIONS)
 
@@ -1981,7 +2072,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
         response=assistant_msg,
         node=node.name,
         conversation_id=req.conversation_id,
-        message_count=len(history),
+        message_count=len(raw_history),
         model=preferred_model
     )
 
@@ -1993,10 +2084,10 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     """
     if request:
         check_rate_limit(request.client.host)
-    user_text = (req.prompt or "").strip()
+    user_text = req.prompt or ""
     
     # Validate: require either text or images
-    if not user_text and not req.images:
+    if not user_text.strip() and not req.images:
         raise HTTPException(400, "Prompt or images required")
     
     # Validate image sizes
@@ -2012,8 +2103,22 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     project_id = req.project_id or (existing_convo.get("project_id") if existing_convo else None)
     project_cfg = get_project(project_id, user_id) if project_id else {}
 
-    # Get conversation history and append user message
+    if not req.node_id or not req.model:
+        raise HTTPException(400, "node_id and model are required from the loaded inventory")
+    node = get_node_by_id(req.node_id)
+    inventory = MODEL_INVENTORY.get(node.id)
+    if inventory is None:
+        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
+    if req.model not in inventory:
+        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    preferred_model = req.model
+
+    # Get conversation history and preserve raw indexes before pruning.
     raw_history = get_history(req.conversation_id, user_id=user_id, project_id=project_id)
+    is_first_exchange = not any(
+        message.get("role") in {"user", "assistant"} for message in raw_history
+    )
+    user_msg_idx = len(raw_history)
     raw_history.append({"role": "user", "content": user_text if user_text else "[image]"})
     history = prune_conversation_history(raw_history)
 
@@ -2022,8 +2127,6 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         if existing_convo
         else None
     ) or project_cfg.get("system_prompt") or SYSTEM_PROMPT
-    preferred_model = req.model or project_cfg.get("preferred_model") or DEFAULT_MODEL_ID
-
     messages_for_node = [{"role": "system", "content": system_prompt}] + [dict(m) for m in history]
 
     if req.images:
@@ -2043,8 +2146,6 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     if spent + est_cost > budget:
         raise HTTPException(402, f"Budget exceeded. Spent ${spent:.4f} / ${budget:.4f}.")
 
-    # Select node (user-selected if provided)
-    node = get_node_by_id(req.node_id) if req.node_id else choose_node()
     endpoint = f"{node.url}/v1/chat/completions"
 
     # Build payload with streaming enabled
@@ -2071,23 +2172,27 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         try:
             async with httpx.AsyncClient(timeout=120) as client:
                 async with client.stream("POST", endpoint, json=payload) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line:
-                            continue
-                        if line == "[DONE]":
-                            break
-                        if line.startswith("data: "):
-                            line = line[6:]
-                        try:
-                            data = json.loads(line)
-                            delta = data.get("choices", [{}])[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                full_response += content
-                                yield f"data: {json.dumps({'token': content, 'done': False})}\n\n"
-                        except json.JSONDecodeError:
-                            continue
+                    if not resp.is_success:
+                        body = (await resp.aread()).decode("utf-8", errors="replace")[:200]
+                        yield f"data: {json.dumps({'error': f'Node error {resp.status_code}: {body}', 'done': True})}\n\n"
+                        had_error = True
+                    else:
+                        async for line in resp.aiter_lines():
+                            if not line:
+                                continue
+                            if line == "[DONE]":
+                                break
+                            if line.startswith("data: "):
+                                line = line[6:]
+                            try:
+                                data = json.loads(line)
+                                delta = data.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    full_response += content
+                                    yield f"data: {json.dumps({'token': content, 'done': False})}\n\n"
+                            except json.JSONDecodeError:
+                                continue
         except httpx.TimeoutException:
             yield f"data: {json.dumps({'error': 'Node timed out', 'done': True})}\n\n"
             had_error = True
@@ -2095,7 +2200,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
             yield f"data: {json.dumps({'error': 'Cannot connect to node', 'done': True})}\n\n"
             had_error = True
         except httpx.HTTPStatusError as e:
-            msg = f"Node error {e.response.status_code}: {e.response.text[:200] if e.response else ''}"
+            msg = f"Node error {e.response.status_code}"
             yield f"data: {json.dumps({'error': msg, 'done': True})}\n\n"
             had_error = True
         except Exception as e:
@@ -2118,18 +2223,18 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                             full_response = full_response.replace(img, "[image]")
                 # Persist assistant message to conversation (unpruned history)
                 convo_history = get_history(req.conversation_id, user_id=user_id)
+                assistant_msg_idx = len(convo_history)
                 convo_history.append({"role": "assistant", "content": full_response})
 
-                user_msg_idx = len(history) - 2
-                assistant_msg_idx = len(history) - 1
                 if user_text:
                     store_message_embedding(req.conversation_id, user_msg_idx, "user", user_text)
                 store_message_embedding(req.conversation_id, assistant_msg_idx, "assistant", full_response)
 
                 convo = CONVERSATIONS[req.conversation_id]
                 convo["updated_at"] = datetime.now().isoformat()
-                if user_text and len(history) == 2 and convo.get("title") == DEFAULT_CONVO_TITLE:
-                    convo["title"] = user_text[:30] + ("..." if len(user_text) > 30 else "")
+                title_text = user_text.strip()
+                if title_text and is_first_exchange and convo.get("title") == DEFAULT_CONVO_TITLE:
+                    convo["title"] = title_text[:30] + ("..." if len(title_text) > 30 else "")
 
                 save_conversations(CONVERSATIONS)
 
@@ -2145,7 +2250,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                         "cost": cost,
                         "timestamp": datetime.now().isoformat(),
                     }
-                    with open("cost_log.jsonl", "a") as f:
+                    with open(COST_LOG, "a") as f:
                         f.write(json.dumps(log_entry) + "\n")
                 except Exception as e:
                     record_error("cost_log", str(e))
@@ -2162,7 +2267,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                 record_error("stream_finalize", str(e))
 
         # Always send terminal event so client doesn’t see incomplete chunked encoding
-        yield f"data: {json.dumps({'token': '', 'done': True, 'message_count': len(history)})}\n\n"
+        yield f"data: {json.dumps({'token': '', 'done': True, 'message_count': len(raw_history)})}\n\n"
     
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
@@ -2207,15 +2312,20 @@ def export_conversation(conversation_id: str, format: str = "markdown", user_id:
             md_lines.append(f"**{role}:** {content}")
             md_lines.append("")
         md = "\n".join(md_lines)
-        return Response(content=md, media_type="text/markdown")
+        filename = re.sub(r"[^A-Za-z0-9._-]+", "-", convo.get("title", "conversation")).strip("-") or "conversation"
+        return Response(
+            content=md,
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{filename}.md"'},
+        )
     raise HTTPException(400, "Unsupported format")
 
 # ============================================================
 # STATIC FILES
 # ============================================================
 
-# Serve static UI files (index.html, app.js, style.css) from repo root
-STATIC_DIR = Path(__file__).resolve().parent
+# Serve only the explicit browser bundle. Source, Git metadata, and data stay private.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 # ============================================================

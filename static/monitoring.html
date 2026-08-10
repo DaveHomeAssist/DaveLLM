@@ -106,12 +106,36 @@
   <script>
     const API_BASE = "";
     const FETCH_TIMEOUT_MS = 8000;
+    const API_KEY_SESSION_KEY = "dave_api_key_session";
+    let apiKey = sessionStorage.getItem(API_KEY_SESSION_KEY) || "";
+
+    function ensureBrowserCredential() {
+      if (window.__DAVE_DESKTOP__ || apiKey) return true;
+      const entered = window.prompt("Enter the DaveLLM API key for this browser session:", "");
+      if (!entered) return false;
+      apiKey = entered;
+      sessionStorage.setItem(API_KEY_SESSION_KEY, apiKey);
+      return true;
+    }
+
+    function appendRow(container, leftText, rightText, leftStrong = false) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const left = document.createElement(leftStrong ? "strong" : "span");
+      left.textContent = leftText;
+      const right = document.createElement("span");
+      right.textContent = rightText;
+      row.appendChild(left);
+      row.appendChild(right);
+      container.appendChild(row);
+    }
 
     async function fetchJson(path) {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
       try {
-        const res = await fetch(API_BASE + path, { headers: { "X-API-Key": localStorage.getItem("dave_api_key") || "" }, signal: controller.signal });
+        const headers = apiKey ? { "X-API-Key": apiKey } : {};
+        const res = await fetch(API_BASE + path, { headers, signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         return data;
@@ -122,52 +146,47 @@
 
     function renderNodes(data) {
       const container = document.getElementById("nodes");
-      container.innerHTML = "";
+      container.replaceChildren();
       if (!data || !Array.isArray(data.nodes)) {
         container.textContent = "No node data.";
         return;
       }
       data.nodes.forEach((n) => {
-        const div = document.createElement("div");
-        div.className = "row";
-        div.innerHTML = `<span>${n.name} (${n.node_id})</span><span>${n.status} ${n.latency ? n.latency + " ms" : ""}</span>`;
-        container.appendChild(div);
+        appendRow(
+          container,
+          `${n.name} (${n.node_id})`,
+          `${n.status} ${n.latency ? n.latency + " ms" : ""}`,
+        );
       });
     }
 
     function renderModelHealth(data) {
       const container = document.getElementById("modelHealth");
-      container.innerHTML = "";
+      container.replaceChildren();
       const health = (data && data.model_health) || {};
       if (!Object.keys(health).length) {
         container.textContent = "No failures recorded.";
         return;
       }
       Object.entries(health).forEach(([model, info]) => {
-        const div = document.createElement("div");
-        div.className = "row";
-        div.innerHTML = `<span>${model}</span><span>${info.failures} failures (${info.last_error || "-"})</span>`;
-        container.appendChild(div);
+        appendRow(container, model, `${info.failures} failures (${info.last_error || "-"})`);
       });
     }
 
     function renderCosts(data) {
       const container = document.getElementById("costs");
-      container.innerHTML = "";
+      container.replaceChildren();
       const total = (data && data.total_cost) || 0;
       const byModel = (data && data.by_model) || {};
-      container.innerHTML = `<div class="row"><strong>Total</strong><span>$${total.toFixed(4)}</span></div>`;
+      appendRow(container, "Total", `$${total.toFixed(4)}`, true);
       Object.entries(byModel).forEach(([model, cost]) => {
-        const div = document.createElement("div");
-        div.className = "row";
-        div.innerHTML = `<span>${model}</span><span>$${cost.toFixed(4)}</span>`;
-        container.appendChild(div);
+        appendRow(container, model, `$${cost.toFixed(4)}`);
       });
     }
 
     function renderErrors(data) {
       const container = document.getElementById("errors");
-      container.innerHTML = "";
+      container.replaceChildren();
       const errs = (data && data.recent_errors) || [];
       if (!errs.length) {
         container.textContent = "No recent errors.";
@@ -185,6 +204,11 @@
       const spinner = document.getElementById("spinner");
       status.textContent = "Refreshing...";
       spinner.classList.add("visible");
+      if (!ensureBrowserCredential()) {
+        status.textContent = "A session API key is required.";
+        spinner.classList.remove("visible");
+        return;
+      }
       try {
         const [health, costs] = await Promise.all([
           fetchJson("/monitoring/health"),

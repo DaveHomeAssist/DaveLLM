@@ -29,12 +29,13 @@ const state = {
 const ROUTER_BASE = (typeof window !== "undefined" && window.__API_BASE__) || "http://127.0.0.1:8000";
 const LOCAL_STORAGE_KEY = "dave_convos";
 const LAST_SESSION_KEY = "dave_last_session";
-const API_KEY_STORAGE_KEY = "dave_api_key";
+const API_KEY_SESSION_KEY = "dave_api_key_session";
 const THEME_STORAGE_KEY = "dave_theme";
 const THEMES = ["dark", "light", "forest"];
 
-// Optional API key support; set via localStorage to avoid hardcoding
-let apiKey = localStorage.getItem(API_KEY_STORAGE_KEY) || "";
+// Browser credentials live only for the current tab session. Electron injects
+// the header in the main process and never exposes the key to this renderer.
+let apiKey = sessionStorage.getItem(API_KEY_SESSION_KEY) || "";
 let routingPrefs = {
     max_cost: parseFloat(localStorage.getItem("dave_route_max_cost") || "0.01"),
     min_quality: parseFloat(localStorage.getItem("dave_route_min_quality") || "0.85")
@@ -55,6 +56,15 @@ function authHeaders(extra = {}) {
     const headers = { ...extra };
     if (apiKey) headers["X-API-Key"] = apiKey;
     return headers;
+}
+
+function requestBrowserCredential() {
+    if (window.__DAVE_DESKTOP__) return true;
+    const entered = window.prompt("Enter the DaveLLM API key for this browser session:", "");
+    if (!entered) return false;
+    apiKey = entered;
+    sessionStorage.setItem(API_KEY_SESSION_KEY, apiKey);
+    return true;
 }
 
 // Theme handling
@@ -206,12 +216,20 @@ const hfUrlInput = document.getElementById("hfUrlInput");
 const hfDestInput = document.getElementById("hfDestInput");
 const hfDownloadBtn = document.getElementById("hfDownloadBtn");
 const hfStatus = document.getElementById("hfStatus");
+const credentialBtn = document.getElementById("credentialBtn");
 
 // ---------------------------------------------
 // UTIL
 // ---------------------------------------------
 function routerEndpoint(path) {
     return `${ROUTER_BASE}${path}`;
+}
+
+function replaceSelectOptions(select, label, value = "") {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.replaceChildren(option);
 }
 
 function normalizeModelMeta(model) {
@@ -335,7 +353,7 @@ async function loadProjects() {
         const data = await res.json();
         projects = data.projects || [];
         if (projectSelect) {
-            projectSelect.innerHTML = '<option value=\"\">All Projects</option>';
+            replaceSelectOptions(projectSelect, "All Projects");
             projects.forEach(p => {
                 const opt = document.createElement("option");
                 opt.value = p.project_id;
@@ -697,6 +715,35 @@ async function clearConversationOnBackend(cid) {
     }
 }
 
+async function exportConversation(cid, title) {
+    try {
+        const res = await fetch(
+            routerEndpoint(`/conversations/${encodeURIComponent(cid)}/export?format=markdown`),
+            { headers: authHeaders() },
+        );
+        if (!res.ok) {
+            const detail = await res.text();
+            throw new Error(detail || `HTTP ${res.status}`);
+        }
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const safeTitle = (title || "conversation").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "conversation";
+        link.href = objectUrl;
+        link.download = `${safeTitle}.md`;
+        try {
+            document.body.appendChild(link);
+            link.click();
+        } finally {
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+        }
+    } catch (error) {
+        console.error("Conversation export failed:", error);
+        alert(`Export failed: ${error.message}`);
+    }
+}
+
 // ---------------------------------------------
 // CONVERSATION LIST UI
 // ---------------------------------------------
@@ -715,7 +762,7 @@ function renderConversationList() {
         return;
     }
 
-    convoList.innerHTML = "";
+    convoList.replaceChildren();
 
     const sorted = getSortedConversations();
 
@@ -751,7 +798,7 @@ function renderConversationList() {
 
         const renameBtn = document.createElement("button");
         renameBtn.className = "action-icon";
-        renameBtn.innerHTML = "✏️";
+        renameBtn.textContent = "✏️";
         renameBtn.title = "Rename conversation";
         renameBtn.onclick = (e) => {
             e.stopPropagation();
@@ -762,7 +809,7 @@ function renderConversationList() {
 
         const clearBtn = document.createElement("button");
         clearBtn.className = "action-icon";
-        clearBtn.innerHTML = "🗑️";
+        clearBtn.textContent = "🗑️";
         clearBtn.title = "Clear messages";
         clearBtn.onclick = (e) => {
             e.stopPropagation();
@@ -772,7 +819,7 @@ function renderConversationList() {
 
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "action-icon";
-        deleteBtn.innerHTML = "❌";
+        deleteBtn.textContent = "❌";
         deleteBtn.title = "Delete conversation";
         deleteBtn.onclick = (e) => {
             e.stopPropagation();
@@ -782,11 +829,11 @@ function renderConversationList() {
 
         const exportBtn = document.createElement("button");
         exportBtn.className = "action-icon";
-        exportBtn.innerHTML = "📥";
+        exportBtn.textContent = "📥";
         exportBtn.title = "Export conversation (markdown)";
-        exportBtn.onclick = (e) => {
+        exportBtn.onclick = async (e) => {
             e.stopPropagation();
-            window.open(routerEndpoint(`/conversations/${cid}/export?format=markdown`), "_blank");
+            await exportConversation(cid, convo.title);
         };
         actionsDiv.appendChild(exportBtn);
 
@@ -1059,7 +1106,7 @@ async function renameConversation(cid, element) {
     input.className = "rename-input";
     input.setAttribute("aria-label", "Rename conversation");
 
-    element.innerHTML = "";
+    element.replaceChildren();
     element.appendChild(input);
 
     requestAnimationFrame(() => {
@@ -1148,22 +1195,31 @@ async function fetchNodes() {
 
     } catch (err) {
         console.error("Failed to fetch nodes:", err);
-        
-        nodesContainer.innerHTML = `
-            <div class="error-message" style="color: #ff6b6b; padding: 10px; border: 1px solid #ff6b6b; border-radius: 4px;">
-                ⚠️ Connection failed: Is the backend running at ${ROUTER_BASE}?
-            </div>
-        `;
-        
-        nodeSelect.innerHTML = '<option value="">No nodes available</option>';
+        state.nodes = [];
+        state.selectedNode = null;
+        state.modelMeta = {};
+
+        const error = document.createElement("div");
+        error.className = "error-message";
+        error.style.color = "#ff6b6b";
+        error.style.padding = "10px";
+        error.style.border = "1px solid #ff6b6b";
+        error.style.borderRadius = "4px";
+        error.textContent = `⚠️ Connection failed: Is the backend running at ${ROUTER_BASE}?`;
+        nodesContainer.replaceChildren(error);
+        replaceSelectOptions(nodeSelect, "No nodes available");
+        replaceSelectOptions(modelSelect, "No models available");
     }
 }
 
 function renderNodes(nodes) {
-    nodesContainer.innerHTML = "";
+    nodesContainer.replaceChildren();
     
     if (nodes.length === 0) {
-        nodesContainer.innerHTML = '<div class="info-message">No nodes registered yet.</div>';
+        const info = document.createElement("div");
+        info.className = "info-message";
+        info.textContent = "No nodes registered yet.";
+        nodesContainer.appendChild(info);
         return;
     }
     
@@ -1184,7 +1240,7 @@ async function fetchNodeStatus(nodes) {
             statusMap[s.node_id] = s;
         });
         
-        nodesContainer.innerHTML = "";
+        nodesContainer.replaceChildren();
         
         nodes.forEach((n) => {
             const status = statusMap[n.id] || { status: "offline", latency: null };
@@ -1239,20 +1295,28 @@ async function fetchNodeStatus(nodes) {
         
     } catch (err) {
         console.error("Failed to fetch node status:", err);
-        nodesContainer.innerHTML = "";
+        nodesContainer.replaceChildren();
         nodes.forEach((n) => {
             const div = document.createElement("div");
             div.className = "node-card";
-            div.innerHTML = `<strong>${n.name}</strong><div style="font-size: 12px; color: #9ba4b5;">${n.url}</div>`;
+            const name = document.createElement("strong");
+            name.textContent = n.name;
+            const url = document.createElement("div");
+            url.style.fontSize = "12px";
+            url.style.color = "#9ba4b5";
+            url.textContent = n.url;
+            div.appendChild(name);
+            div.appendChild(url);
             nodesContainer.appendChild(div);
         });
     }
 }
 
 function renderNodeSelect(nodes) {
-    nodeSelect.innerHTML = "";
+    nodeSelect.replaceChildren();
 
     if (nodes.length === 0) {
+        state.selectedNode = null;
         const opt = document.createElement("option");
         opt.value = "";
         opt.textContent = "No nodes available";
@@ -1267,19 +1331,20 @@ function renderNodeSelect(nodes) {
         nodeSelect.appendChild(opt);
     });
 
-    if (!state.selectedNode && nodes.length) {
+    if (!nodes.some((node) => node.id === state.selectedNode)) {
         state.selectedNode = nodes[0].id;
-        nodeSelect.value = nodes[0].id;
     }
+    nodeSelect.value = state.selectedNode;
 }
 
 async function loadModelsFromNode() {
-    if (!state.selectedNode) {
+    if (!state.selectedNode || !state.nodes.some((node) => node.id === state.selectedNode)) {
         alert("Please select a node first");
         return;
     }
 
-    modelSelect.innerHTML = '<option value="">Loading models...</option>';
+    const previousModel = modelSelect.value;
+    replaceSelectOptions(modelSelect, "Loading models...");
     modelSelect.disabled = true;
 
     try {
@@ -1294,7 +1359,7 @@ async function loadModelsFromNode() {
             .map((m) => normalizeModelMeta(m))
             .filter(Boolean);
 
-        modelSelect.innerHTML = "";
+        modelSelect.replaceChildren();
         state.modelMeta = {};
 
         if (normalizedModels.length === 0) {
@@ -1313,7 +1378,9 @@ async function loadModelsFromNode() {
                 modelSelect.appendChild(opt);
             });
 
-            modelSelect.value = normalizedModels[0].id;
+            modelSelect.value = state.modelMeta[previousModel]
+                ? previousModel
+                : normalizedModels[0].id;
         }
 
         console.log(`✅ Loaded ${normalizedModels.length} models from ${state.selectedNode}`);
@@ -1321,7 +1388,8 @@ async function loadModelsFromNode() {
         updateImageSupportNotice();
     } catch (err) {
         console.error("Failed to load models:", err);
-        modelSelect.innerHTML = '<option value="">Error loading models</option>';
+        state.modelMeta = {};
+        replaceSelectOptions(modelSelect, "Error loading models");
         modelSelect.disabled = false;
     }
 }
@@ -1351,7 +1419,10 @@ async function showRelevantMemories(query) {
         }
 
         memoryBox.classList.remove("hidden");
-        memoryBox.innerHTML = '<div class="memory-header">💾 Relevant memories loaded (used for routing/context)</div>';
+        const header = document.createElement("div");
+        header.className = "memory-header";
+        header.textContent = "💾 Relevant memories loaded (used for routing/context)";
+        memoryBox.replaceChildren(header);
 
         memories.forEach((m) => {
             const item = document.createElement("div");
@@ -1361,7 +1432,17 @@ async function showRelevantMemories(query) {
             const preview = m.content.slice(0, 60) + (m.content.length > 60 ? "..." : "");
             const similarity = (m.similarity * 100).toFixed(0);
             
-            item.innerHTML = `<strong>${role}</strong> (${similarity}% match)<br><span style="color: #9ba4b5;">"${preview}"</span>`;
+            const roleLabel = document.createElement("strong");
+            roleLabel.textContent = role;
+            const match = document.createTextNode(` (${similarity}% match)`);
+            const lineBreak = document.createElement("br");
+            const previewLabel = document.createElement("span");
+            previewLabel.style.color = "#9ba4b5";
+            previewLabel.textContent = `"${preview}"`;
+            item.appendChild(roleLabel);
+            item.appendChild(match);
+            item.appendChild(lineBreak);
+            item.appendChild(previewLabel);
             memoryBox.appendChild(item);
         });
 
@@ -1396,16 +1477,8 @@ async function routeQuery(prompt, contextMessages) {
     }
 }
 
-function pickNodeForModel(modelId) {
-    if (!modelId) return state.selectedNode;
-    if (modelId.toLowerCase().includes("qwen")) return "qwen-node";
-    if (modelId.toLowerCase().includes("llama3") || modelId.toLowerCase().includes("llama")) return "mac-node";
-    return state.selectedNode;
-}
-
 async function sendMessage() {
     const prompt = promptInput.value.trim();
-    if (!prompt && state.pendingImages.length === 0) return;
     let attachedFileText = "";
     if (fileInput && fileInput.files && fileInput.files.length) {
         const file = fileInput.files[0];
@@ -1416,6 +1489,13 @@ async function sendMessage() {
         const text = await file.text();
         attachedFileText = `\n\n[Attached file: ${file.name}]\n${text}`;
     }
+    const basePrompt = `${prompt}${attachedFileText}`;
+    if (!basePrompt.trim() && state.pendingImages.length === 0) return;
+    const effectivePrompt = window.DavePrompt.buildDisplayedPrompt(
+        prompt,
+        attachedFileText,
+        Boolean(supportFlag && supportFlag.checked),
+    );
 
     if (!state.sessionId || !state.conversations[state.sessionId]) {
         console.error("No active conversation, creating new one");
@@ -1425,6 +1505,15 @@ async function sendMessage() {
     const convo = state.conversations[state.sessionId];
     if (!convo) {
         console.error("Failed to get conversation, aborting send");
+        return;
+    }
+
+    const selectedNodeExists = state.nodes.some((node) => node.id === state.selectedNode);
+    const selectedModelExists = Boolean(state.modelMeta[modelSelect.value]);
+    if (!selectedNodeExists || !selectedModelExists) {
+        const message = "Select a node and one of that node's loaded models before sending.";
+        if (routeStatus) routeStatus.textContent = message;
+        alert(message);
         return;
     }
 
@@ -1440,26 +1529,21 @@ async function sendMessage() {
     }
 
     // Auto-route based on prefs
-    const routeDecision = await routeQuery(prompt, convo.messages);
-    if (routeDecision && routeDecision.model_id) {
+    const routeDecision = await routeQuery(effectivePrompt, convo.messages);
+    if (
+        routeDecision
+        && routeDecision.model_id
+        && state.nodes.some((node) => node.id === state.selectedNode)
+        && state.modelMeta[routeDecision.model_id]
+    ) {
         modelSelect.value = routeDecision.model_id;
-        const suggestedNode = pickNodeForModel(routeDecision.model_id);
-        if (suggestedNode) {
-            state.selectedNode = suggestedNode;
-            nodeSelect.value = suggestedNode;
-        }
         if (routeStatus) {
             routeStatus.textContent = `Routing → ${routeDecision.model_id} (conf ${Math.round(routeDecision.confidence * 100)}%, est $${routeDecision.estimated_cost.toFixed(4)})`;
         }
-
-        // Confidence-based fallback messaging
-        if (routeDecision.confidence < 0.7) {
-            const fallbackModel = routeDecision.model_id.includes("llama") ? modelSelect.value : routeDecision.model_id;
-            routeStatus.textContent += " • Low confidence, may fallback to stronger model";
-            modelSelect.value = fallbackModel;
-        }
         state.stats.decisions.push(routeDecision);
         updateStatsDisplay();
+    } else if (routeDecision && routeStatus) {
+        routeStatus.textContent = "Route suggestion is not in the selected node inventory; using manual selection";
     } else if (routeStatus) {
         routeStatus.textContent = "Routing unavailable, using selected model";
     }
@@ -1487,14 +1571,14 @@ async function sendMessage() {
     
     const now = Date.now();
 
-    if (prompt) {
+    if (effectivePrompt) {
         convo.messages.push({
             role: "user",
-            content: supportFlag && supportFlag.checked ? `[SUPPORT] ${prompt}${attachedFileText}` : `${prompt}${attachedFileText}`,
+            content: effectivePrompt,
             timestamp: now
         });
         state.stats.totalMessages += 1;
-        state.stats.totalTokens += Math.max(1, prompt.length / 4);
+        state.stats.totalTokens += Math.max(1, effectivePrompt.length / 4);
     }
     
     state.pendingImages.forEach(img => {
@@ -1508,7 +1592,7 @@ async function sendMessage() {
 
     renderMessages();
     
-    if (prompt) showRelevantMemories(prompt);
+    if (effectivePrompt) showRelevantMemories(effectivePrompt);
 
     const streamingMsg = { role: "assistant", content: "", isStreaming: true };
     convo.messages.push(streamingMsg);
@@ -1523,7 +1607,7 @@ async function sendMessage() {
             signal: state.abortController.signal,
             body: JSON.stringify({
                 conversation_id: state.sessionId,
-                prompt: prompt || "",
+                prompt: effectivePrompt,
                 max_tokens: 2048,
                 temperature: 0.7,
                 model: modelSelect.value || undefined,
@@ -1546,14 +1630,15 @@ async function sendMessage() {
         convo.messages = convo.messages.filter(m => m.type !== "image" || m.role !== "user" || m.content);
 
         if (!res.ok) {
-            throw new Error(`Server error: ${res.status}`);
+            const detail = await res.text();
+            throw new Error(detail || `Server error: ${res.status}`);
         }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
         
-        while (true) {
+        streamLoop: while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             
@@ -1566,31 +1651,28 @@ async function sendMessage() {
 
                 if (!line.startsWith("data: ")) continue;
 
+                let data;
                 try {
-                    const data = JSON.parse(line.slice(6));
-                    if (data.error) throw new Error(data.error);
-                    
-                    if (data.token && !data.done) {
-                        streamingMsg.content += data.token;
-                        renderMessages();
-                    }
-                    
-                    if (data.done) {
-                        streamingMsg.isStreaming = false;
+                    data = JSON.parse(line.slice(6));
+                } catch (error) {
+                    console.warn("Ignoring malformed SSE event:", error);
+                    continue;
+                }
+                if (data.error) throw new Error(data.error);
 
-                        // If this was the first exchange, backend may have created the convo; reload metadata
-                        if (typeof data.message_count === "number" &&
-                            data.message_count === 2 &&
-                            convo.title === "New Conversation") {
-                            await loadConversationHistory(state.sessionId);
-                            renderConversationList();
-                        }
+                if (data.token && !data.done) {
+                    streamingMsg.content += data.token;
+                    renderMessages();
+                }
 
-                        renderMessages();
-                        break;
+                if (data.done) {
+                    streamingMsg.isStreaming = false;
+                    if (convo.title === "New Conversation") {
+                        await loadConversationHistory(state.sessionId);
+                        renderConversationList();
                     }
-                } catch (e) {
-                    console.error("Error parsing SSE:", e);
+                    renderMessages();
+                    break streamLoop;
                 }
             }
         }
@@ -1617,7 +1699,7 @@ function renderMessages() {
     const convo = state.conversations[state.sessionId];
     if (!convo) return;
 
-    responseBox.innerHTML = "";
+    responseBox.replaceChildren();
 
     // Context hygiene: nudge to start fresh on long threads
     if (convo.messages.length > 12) {
@@ -1874,6 +1956,13 @@ if (hfDownloadBtn) {
     hfDownloadBtn.addEventListener("click", downloadModelFromHF);
 }
 
+if (credentialBtn) {
+    credentialBtn.hidden = Boolean(window.__DAVE_DESKTOP__);
+    credentialBtn.addEventListener("click", () => {
+        if (requestBrowserCredential()) window.location.reload();
+    });
+}
+
 // Add search UI dynamically into convo panel
 function renderSearchBox() {
     const panel = document.querySelector(".panel.conversations");
@@ -1906,12 +1995,21 @@ function renderSearchBox() {
             const res = await fetch(routerEndpoint(`/search?query=${encodeURIComponent(q)}`), { headers: authHeaders() });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
-            results.innerHTML = "";
+            results.replaceChildren();
             data.forEach(item => {
                 const div = document.createElement("div");
                 div.style.padding = "4px";
                 div.style.borderBottom = "1px solid var(--border)";
-                div.innerHTML = `<strong>${item.title || item.conversation_id}</strong><br><em>${item.role}</em>: ${item.content.slice(0,120)}...`;
+                const title = document.createElement("strong");
+                title.textContent = item.title || item.conversation_id;
+                const lineBreak = document.createElement("br");
+                const role = document.createElement("em");
+                role.textContent = item.role;
+                const preview = document.createTextNode(`: ${String(item.content || "").slice(0, 120)}...`);
+                div.appendChild(title);
+                div.appendChild(lineBreak);
+                div.appendChild(role);
+                div.appendChild(preview);
                 div.onclick = async () => {
                     await switchConversation(item.conversation_id);
                 };
@@ -1961,6 +2059,10 @@ async function pollMonitoringBadge() {
 async function init() {
     console.log("🚀 Initializing DaveLLM UI...");
     initTheme();
+    if (!window.__DAVE_DESKTOP__ && !apiKey && !requestBrowserCredential()) {
+        if (routeStatus) routeStatus.textContent = "A session API key is required to load DaveLLM.";
+        return;
+    }
     initRoutingControls();
     initDictation();
     loadStats();
