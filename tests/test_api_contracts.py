@@ -133,7 +133,7 @@ def test_stream_success_and_failure_are_explicit(router_factory):
 
 
 def test_template_body_and_authenticated_markdown_export(router_factory):
-    _, client, _ = router_factory()
+    router, client, _ = router_factory()
     response = client.post(
         "/conversations/from_template",
         headers=AUTH,
@@ -141,6 +141,10 @@ def test_template_body_and_authenticated_markdown_export(router_factory):
     )
     assert response.status_code == 200
     conversation_id = response.json()["conversation_id"]
+    expected_prompt = router.TEMPLATES["code_review"]["system_prompt"]
+    assert response.json()["system_prompt"] == expected_prompt
+    assert router.CONVERSATIONS[conversation_id]["system_prompt"] == expected_prompt
+    assert router.CONVERSATIONS[conversation_id]["messages"] == []
 
     assert client.get(f"/conversations/{conversation_id}/export").status_code == 401
     exported = client.get(f"/conversations/{conversation_id}/export", headers=AUTH)
@@ -148,6 +152,165 @@ def test_template_body_and_authenticated_markdown_export(router_factory):
     assert exported.headers["content-type"].startswith("text/markdown")
     assert "attachment;" in exported.headers["content-disposition"]
     assert exported.text.startswith("# Code Review Session")
+
+
+def test_project_template_sync_chat_uses_one_primary_system_prompt(router_factory):
+    router, client, _ = router_factory()
+    project_prompt = "Use only the linked project instructions."
+    project = client.post(
+        "/projects",
+        headers=AUTH,
+        json={
+            "name": "Prompt Contract",
+            "system_prompt": project_prompt,
+            "preferred_model": MODEL_ID,
+        },
+    )
+    assert project.status_code == 200
+    project_id = project.json()["project_id"]
+    created = client.post(
+        "/conversations/from_template",
+        headers=AUTH,
+        json={"template_name": "general", "project_id": project_id},
+    )
+    assert created.status_code == 200
+    conversation_id = created.json()["conversation_id"]
+    assert created.json()["system_prompt"] == project_prompt
+    assert router.CONVERSATIONS[conversation_id]["system_prompt"] == project_prompt
+    assert router.CONVERSATIONS[conversation_id]["messages"] == []
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
+        node_chat = mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": "project answer"}}]},
+            )
+        )
+        response = client.post(
+            "/chat",
+            headers=AUTH,
+            json={
+                "conversation_id": conversation_id,
+                "prompt": "Use the project",
+                "node_id": "node-test",
+                "model": MODEL_ID,
+                "project_id": project_id,
+            },
+        )
+        assert response.status_code == 200
+
+    payload = json.loads(node_chat.calls.last.request.content)
+    assert payload["messages"][0] == {"role": "system", "content": project_prompt}
+    assert sum(
+        message.get("content") == project_prompt for message in payload["messages"]
+    ) == 1
+
+
+def test_general_template_stream_uses_one_primary_system_prompt(router_factory):
+    router, client, _ = router_factory()
+    created = client.post(
+        "/conversations/from_template",
+        headers=AUTH,
+        json={"template_name": "general"},
+    )
+    assert created.status_code == 200
+    conversation_id = created.json()["conversation_id"]
+    assert router.CONVERSATIONS[conversation_id]["messages"] == []
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
+        node_chat = mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                content=(
+                    'data: {"choices":[{"delta":{"content":"general answer"}}]}\n\n'
+                    "[DONE]\n\n"
+                ),
+                headers={"content-type": "text/event-stream"},
+            )
+        )
+        response = client.post(
+            "/chat/stream",
+            headers=AUTH,
+            json={
+                "conversation_id": conversation_id,
+                "prompt": "Use the general template",
+                "node_id": "node-test",
+                "model": MODEL_ID,
+            },
+        )
+        assert response.status_code == 200
+        assert '"token": "general answer"' in response.text
+
+    payload = json.loads(node_chat.calls.last.request.content)
+    expected_prompt = router.SYSTEM_PROMPT
+    assert payload["messages"][0] == {"role": "system", "content": expected_prompt}
+    assert sum(
+        message.get("content") == expected_prompt for message in payload["messages"]
+    ) == 1
+
+
+def test_legacy_instructions_are_canonicalized_and_summary_is_preserved(
+    router_factory,
+    monkeypatch,
+):
+    router, client, _ = router_factory()
+    legacy_prompt = "Preserve these legacy instructions."
+    router.CONVERSATIONS["legacy"] = {
+        "title": "Legacy",
+        "messages": [
+            {"role": "system", "content": legacy_prompt},
+            *[
+                {
+                    "role": "user" if index % 2 == 0 else "assistant",
+                    "content": f"old-{index}",
+                }
+                for index in range(12)
+            ],
+        ],
+        "user_id": "default",
+    }
+    monkeypatch.setattr(
+        router,
+        "generate_conversation_summary",
+        lambda _messages: "Summary context",
+    )
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
+        node_chat = mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": "legacy answer"}}]},
+            )
+        )
+        response = client.post(
+            "/chat",
+            headers=AUTH,
+            json={
+                "conversation_id": "legacy",
+                "prompt": "Continue",
+                "node_id": "node-test",
+                "model": MODEL_ID,
+            },
+        )
+        assert response.status_code == 200
+
+    payload = json.loads(node_chat.calls.last.request.content)
+    assert payload["messages"][0] == {"role": "system", "content": legacy_prompt}
+    assert sum(
+        message.get("content") == legacy_prompt for message in payload["messages"]
+    ) == 1
+    assert {"role": "system", "content": "Summary context"} in payload["messages"]
+    assert router.CONVERSATIONS["legacy"]["messages"][0] == {
+        "role": "system",
+        "content": legacy_prompt,
+    }
+    assert router.CONVERSATIONS["legacy"]["system_prompt"] == legacy_prompt
 
 
 def test_title_and_embeddings_use_raw_history_indexes(router_factory):
@@ -211,4 +374,4 @@ def test_title_and_embeddings_use_raw_history_indexes(router_factory):
         ).fetchall()
     assert first_indexes == [(0,), (1,)]
     assert long_indexes == [(12,), (13,)]
-    assert template_indexes == [(1,), (2,)]
+    assert template_indexes == [(0,), (1,)]

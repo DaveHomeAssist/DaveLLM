@@ -976,10 +976,11 @@ async function createConversationFromTemplate(name) {
         const id = data.conversation_id;
         state.conversations[id] = {
             title: TEMPLATES[name]?.title || data.template || "New Conversation",
-            messages: [{ role: "system", content: TEMPLATES[name]?.system_prompt || "" }],
+            messages: [],
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            project_id: data.project_id || selectedProjectId || null
+            project_id: data.project_id || selectedProjectId || null,
+            system_prompt: data.system_prompt || ""
         };
         state.sessionId = id;
         renderConversationList();

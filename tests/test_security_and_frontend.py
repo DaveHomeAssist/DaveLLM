@@ -169,6 +169,9 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert "content: effectivePrompt" in app_source
     assert "showRelevantMemories(effectivePrompt)" in app_source
     assert "if (data.error) throw new Error(data.error)" in app_source
+    assert "messages: []," in app_source
+    assert 'system_prompt: data.system_prompt || ""' in app_source
+    assert 'messages: [{ role: "system"' not in app_source
     assert "innerHTML" not in app_source
     assert "innerHTML" not in monitoring_source
     assert "localStorage.getItem(\"dave_api_key\")" not in app_source + monitoring_source

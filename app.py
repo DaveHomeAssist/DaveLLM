@@ -1196,6 +1196,46 @@ def prune_conversation_history(messages: List[dict], max_turns: int = 10) -> Lis
 
     return system_msgs + recent
 
+
+def get_leading_system_messages(messages: List[dict]) -> List[dict]:
+    """Return legacy instruction messages stored at the start of a conversation."""
+    leading = []
+    for message in messages:
+        if message.get("role") != "system":
+            break
+        leading.append(message)
+    return leading
+
+
+def resolve_conversation_system_prompt(conversation: dict, project: dict) -> str:
+    """Resolve one canonical instruction prompt without losing legacy templates."""
+    if conversation.get("system_prompt"):
+        return conversation["system_prompt"]
+
+    legacy_instructions = [
+        message.get("content", "").strip()
+        for message in get_leading_system_messages(conversation.get("messages", []))
+        if message.get("content", "").strip()
+    ]
+    if legacy_instructions:
+        return "\n\n".join(legacy_instructions)
+
+    return project.get("system_prompt") or SYSTEM_PROMPT
+
+
+def prepare_history_for_prompt(messages: List[dict]) -> List[dict]:
+    """Remove persisted legacy instructions, then prune and summarize chat history."""
+    legacy_count = len(get_leading_system_messages(messages))
+    return prune_conversation_history(messages[legacy_count:])
+
+
+def build_messages_for_node(system_prompt: str, history: List[dict]) -> List[dict]:
+    """Build an Ollama payload with exactly one canonical primary system prompt."""
+    return [
+        {"role": "system", "content": system_prompt},
+        *[dict(message) for message in history],
+    ]
+
 def generate_conversation_summary(older_messages: List[dict]) -> str:
     """Use a cheap local model to summarize older turns."""
     if not older_messages:
@@ -1837,15 +1877,22 @@ def create_from_template(req: TemplateConversationRequest, user_id: str = Depend
     cid = f"convo_{int(time.time())}"
     CONVERSATIONS[cid] = {
         "title": template.get("title", DEFAULT_CONVO_TITLE),
-        "messages": [{"role": "system", "content": system_prompt}],
+        "messages": [],
         "created_at": datetime.now().isoformat(),
         "updated_at": datetime.now().isoformat(),
         "template": template_name,
         "user_id": user_id,
         "project_id": project_id,
+        "system_prompt": system_prompt,
     }
     save_conversations(CONVERSATIONS)
-    return {"conversation_id": cid, "template": template_name, "preferred_model": preferred_model, "project_id": project_id}
+    return {
+        "conversation_id": cid,
+        "template": template_name,
+        "preferred_model": preferred_model,
+        "project_id": project_id,
+        "system_prompt": system_prompt,
+    }
 
 @app.delete("/conversations/{conversation_id}")
 def delete_conversation(conversation_id: str, user_id: str = Depends(get_current_user)):
@@ -1939,16 +1986,14 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     )
     user_msg_idx = len(raw_history)
     raw_history.append({"role": "user", "content": user_text if user_text else "[image]"})
-    history = prune_conversation_history(raw_history)
+    history = prepare_history_for_prompt(raw_history)
 
-    system_prompt = (
-        existing_convo.get("system_prompt")
-        if existing_convo
-        else None
-    ) or project_cfg.get("system_prompt") or SYSTEM_PROMPT
+    conversation = CONVERSATIONS[req.conversation_id]
+    system_prompt = resolve_conversation_system_prompt(conversation, project_cfg)
+    conversation["system_prompt"] = system_prompt
     # Build messages copy so we can adjust content shape for vision models without
     # mutating persisted history.
-    messages_for_node = [{"role": "system", "content": system_prompt}] + [dict(m) for m in history]
+    messages_for_node = build_messages_for_node(system_prompt, history)
 
     if req.images:
         multimodal_content = []
@@ -2120,14 +2165,12 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     )
     user_msg_idx = len(raw_history)
     raw_history.append({"role": "user", "content": user_text if user_text else "[image]"})
-    history = prune_conversation_history(raw_history)
+    history = prepare_history_for_prompt(raw_history)
 
-    system_prompt = (
-        existing_convo.get("system_prompt")
-        if existing_convo
-        else None
-    ) or project_cfg.get("system_prompt") or SYSTEM_PROMPT
-    messages_for_node = [{"role": "system", "content": system_prompt}] + [dict(m) for m in history]
+    conversation = CONVERSATIONS[req.conversation_id]
+    system_prompt = resolve_conversation_system_prompt(conversation, project_cfg)
+    conversation["system_prompt"] = system_prompt
+    messages_for_node = build_messages_for_node(system_prompt, history)
 
     if req.images:
         multimodal_content = []
