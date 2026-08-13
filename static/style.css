@@ -61,9 +61,16 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(circle at 18% 12%, rgba(65, 136, 219, 0.3), transparent 30%),
     radial-gradient(circle at 82% 2%, rgba(41, 215, 198, 0.2), transparent 27%),
@@ -410,6 +417,7 @@ textarea {
   padding: 10px;
   gap: 10px;
   min-height: 0;
+  overflow: hidden;
   align-items: stretch;
 }
 
@@ -424,6 +432,7 @@ textarea {
   flex-direction: column;
   gap: 9px;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
 }
 

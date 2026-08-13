@@ -194,3 +194,33 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert 'id="chatPanel"' in index_source and 'tabindex="-1"' in index_source
     assert 'const nodeStatus = ["online", "offline"].includes(rawNodeStatus)' in app_source
     assert "@media (prefers-reduced-motion: reduce)" in style_source
+
+
+def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_hatch():
+    repo = Path(__file__).resolve().parents[1]
+    style_source = (repo / "static" / "style.css").read_text()
+
+    def rule(source, selector):
+        return source.split(f"{selector} {{", 1)[1].split("}", 1)[0]
+
+    desktop_source = style_source.split("@media (max-width: 1024px)", 1)[0]
+    portrait_mobile_source = style_source.split("@media (max-width: 1024px)", 1)[1].split(
+        "@media (min-width: 1025px)", 1
+    )[0]
+    landscape_mobile_source = style_source.split(
+        "@media (max-width: 1024px) and (orientation: landscape)", 1
+    )[1].split("@media (max-width: 430px)", 1)[0]
+
+    assert "html {\n  height: 100%;\n}" in desktop_source
+    assert "height: 100dvh;" in rule(desktop_source, "body")
+    assert "min-height: 100dvh;" in rule(desktop_source, "body")
+    assert "overflow: hidden;" in rule(desktop_source, "body")
+    assert "min-height: 0;\n  overflow: hidden;" in rule(desktop_source, ".layout")
+    assert "min-height: 0;\n  overflow-y: auto;" in rule(desktop_source, ".panel")
+    assert "overflow-y: auto;" in rule(desktop_source, ".response")
+
+    assert "max-height: calc(100dvh - 118px);" in portrait_mobile_source
+    assert "height: calc(100dvh - 118px);" in portrait_mobile_source
+    assert ".response {\n    min-height: 0;\n  }" in portrait_mobile_source
+    assert "body {\n    overflow: auto;\n  }" in landscape_mobile_source
+    assert "overflow: visible;" in landscape_mobile_source
