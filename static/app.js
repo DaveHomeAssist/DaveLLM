@@ -15,7 +15,12 @@ const state = {
     abortController: null,  // For stopping streams
     pendingImages: [],      // Images attached to next message
     modelMeta: {},          // Map of modelId -> { vision: bool }
+    nodeStatus: {},         // Map of nodeId -> online/offline/unknown
     autoScroll: true,       // Control autoscroll behavior
+    lastSessionId: null,
+    lastPredictionUndo: null,
+    restoredSelection: false,
+    selectionFallback: false,
     stats: {
         decisions: [],
         totalTokens: 0,
@@ -31,6 +36,9 @@ const LOCAL_STORAGE_KEY = "dave_convos";
 const LAST_SESSION_KEY = "dave_last_session";
 const API_KEY_SESSION_KEY = "dave_api_key_session";
 const THEME_STORAGE_KEY = "dave_theme";
+const ANTICIPATION_STORAGE_KEY = "davellm_anticipation_v1";
+const DRAFT_SESSION_KEY = "davellm_draft_session";
+const MOBILE_TAB_SESSION_KEY = "davellm_mobile_tab_session";
 const THEMES = ["dark", "light", "forest"];
 
 // Browser credentials live only for the current tab session. Electron injects
@@ -51,6 +59,14 @@ const TEMPLATES = {
     code_review: { title: "Code Review Session", system_prompt: "" },
     brainstorm: { title: "Brainstorm", system_prompt: "" }
 };
+const TEMPLATE_LABELS = {
+    general: "General",
+    code_review: "Code Review",
+    brainstorm: "Brainstorm"
+};
+let projects = [];
+let selectedProjectId = localStorage.getItem("dave_project_id") || "";
+let anticipationRecord = window.DaveAnticipation.createRecord();
 
 function authHeaders(extra = {}) {
     const headers = { ...extra };
@@ -81,6 +97,7 @@ function applyTheme(theme) {
         };
         themeToggle.textContent = iconMap[safeTheme] || "🌓";
         themeToggle.title = titleMap[safeTheme] || "Toggle theme";
+        themeToggle.setAttribute("aria-label", themeToggle.title);
     }
 }
 
@@ -217,12 +234,415 @@ const hfDestInput = document.getElementById("hfDestInput");
 const hfDownloadBtn = document.getElementById("hfDownloadBtn");
 const hfStatus = document.getElementById("hfStatus");
 const credentialBtn = document.getElementById("credentialBtn");
+const suggestionChips = document.getElementById("suggestionChips");
+const suggestedNext = document.getElementById("suggestedNext");
+const resetSuggestionsBtn = document.getElementById("resetSuggestionsBtn");
+const contextStatus = document.getElementById("contextStatus");
+const contextProjectValue = document.getElementById("contextProjectValue");
+const contextTemplateValue = document.getElementById("contextTemplateValue");
+const contextNodeValue = document.getElementById("contextNodeValue");
+const contextModelValue = document.getElementById("contextModelValue");
+const contextModelMarker = document.getElementById("contextModelMarker");
+const undoPredictionBtn = document.getElementById("undoPredictionBtn");
+const attachToolsToggle = document.getElementById("attachToolsToggle");
+const attachmentTools = document.getElementById("attachmentTools");
+const mobileTabButtons = Array.from(document.querySelectorAll("[data-mobile-tab]"));
+const mobilePanels = Array.from(document.querySelectorAll("[data-mobile-panel]"));
 
 // ---------------------------------------------
 // UTIL
 // ---------------------------------------------
 function routerEndpoint(path) {
     return `${ROUTER_BASE}${path}`;
+}
+
+function readAnticipationRecord() {
+    try {
+        const raw = localStorage.getItem(ANTICIPATION_STORAGE_KEY);
+        return window.DaveAnticipation.normalizeRecord(raw ? JSON.parse(raw) : null);
+    } catch (error) {
+        console.warn("Failed to read suggestion preferences; using defaults", error);
+        return window.DaveAnticipation.createRecord();
+    }
+}
+
+function writeAnticipationRecord(record) {
+    anticipationRecord = window.DaveAnticipation.normalizeRecord(record);
+    localStorage.setItem(ANTICIPATION_STORAGE_KEY, JSON.stringify(anticipationRecord));
+    return anticipationRecord;
+}
+
+function updateAnticipationPreferences() {
+    anticipationRecord = window.DaveAnticipation.updatePreferences(anticipationRecord, {
+        lastTemplate: templateSelect?.value || "general",
+        lastProjectId: selectedProjectId || null,
+        lastNodeId: state.selectedNode || null,
+        lastModelId: modelSelect?.value || null
+    });
+    if (selectedProjectId) {
+        const existingDefault = anticipationRecord.preferences.projectDefaults[selectedProjectId];
+        anticipationRecord = window.DaveAnticipation.setProjectDefault(anticipationRecord, selectedProjectId, {
+            template: templateSelect?.value || "general",
+            nodeId: state.selectedNode || null,
+            modelId: modelSelect?.value || null,
+            supportMode: existingDefault?.supportMode === true
+        });
+    }
+    writeAnticipationRecord(anticipationRecord);
+}
+
+function currentConversation() {
+    return state.sessionId ? state.conversations[state.sessionId] : null;
+}
+
+function conversationHasMessages() {
+    const convo = currentConversation();
+    return Boolean(convo && Array.isArray(convo.messages) && convo.messages.length);
+}
+
+function detectAttachmentKind() {
+    if (state.pendingImages.length || (imageInput?.files && imageInput.files.length)) return "image";
+    if (fileInput?.files && fileInput.files.length) {
+        const file = fileInput.files[0];
+        const codeExtension = /\.(?:js|jsx|ts|tsx|py|go|rs|java|c|cc|cpp|h|hpp|cs|rb|php|swift|kt|kts|sql|sh|html|css|json|ya?ml)$/i;
+        const codeMime = /(?:javascript|typescript|json|xml|yaml|shell|python|source)/i;
+        return codeExtension.test(file.name || "") || codeMime.test(file.type || "") ? "code" : "file";
+    }
+    if (audioInput?.files && audioInput.files.length) return "audio";
+    return null;
+}
+
+function lastAssistantSignals() {
+    const convo = currentConversation();
+    if (!convo || !Array.isArray(convo.messages)) return null;
+    const message = [...convo.messages].reverse().find((item) => item && (item.role === "assistant" || item.role === "error"));
+    if (!message || message.isStreaming) return null;
+    const content = typeof message.content === "string" ? message.content : "";
+    return {
+        hasCode: content.includes("```"),
+        isError: message.role === "error" || /^\s*(?:error|❌)/i.test(content),
+        isLong: content.length > 800,
+        hasList: /(?:^|\n)\s*(?:[-*]|\d+[.)])\s+\S/.test(content)
+    };
+}
+
+function buildPredictionContext(overrides = {}) {
+    const lastConversation = state.lastSessionId && state.conversations[state.lastSessionId]
+        ? {
+            id: state.lastSessionId,
+            title: state.conversations[state.lastSessionId].title
+        }
+        : null;
+    const selectedMeta = getSelectedModelMeta();
+    const visionModel = Object.values(state.modelMeta).find((meta) => meta.vision);
+    const projectDefault = selectedProjectId
+        ? anticipationRecord.preferences.projectDefaults[selectedProjectId]
+        : null;
+    return {
+        activeConversationId: state.sessionId,
+        lastConversation,
+        composer: promptInput?.value || "",
+        attachmentKind: detectAttachmentKind(),
+        hasMessages: conversationHasMessages(),
+        template: templateSelect?.value || "general",
+        selectedModel: selectedMeta ? { id: selectedMeta.id, vision: Boolean(selectedMeta.vision) } : null,
+        recommendedVisionModelId: visionModel?.id || null,
+        lastAssistant: lastAssistantSignals(),
+        projectId: selectedProjectId || null,
+        projectSupportCount: selectedProjectId
+            ? anticipationRecord.usage.supportCountsByProject[selectedProjectId] || 0
+            : 0,
+        projectSupportDefault: Boolean(projectDefault?.supportMode),
+        dismissedPredictionIds: Object.keys(anticipationRecord.dismissals),
+        ...overrides
+    };
+}
+
+function captureControlSnapshot() {
+    return {
+        sessionId: state.sessionId,
+        projectId: selectedProjectId || "",
+        template: templateSelect?.value || "general",
+        nodeId: state.selectedNode,
+        modelId: modelSelect?.value || null,
+        supportMode: Boolean(supportFlag?.checked),
+        projectSupportDefault: selectedProjectId
+            ? anticipationRecord.preferences.projectDefaults[selectedProjectId]?.supportMode === true
+            : false,
+        composer: promptInput?.value || ""
+    };
+}
+
+function exposeUndo(snapshot, message) {
+    state.lastPredictionUndo = snapshot;
+    if (undoPredictionBtn) undoPredictionBtn.classList.remove("hidden");
+    if (contextStatus) contextStatus.textContent = message;
+}
+
+function clearUndoState() {
+    state.lastPredictionUndo = null;
+    undoPredictionBtn?.classList.add("hidden");
+}
+
+function resizeComposer() {
+    if (!promptInput) return;
+    promptInput.style.height = "auto";
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    const maximum = Math.max(120, Math.round(viewportHeight * 0.35));
+    promptInput.style.height = `${Math.min(promptInput.scrollHeight, maximum)}px`;
+    promptInput.style.overflowY = promptInput.scrollHeight > maximum ? "auto" : "hidden";
+}
+
+function updateVisualViewportMetrics() {
+    const viewport = window.visualViewport;
+    const keyboardInset = viewport
+        ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+        : 0;
+    document.documentElement.style.setProperty("--keyboard-inset", `${Math.round(keyboardInset)}px`);
+    resizeComposer();
+}
+
+function initVisualViewport() {
+    updateVisualViewportMetrics();
+    if (!window.visualViewport) return;
+    window.visualViewport.addEventListener("resize", updateVisualViewportMetrics);
+    window.visualViewport.addEventListener("scroll", updateVisualViewportMetrics);
+}
+
+function persistSessionDraft() {
+    if (!promptInput) return;
+    if (promptInput.value) sessionStorage.setItem(DRAFT_SESSION_KEY, promptInput.value);
+    else sessionStorage.removeItem(DRAFT_SESSION_KEY);
+}
+
+function selectComposerText() {
+    promptInput.focus();
+    promptInput.setSelectionRange(0, promptInput.value.length);
+}
+
+function updateContextStrip() {
+    const project = projects.find((item) => item.project_id === selectedProjectId);
+    const node = state.nodes.find((item) => item.id === state.selectedNode);
+    if (contextProjectValue) contextProjectValue.textContent = project?.name || "None";
+    if (contextTemplateValue) contextTemplateValue.textContent = TEMPLATE_LABELS[templateSelect?.value] || "General";
+    if (contextNodeValue) contextNodeValue.textContent = node?.name || "None";
+    if (contextModelValue) contextModelValue.textContent = modelSelect?.value || "None";
+    if (contextModelMarker) {
+        contextModelMarker.classList.toggle("hidden", !state.restoredSelection || state.selectionFallback);
+    }
+    if (contextStatus && !state.lastPredictionUndo) {
+        contextStatus.textContent = state.selectionFallback
+            ? "Stored selection unavailable; using safe defaults"
+            : (state.restoredSelection ? "Using last selection" : "Manual selection");
+    }
+}
+
+function renderPredictions() {
+    if (!suggestionChips || !suggestedNext) return;
+    const predictions = window.DaveAnticipation.getPredictions(buildPredictionContext());
+    suggestionChips.replaceChildren();
+
+    if (predictions.length === 0) {
+        suggestedNext.classList.add("hidden");
+        return;
+    }
+    suggestedNext.classList.remove("hidden");
+
+    predictions.forEach((prediction) => {
+        const item = document.createElement("div");
+        item.className = "suggestion-item";
+        item.setAttribute("role", "listitem");
+
+        const action = document.createElement("button");
+        action.type = "button";
+        action.className = "suggestion-chip";
+        action.textContent = prediction.label;
+        action.title = prediction.reason;
+        action.addEventListener("click", () => applyPrediction(prediction));
+
+        const dismiss = document.createElement("button");
+        dismiss.type = "button";
+        dismiss.className = "suggestion-dismiss";
+        dismiss.textContent = "×";
+        dismiss.title = `Dismiss ${prediction.label}`;
+        dismiss.setAttribute("aria-label", dismiss.title);
+        dismiss.addEventListener("click", () => {
+            writeAnticipationRecord(window.DaveAnticipation.dismissPrediction(anticipationRecord, prediction.id));
+            renderPredictions();
+        });
+
+        item.appendChild(action);
+        item.appendChild(dismiss);
+        suggestionChips.appendChild(item);
+    });
+}
+
+async function applyPrediction(prediction, options = {}) {
+    if (!prediction || !prediction.kind) return;
+    const snapshot = captureControlSnapshot();
+    const payload = prediction.payload || {};
+
+    if (prediction.kind === "continue_conversation" && state.conversations[payload.conversationId]) {
+        await switchConversation(payload.conversationId);
+    } else if (prediction.kind === "prefill" && typeof payload.text === "string") {
+        if (options.requireEmpty && promptInput.value.trim()) return;
+        promptInput.value = payload.text;
+        resizeComposer();
+        persistSessionDraft();
+        selectComposerText();
+    } else if (prediction.kind === "select_template" && TEMPLATES[payload.template]) {
+        if (conversationHasMessages()) return;
+        templateSelect.value = payload.template;
+        updateAnticipationPreferences();
+    } else if (prediction.kind === "select_model" && state.modelMeta[payload.modelId]) {
+        modelSelect.value = payload.modelId;
+        updateImageSupportNotice();
+        updateAnticipationPreferences();
+    } else if (prediction.kind === "remember_support" && selectedProjectId === payload.projectId) {
+        anticipationRecord = window.DaveAnticipation.setProjectDefault(anticipationRecord, selectedProjectId, {
+            template: templateSelect.value,
+            nodeId: state.selectedNode,
+            modelId: modelSelect.value,
+            supportMode: true
+        });
+        writeAnticipationRecord(anticipationRecord);
+        supportFlag.checked = true;
+    } else {
+        return;
+    }
+
+    if (!options.automatic) {
+        anticipationRecord = window.DaveAnticipation.incrementUsage(
+            anticipationRecord,
+            "nextActionCounts",
+            prediction.id
+        );
+        writeAnticipationRecord(anticipationRecord);
+    }
+    exposeUndo(snapshot, options.automatic ? "Starter added · Undo available" : `${prediction.label} applied · Undo available`);
+    updateContextStrip();
+    renderPredictions();
+}
+
+async function undoLastPrediction() {
+    const snapshot = state.lastPredictionUndo;
+    if (!snapshot) return;
+    state.lastPredictionUndo = null;
+    undoPredictionBtn?.classList.add("hidden");
+
+    const previousProjectId = selectedProjectId;
+    selectedProjectId = projects.some((item) => item.project_id === snapshot.projectId) ? snapshot.projectId : "";
+    if (projectSelect) projectSelect.value = selectedProjectId;
+    localStorage.setItem("dave_project_id", selectedProjectId);
+    if (previousProjectId !== selectedProjectId) await loadConversationsFromBackend();
+
+    if (snapshot.sessionId && state.conversations[snapshot.sessionId]) {
+        if (state.sessionId !== snapshot.sessionId) await switchConversation(snapshot.sessionId);
+        else {
+            renderConversationList();
+            renderMessages();
+        }
+    } else {
+        state.sessionId = null;
+        renderConversationList();
+        renderMessages();
+    }
+
+    templateSelect.value = TEMPLATES[snapshot.template] ? snapshot.template : "general";
+    const targetNode = state.nodes.some((item) => item.id === snapshot.nodeId)
+        ? snapshot.nodeId
+        : state.nodes[0]?.id;
+    if (targetNode) {
+        state.selectedNode = targetNode;
+        nodeSelect.value = targetNode;
+        await loadModelsFromNode(snapshot.modelId);
+    }
+    supportFlag.checked = snapshot.supportMode;
+    if (selectedProjectId) {
+        anticipationRecord = window.DaveAnticipation.setProjectDefault(anticipationRecord, selectedProjectId, {
+            template: templateSelect.value,
+            nodeId: state.selectedNode,
+            modelId: modelSelect.value,
+            supportMode: snapshot.projectSupportDefault === true
+        });
+    }
+    updateAnticipationPreferences();
+    promptInput.value = snapshot.composer;
+    resizeComposer();
+    persistSessionDraft();
+    state.restoredSelection = false;
+    state.selectionFallback = false;
+    updateContextStrip();
+    renderPredictions();
+}
+
+function maybePrefillForAttachment(kind) {
+    if (!kind || promptInput.value.trim()) return;
+    const prediction = window.DaveAnticipation.getPredictions(buildPredictionContext({
+        attachmentKind: kind,
+        composer: ""
+    })).find((item) => item.kind === "prefill");
+    if (prediction && !promptInput.value.trim()) {
+        applyPrediction(prediction, { automatic: true, requireEmpty: true });
+    }
+}
+
+function applyProjectSupportDefault() {
+    const projectDefault = selectedProjectId
+        ? anticipationRecord.preferences.projectDefaults[selectedProjectId]
+        : null;
+    if (!conversationHasMessages() && supportFlag) {
+        supportFlag.checked = Boolean(projectDefault?.supportMode);
+    }
+}
+
+function syncMobilePanelSemantics() {
+    const mobile = window.matchMedia("(max-width: 1024px)").matches;
+    mobilePanels.forEach((panel) => {
+        if (mobile) {
+            panel.setAttribute("role", "tabpanel");
+            panel.setAttribute("aria-labelledby", `${panel.dataset.tabId} ${panel.dataset.headingId}`);
+            panel.setAttribute("aria-hidden", panel.classList.contains("mobile-active") ? "false" : "true");
+        } else {
+            panel.removeAttribute("role");
+            panel.removeAttribute("aria-hidden");
+            panel.setAttribute("aria-labelledby", panel.dataset.headingId);
+        }
+    });
+}
+
+function setMobileTab(tabName, focusTab = false) {
+    const valid = mobileTabButtons.some((button) => button.dataset.mobileTab === tabName);
+    const selected = valid ? tabName : "chat";
+    sessionStorage.setItem(MOBILE_TAB_SESSION_KEY, selected);
+    mobileTabButtons.forEach((button) => {
+        const active = button.dataset.mobileTab === selected;
+        button.setAttribute("aria-selected", active ? "true" : "false");
+        button.tabIndex = active ? 0 : -1;
+        if (active && focusTab) button.focus();
+    });
+    mobilePanels.forEach((panel) => {
+        panel.classList.toggle("mobile-active", panel.dataset.mobilePanel === selected);
+    });
+    syncMobilePanelSemantics();
+}
+
+function initMobileTabs() {
+    setMobileTab(sessionStorage.getItem(MOBILE_TAB_SESSION_KEY) || "chat");
+    mobileTabButtons.forEach((button, index) => {
+        button.addEventListener("click", () => setMobileTab(button.dataset.mobileTab));
+        button.addEventListener("keydown", (event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            let targetIndex = index;
+            if (event.key === "ArrowLeft") targetIndex = (index - 1 + mobileTabButtons.length) % mobileTabButtons.length;
+            if (event.key === "ArrowRight") targetIndex = (index + 1) % mobileTabButtons.length;
+            if (event.key === "Home") targetIndex = 0;
+            if (event.key === "End") targetIndex = mobileTabButtons.length - 1;
+            setMobileTab(mobileTabButtons[targetIndex].dataset.mobileTab, true);
+        });
+    });
+    window.matchMedia("(max-width: 1024px)").addEventListener("change", syncMobilePanelSemantics);
 }
 
 function replaceSelectOptions(select, label, value = "") {
@@ -306,7 +726,10 @@ function initDictation() {
     speechRecognition.onstart = () => {
         isDictating = true;
         setDictationStatus("Listening…");
-        if (dictateBtn) dictateBtn.textContent = "⏹️";
+        if (dictateBtn) {
+            dictateBtn.textContent = "⏹️";
+            dictateBtn.setAttribute("aria-label", "Stop dictation");
+        }
     };
 
     speechRecognition.onerror = (e) => {
@@ -339,7 +762,10 @@ function initDictation() {
 
     speechRecognition.onend = () => {
         isDictating = false;
-        if (dictateBtn) dictateBtn.textContent = "🎙️";
+        if (dictateBtn) {
+            dictateBtn.textContent = "🎙️";
+            dictateBtn.setAttribute("aria-label", "Dictate using microphone");
+        }
         if (!dictateStatus || !dictateStatus.textContent.includes("error")) {
             setDictationStatus("");
         }
@@ -396,7 +822,10 @@ async function createProjectFlow() {
         localStorage.setItem("dave_project_id", selectedProjectId);
         await loadProjects();
         await loadConversationsFromBackend();
+        state.sessionId = null;
+        updateAnticipationPreferences();
         renderConversationList();
+        renderMessages();
     } catch (e) {
         console.error("Failed to create project:", e);
         alert("Could not create project");
@@ -473,7 +902,10 @@ function startFallbackRecording() {
 
             mediaRecorder.onstart = () => {
                 isRecordingFallback = true;
-                if (dictateBtn) dictateBtn.textContent = "⏹️";
+                if (dictateBtn) {
+                    dictateBtn.textContent = "⏹️";
+                    dictateBtn.setAttribute("aria-label", "Stop recording");
+                }
                 setDictationStatus("Recording… tap again to stop");
             };
 
@@ -508,7 +940,10 @@ function startFallbackRecording() {
 
 function stopFallbackStream() {
     isRecordingFallback = false;
-    if (dictateBtn) dictateBtn.textContent = "🎙️";
+    if (dictateBtn) {
+        dictateBtn.textContent = "🎙️";
+        dictateBtn.setAttribute("aria-label", "Dictate using microphone");
+    }
     if (mediaStream) {
         mediaStream.getTracks().forEach((t) => t.stop());
         mediaStream = null;
@@ -769,6 +1204,9 @@ function renderConversationList() {
     sorted.forEach(([cid, convo]) => {
         const div = document.createElement("div");
         div.className = "convo-item";
+        div.setAttribute("role", "button");
+        div.tabIndex = 0;
+        div.setAttribute("aria-label", `Open conversation ${convo.title}`);
         if (cid === state.sessionId) div.classList.add("active-convo");
 
         const titleContainer = document.createElement("div");
@@ -790,7 +1228,6 @@ function renderConversationList() {
 
         const actionsDiv = document.createElement("div");
         actionsDiv.className = "convo-actions";
-        actionsDiv.style.display = "none";
         actionsDiv.style.gap = "4px";
         actionsDiv.style.alignItems = "center";
         actionsDiv.style.flexShrink = "0";
@@ -800,6 +1237,7 @@ function renderConversationList() {
         renameBtn.className = "action-icon";
         renameBtn.textContent = "✏️";
         renameBtn.title = "Rename conversation";
+        renameBtn.setAttribute("aria-label", `Rename ${convo.title}`);
         renameBtn.onclick = (e) => {
             e.stopPropagation();
             if (state.renaming) return;
@@ -811,6 +1249,7 @@ function renderConversationList() {
         clearBtn.className = "action-icon";
         clearBtn.textContent = "🗑️";
         clearBtn.title = "Clear messages";
+        clearBtn.setAttribute("aria-label", `Clear messages in ${convo.title}`);
         clearBtn.onclick = (e) => {
             e.stopPropagation();
             clearConversation(cid);
@@ -821,6 +1260,7 @@ function renderConversationList() {
         deleteBtn.className = "action-icon";
         deleteBtn.textContent = "❌";
         deleteBtn.title = "Delete conversation";
+        deleteBtn.setAttribute("aria-label", `Delete ${convo.title}`);
         deleteBtn.onclick = (e) => {
             e.stopPropagation();
             deleteConversation(cid, div);
@@ -831,6 +1271,7 @@ function renderConversationList() {
         exportBtn.className = "action-icon";
         exportBtn.textContent = "📥";
         exportBtn.title = "Export conversation (markdown)";
+        exportBtn.setAttribute("aria-label", `Export ${convo.title} as markdown`);
         exportBtn.onclick = async (e) => {
             e.stopPropagation();
             await exportConversation(cid, convo.title);
@@ -839,13 +1280,6 @@ function renderConversationList() {
 
         div.appendChild(titleContainer);
         div.appendChild(actionsDiv);
-
-        div.addEventListener("mouseenter", () => {
-            actionsDiv.style.display = "flex";
-        });
-        div.addEventListener("mouseleave", () => {
-            actionsDiv.style.display = "none";
-        });
 
         div.addEventListener("click", async (e) => {
             if (state.renaming || e.target.classList.contains("action-icon")) {
@@ -862,12 +1296,19 @@ function renderConversationList() {
             renameConversation(cid, div);
         });
 
+        div.addEventListener("keydown", async (event) => {
+            if (event.target !== div || !["Enter", " "].includes(event.key)) return;
+            event.preventDefault();
+            await switchConversation(cid);
+        });
+
         convoList.appendChild(div);
     });
 }
 
 async function switchConversation(cid) {
     if (state.renaming) return;
+    clearUndoState();
 
     const convo = state.conversations[cid];
     if (!convo) {
@@ -876,6 +1317,7 @@ async function switchConversation(cid) {
     }
 
     state.sessionId = cid;
+    state.lastSessionId = cid;
     localStorage.setItem(LAST_SESSION_KEY, cid);
 
     // If we don't have messages yet, try loading from backend
@@ -888,6 +1330,9 @@ async function switchConversation(cid) {
     
     renderConversationList();
     renderMessages();
+    applyProjectSupportDefault();
+    setMobileTab("chat");
+    updateContextStrip();
 }
 
 async function deleteConversation(cid, element) {
@@ -945,6 +1390,7 @@ async function clearConversation(cid) {
 }
 
 async function createNewConversation() {
+    clearUndoState();
     const id = "convo_" + Date.now();
 
     state.conversations[id] = {
@@ -956,15 +1402,21 @@ async function createNewConversation() {
     };
 
     state.sessionId = id;
+    state.lastSessionId = id;
     localStorage.setItem(LAST_SESSION_KEY, id);
+    if (templateSelect) templateSelect.value = "general";
     
     renderConversationList();
     renderMessages();
+    applyProjectSupportDefault();
+    updateAnticipationPreferences();
+    setMobileTab("chat");
     
     console.log(`✅ Created new conversation ${id} (backend will create on first message)`);
 }
 
 async function createConversationFromTemplate(name) {
+    clearUndoState();
     try {
         const res = await fetch(routerEndpoint("/conversations/from_template"), {
             method: "POST",
@@ -983,10 +1435,18 @@ async function createConversationFromTemplate(name) {
             system_prompt: data.system_prompt || ""
         };
         state.sessionId = id;
+        state.lastSessionId = id;
+        localStorage.setItem(LAST_SESSION_KEY, id);
+        if (templateSelect) templateSelect.value = name;
         renderConversationList();
         renderMessages();
+        applyProjectSupportDefault();
+        updateAnticipationPreferences();
+        setMobileTab("chat");
+        return id;
     } catch (e) {
         console.error("Failed to create from template:", e);
+        return null;
     }
 }
 
@@ -1072,6 +1532,9 @@ async function transcribeAudio() {
         if (transcript) {
             promptInput.value = promptInput.value ? `${promptInput.value}\n${transcript}` : transcript;
             promptInput.focus();
+            resizeComposer();
+            persistSessionDraft();
+            renderPredictions();
             if (audioStatus) audioStatus.textContent = "Transcript added to input.";
         } else {
             if (audioStatus) audioStatus.textContent = "No text returned from transcription.";
@@ -1191,14 +1654,17 @@ async function fetchNodes() {
         const nodes = await res.json();
 
         state.nodes = nodes;
-        renderNodes(nodes);
         renderNodeSelect(nodes);
+        await renderNodes(nodes);
+        updateContextStrip();
+        renderPredictions();
 
     } catch (err) {
         console.error("Failed to fetch nodes:", err);
         state.nodes = [];
         state.selectedNode = null;
         state.modelMeta = {};
+        state.nodeStatus = {};
 
         const error = document.createElement("div");
         error.className = "error-message";
@@ -1213,10 +1679,11 @@ async function fetchNodes() {
     }
 }
 
-function renderNodes(nodes) {
+async function renderNodes(nodes) {
     nodesContainer.replaceChildren();
     
     if (nodes.length === 0) {
+        state.nodeStatus = {};
         const info = document.createElement("div");
         info.className = "info-message";
         info.textContent = "No nodes registered yet.";
@@ -1224,7 +1691,7 @@ function renderNodes(nodes) {
         return;
     }
     
-    fetchNodeStatus(nodes);
+    await fetchNodeStatus(nodes);
 }
 
 async function fetchNodeStatus(nodes) {
@@ -1240,6 +1707,7 @@ async function fetchNodeStatus(nodes) {
         statuses.forEach(s => {
             statusMap[s.node_id] = s;
         });
+        state.nodeStatus = statusMap;
         
         nodesContainer.replaceChildren();
         
@@ -1296,6 +1764,7 @@ async function fetchNodeStatus(nodes) {
         
     } catch (err) {
         console.error("Failed to fetch node status:", err);
+        state.nodeStatus = Object.fromEntries(nodes.map((node) => [node.id, { status: "unknown", latency: null }]));
         nodesContainer.replaceChildren();
         nodes.forEach((n) => {
             const div = document.createElement("div");
@@ -1338,13 +1807,13 @@ function renderNodeSelect(nodes) {
     nodeSelect.value = state.selectedNode;
 }
 
-async function loadModelsFromNode() {
+async function loadModelsFromNode(preferredModelId = null) {
     if (!state.selectedNode || !state.nodes.some((node) => node.id === state.selectedNode)) {
         alert("Please select a node first");
         return;
     }
 
-    const previousModel = modelSelect.value;
+    const previousModel = preferredModelId || modelSelect.value;
     replaceSelectOptions(modelSelect, "Loading models...");
     modelSelect.disabled = true;
 
@@ -1382,16 +1851,25 @@ async function loadModelsFromNode() {
             modelSelect.value = state.modelMeta[previousModel]
                 ? previousModel
                 : normalizedModels[0].id;
+            if (preferredModelId && !state.modelMeta[preferredModelId]) {
+                state.selectionFallback = true;
+            }
         }
 
         console.log(`✅ Loaded ${normalizedModels.length} models from ${state.selectedNode}`);
         modelSelect.disabled = false;
         updateImageSupportNotice();
+        updateContextStrip();
+        renderPredictions();
+        return modelSelect.value;
     } catch (err) {
         console.error("Failed to load models:", err);
         state.modelMeta = {};
         replaceSelectOptions(modelSelect, "Error loading models");
         modelSelect.disabled = false;
+        updateContextStrip();
+        renderPredictions();
+        return null;
     }
 }
 
@@ -1455,29 +1933,6 @@ async function showRelevantMemories(query) {
 // ---------------------------------------------
 // MESSAGE FLOW
 // ---------------------------------------------
-async function routeQuery(prompt, contextMessages) {
-    try {
-        const res = await fetch(routerEndpoint("/route/decision"), {
-            method: "POST",
-            headers: authHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify({
-                prompt,
-                context: (contextMessages || []).slice(-4),
-                user_preferences: {
-                    max_cost: routingPrefs.max_cost,
-                    min_quality: routingPrefs.min_quality,
-                    require_vision: state.pendingImages.length > 0
-                }
-            })
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-    } catch (err) {
-        console.warn("Routing decision failed, falling back to selected model:", err);
-        return null;
-    }
-}
-
 async function sendMessage() {
     const prompt = promptInput.value.trim();
     let attachedFileText = "";
@@ -1498,8 +1953,27 @@ async function sendMessage() {
         Boolean(supportFlag && supportFlag.checked),
     );
 
-    if (!state.sessionId || !state.conversations[state.sessionId]) {
-        console.error("No active conversation, creating new one");
+    const pendingConversation = currentConversation();
+    const selectedTemplate = templateSelect?.value || "general";
+    if (
+        selectedTemplate !== "general"
+        && (!pendingConversation || (pendingConversation.messages || []).length === 0)
+        && !pendingConversation?.system_prompt
+    ) {
+        const replaceableId = state.sessionId;
+        const createdId = await createConversationFromTemplate(selectedTemplate);
+        if (
+            createdId
+            && replaceableId
+            && replaceableId !== createdId
+            && state.conversations[replaceableId]
+            && (state.conversations[replaceableId].messages || []).length === 0
+        ) {
+            delete state.conversations[replaceableId];
+            renderConversationList();
+        }
+    } else if (!state.sessionId || !state.conversations[state.sessionId]) {
+        console.log("No active conversation, creating a new General conversation");
         await createNewConversation();
     }
 
@@ -1529,26 +2003,7 @@ async function sendMessage() {
         }
     }
 
-    // Auto-route based on prefs
-    const routeDecision = await routeQuery(effectivePrompt, convo.messages);
-    if (
-        routeDecision
-        && routeDecision.model_id
-        && state.nodes.some((node) => node.id === state.selectedNode)
-        && state.modelMeta[routeDecision.model_id]
-    ) {
-        modelSelect.value = routeDecision.model_id;
-        if (routeStatus) {
-            routeStatus.textContent = `Routing → ${routeDecision.model_id} (conf ${Math.round(routeDecision.confidence * 100)}%, est $${routeDecision.estimated_cost.toFixed(4)})`;
-        }
-        state.stats.decisions.push(routeDecision);
-        updateStatsDisplay();
-    } else if (routeDecision && routeStatus) {
-        routeStatus.textContent = "Route suggestion is not in the selected node inventory; using manual selection";
-    } else if (routeStatus) {
-        routeStatus.textContent = "Routing unavailable, using selected model";
-    }
-    updateStatsDisplay();
+    if (routeStatus) routeStatus.textContent = `Using manual selection: ${modelSelect.value}`;
 
     // Optional budget check
     try {
@@ -1567,8 +2022,26 @@ async function sendMessage() {
     }
     updateStatsDisplay();
 
+    anticipationRecord = window.DaveAnticipation.incrementUsage(
+        anticipationRecord,
+        "templateCounts",
+        templateSelect?.value || "general"
+    );
+    if (supportFlag?.checked && selectedProjectId) {
+        anticipationRecord = window.DaveAnticipation.incrementUsage(
+            anticipationRecord,
+            "supportCountsByProject",
+            selectedProjectId
+        );
+    }
+    writeAnticipationRecord(anticipationRecord);
+    updateAnticipationPreferences();
+
     promptInput.value = "";
     promptInput.style.height = "auto";
+    sessionStorage.removeItem(DRAFT_SESSION_KEY);
+    state.lastPredictionUndo = null;
+    undoPredictionBtn?.classList.add("hidden");
     
     const now = Date.now();
 
@@ -1693,14 +2166,61 @@ async function sendMessage() {
     } finally {
         state.streaming = false;
         state.abortController = null;
+        renderPredictions();
     }
+}
+
+function renderEmptyChatState() {
+    const empty = document.createElement("section");
+    empty.className = "empty-chat";
+
+    const heading = document.createElement("h3");
+    heading.textContent = state.sessionId ? "Start this conversation" : "What would you like to do?";
+    const detail = document.createElement("p");
+    detail.textContent = "Choose a starting point or type directly below. Nothing is submitted automatically.";
+    const actions = document.createElement("div");
+    actions.className = "empty-chat-actions";
+
+    const addAction = (label, handler, primary = false) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        if (primary) button.className = "primary";
+        button.addEventListener("click", handler);
+        actions.appendChild(button);
+    };
+
+    if (state.lastSessionId && state.lastSessionId !== state.sessionId && state.conversations[state.lastSessionId]) {
+        const last = state.conversations[state.lastSessionId];
+        addAction(`Continue ${last.title}`, () => switchConversation(state.lastSessionId), true);
+    }
+    if (!state.sessionId) addAction("Start General", createNewConversation, true);
+    addAction("Code Review", () => createConversationFromTemplate("code_review"));
+    addAction("Brainstorm", () => createConversationFromTemplate("brainstorm"));
+
+    const project = projects.find((item) => item.project_id === selectedProjectId);
+    if (!state.sessionId && project) {
+        addAction(`Start in ${project.name}`, createNewConversation);
+    }
+
+    empty.appendChild(heading);
+    empty.appendChild(detail);
+    empty.appendChild(actions);
+    responseBox.appendChild(empty);
 }
 
 function renderMessages() {
     const convo = state.conversations[state.sessionId];
-    if (!convo) return;
 
     responseBox.replaceChildren();
+
+    if (!convo || !Array.isArray(convo.messages) || convo.messages.length === 0) {
+        renderEmptyChatState();
+        updateContextStrip();
+        if (!state.streaming) renderPredictions();
+        updateScrollBottomButton();
+        return;
+    }
 
     // Context hygiene: nudge to start fresh on long threads
     if (convo.messages.length > 12) {
@@ -1739,11 +2259,13 @@ function renderMessages() {
             up.className = "action-icon";
             up.textContent = "👍";
             up.title = "Good answer";
+            up.setAttribute("aria-label", "Mark answer as good");
             up.onclick = () => sendFeedback(1, m.content || "", m.model);
             const down = document.createElement("button");
             down.className = "action-icon";
             down.textContent = "👎";
             down.title = "Bad answer";
+            down.setAttribute("aria-label", "Mark answer as bad");
             down.onclick = () => sendFeedback(-1, m.content || "", m.model);
             fb.appendChild(up);
             fb.appendChild(down);
@@ -1810,6 +2332,8 @@ function renderMessages() {
         responseBox.scrollTop = responseBox.scrollHeight;
     }
     updateScrollBottomButton();
+    updateContextStrip();
+    if (!state.streaming) renderPredictions();
 }
 
 // ---------------------------------------------
@@ -1821,6 +2345,7 @@ imageInput.addEventListener("change", (e) => {
         state.pendingImages = [];
         imageStatus.textContent = "";
         updateImageSupportNotice();
+        renderPredictions();
         return;
     }
 
@@ -1831,20 +2356,30 @@ imageInput.addEventListener("change", (e) => {
     imageStatus.textContent = "Loading image(s)...";
 
     let loaded = 0;
+    const finishImageLoad = () => {
+        if (loaded !== selected.length) return;
+        if (state.pendingImages.length === 0) {
+            imageStatus.textContent = "Images could not be read";
+        } else {
+            const base = `${state.pendingImages.length} image${state.pendingImages.length > 1 ? "s" : ""} attached`;
+            const visionNote = modelSupportsVision(modelSelect.value) ? " (vision-enabled)" : " (model may ignore images)";
+            imageStatus.textContent = base + visionNote;
+            maybePrefillForAttachment("image");
+        }
+        renderPredictions();
+    };
 
     selected.forEach(file => {
         const reader = new FileReader();
         reader.onload = () => {
             state.pendingImages.push({ image_url: reader.result });
             loaded += 1;
-            if (loaded === selected.length) {
-                const base = `${state.pendingImages.length} image${state.pendingImages.length > 1 ? "s" : ""} attached`;
-                const visionNote = modelSupportsVision(modelSelect.value) ? " (vision-enabled)" : " (model may ignore images)";
-                imageStatus.textContent = base + visionNote;
-            }
+            finishImageLoad();
         };
         reader.onerror = () => {
             console.error("Failed to read image file");
+            loaded += 1;
+            finishImageLoad();
         };
         reader.readAsDataURL(file);
     });
@@ -1866,14 +2401,26 @@ newConvoBtn.onclick = createNewConversation;
 loadModelsBtn.onclick = loadModelsFromNode;
 
 nodeSelect.addEventListener("change", (e) => {
+    clearUndoState();
     state.selectedNode = e.target.value;
+    state.restoredSelection = false;
+    state.selectionFallback = false;
     if (state.selectedNode) {
-        loadModelsFromNode();
+        loadModelsFromNode().then(() => {
+            updateAnticipationPreferences();
+            updateContextStrip();
+        });
     }
 });
 
 modelSelect.addEventListener("change", () => {
+    clearUndoState();
+    state.restoredSelection = false;
+    state.selectionFallback = false;
     updateImageSupportNotice();
+    updateAnticipationPreferences();
+    updateContextStrip();
+    renderPredictions();
 });
 
 promptInput.addEventListener("keydown", (e) => {
@@ -1881,6 +2428,11 @@ promptInput.addEventListener("keydown", (e) => {
         e.preventDefault();
         sendMessage();
     }
+});
+promptInput.addEventListener("input", () => {
+    resizeComposer();
+    persistSessionDraft();
+    renderPredictions();
 });
 
 if (themeToggle) {
@@ -1911,8 +2463,21 @@ if (createFromTemplateBtn) {
     });
 }
 
+if (templateSelect) {
+    templateSelect.addEventListener("change", () => {
+        clearUndoState();
+        state.restoredSelection = false;
+        state.selectionFallback = false;
+        updateAnticipationPreferences();
+        updateContextStrip();
+        renderPredictions();
+    });
+}
+
 if (projectSelect) {
     projectSelect.addEventListener("change", async (e) => {
+        const snapshot = captureControlSnapshot();
+        clearUndoState();
         const chosen = e.target.value;
         if (chosen === "__create__") {
             await createProjectFlow();
@@ -1921,8 +2486,43 @@ if (projectSelect) {
         selectedProjectId = chosen;
         localStorage.setItem("dave_project_id", selectedProjectId);
         await loadConversationsFromBackend();
+        state.sessionId = null;
+        state.restoredSelection = false;
+        state.selectionFallback = false;
+        const storedDefault = selectedProjectId
+            ? anticipationRecord.preferences.projectDefaults[selectedProjectId]
+            : null;
+        if (storedDefault) {
+            const storedTemplate = TEMPLATES[storedDefault.template] ? storedDefault.template : "general";
+            let appliedStoredDefault = storedTemplate !== templateSelect.value;
+            templateSelect.value = storedTemplate;
+            if (
+                storedDefault.nodeId
+                && state.nodes.some((item) => item.id === storedDefault.nodeId)
+                && state.nodeStatus[storedDefault.nodeId]?.status === "online"
+            ) {
+                state.selectedNode = storedDefault.nodeId;
+                nodeSelect.value = storedDefault.nodeId;
+                await loadModelsFromNode(storedDefault.modelId);
+                appliedStoredDefault = true;
+            } else if (storedDefault.nodeId) {
+                state.selectionFallback = true;
+            }
+            if (appliedStoredDefault) {
+                state.restoredSelection = true;
+                exposeUndo(
+                    snapshot,
+                    state.selectionFallback
+                        ? "Stored selection unavailable; using safe fallback · Undo available"
+                        : "Using last selection · Undo available"
+                );
+            }
+        }
+        applyProjectSupportDefault();
+        updateAnticipationPreferences();
         renderConversationList();
         renderMessages();
+        updateContextStrip();
     });
 }
 
@@ -1943,10 +2543,28 @@ if (fileInput) {
         if (fileInput.files && fileInput.files.length) {
             const file = fileInput.files[0];
             if (fileStatus) fileStatus.textContent = `Attached: ${file.name}`;
+            maybePrefillForAttachment(detectAttachmentKind());
         } else if (fileStatus) {
             fileStatus.textContent = "";
         }
+        renderPredictions();
     });
+}
+
+if (audioInput) {
+    audioInput.addEventListener("change", () => {
+        if (audioInput.files && audioInput.files.length) {
+            audioStatus.textContent = "Audio selected for transcription.";
+            maybePrefillForAttachment("audio");
+        } else {
+            audioStatus.textContent = "";
+        }
+        renderPredictions();
+    });
+}
+
+if (supportFlag) {
+    supportFlag.addEventListener("change", renderPredictions);
 }
 
 if (dictateBtn) {
@@ -1964,6 +2582,44 @@ if (credentialBtn) {
     });
 }
 
+if (resetSuggestionsBtn) {
+    resetSuggestionsBtn.addEventListener("click", () => {
+        localStorage.removeItem(ANTICIPATION_STORAGE_KEY);
+        anticipationRecord = window.DaveAnticipation.createRecord();
+        state.restoredSelection = false;
+        state.selectionFallback = false;
+        state.lastPredictionUndo = null;
+        undoPredictionBtn?.classList.add("hidden");
+        updateContextStrip();
+        renderPredictions();
+    });
+}
+
+if (undoPredictionBtn) {
+    undoPredictionBtn.addEventListener("click", undoLastPrediction);
+}
+
+document.querySelectorAll("[data-context-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+        const targetId = button.dataset.contextTarget;
+        if (["projectSelect", "templateSelect"].includes(targetId)) setMobileTab("history");
+        if (["targetNodeSelect", "modelSelect"].includes(targetId)) setMobileTab("runtime");
+        const target = document.getElementById(targetId);
+        requestAnimationFrame(() => {
+            target?.focus();
+            target?.click();
+        });
+    });
+});
+
+if (attachToolsToggle && attachmentTools) {
+    attachToolsToggle.addEventListener("click", () => {
+        const expanded = attachToolsToggle.getAttribute("aria-expanded") === "true";
+        attachToolsToggle.setAttribute("aria-expanded", expanded ? "false" : "true");
+        attachmentTools.classList.toggle("mobile-tools-open", !expanded);
+    });
+}
+
 // Add search UI dynamically into convo panel
 function renderSearchBox() {
     const panel = document.querySelector(".panel.conversations");
@@ -1978,11 +2634,13 @@ function renderSearchBox() {
     const input = document.createElement("input");
     input.type = "text";
     input.placeholder = "Search all conversations...";
+    input.setAttribute("aria-label", "Search all conversations");
     input.style.flex = "1";
     const btn = document.createElement("button");
     btn.className = "icon-btn";
     btn.textContent = "🔍";
     btn.title = "Search";
+    btn.setAttribute("aria-label", "Search conversations");
     const results = document.createElement("div");
     results.id = "searchResults";
     results.style.maxHeight = "200px";
@@ -1998,7 +2656,9 @@ function renderSearchBox() {
             const data = await res.json();
             results.replaceChildren();
             data.forEach(item => {
-                const div = document.createElement("div");
+                const div = document.createElement("button");
+                div.type = "button";
+                div.className = "search-result";
                 div.style.padding = "4px";
                 div.style.borderBottom = "1px solid var(--border)";
                 const title = document.createElement("strong");
@@ -2011,9 +2671,9 @@ function renderSearchBox() {
                 div.appendChild(lineBreak);
                 div.appendChild(role);
                 div.appendChild(preview);
-                div.onclick = async () => {
+                div.addEventListener("click", async () => {
                     await switchConversation(item.conversation_id);
-                };
+                });
                 results.appendChild(div);
             });
             if (data.length === 0) {
@@ -2060,6 +2720,9 @@ async function pollMonitoringBadge() {
 async function init() {
     console.log("🚀 Initializing DaveLLM UI...");
     initTheme();
+    initMobileTabs();
+    initVisualViewport();
+    anticipationRecord = readAnticipationRecord();
     if (!window.__DAVE_DESKTOP__ && !apiKey && !requestBrowserCredential()) {
         if (routeStatus) routeStatus.textContent = "A session API key is required to load DaveLLM.";
         return;
@@ -2070,21 +2733,84 @@ async function init() {
     updateStatsDisplay();
     renderSearchBox();
     await loadProjects();
+
+    let restoredAnything = false;
+    const preferredProjectId = anticipationRecord.preferences.lastProjectId || selectedProjectId;
+    if (preferredProjectId && projects.some((item) => item.project_id === preferredProjectId)) {
+        selectedProjectId = preferredProjectId;
+        projectSelect.value = preferredProjectId;
+        restoredAnything = true;
+    } else if (preferredProjectId) {
+        selectedProjectId = "";
+        projectSelect.value = "";
+        state.selectionFallback = true;
+    }
+
+    const startupProjectDefault = selectedProjectId
+        ? anticipationRecord.preferences.projectDefaults[selectedProjectId]
+        : null;
+    const preferredTemplate = startupProjectDefault?.template || anticipationRecord.preferences.lastTemplate;
+    if (TEMPLATES[preferredTemplate]) {
+        templateSelect.value = preferredTemplate;
+        restoredAnything = restoredAnything || preferredTemplate !== "general";
+    }
+
     await loadConversationsFromBackend();
-    
+
     const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
-    if (lastSessionId && state.conversations[lastSessionId]) {
-        await switchConversation(lastSessionId);
-    } else {
-        await createNewConversation();
-    }
-    
+    state.lastSessionId = lastSessionId && state.conversations[lastSessionId] ? lastSessionId : null;
+    state.sessionId = null;
+
+    const preferredNodeId = startupProjectDefault?.nodeId || anticipationRecord.preferences.lastNodeId;
+    if (preferredNodeId) state.selectedNode = preferredNodeId;
     await fetchNodes();
-    
-    if (state.selectedNode) {
-        await loadModelsFromNode();
+
+    if (preferredNodeId) {
+        const configured = state.nodes.some((item) => item.id === preferredNodeId);
+        const healthy = state.nodeStatus[preferredNodeId]?.status === "online";
+        if (!configured || !healthy) {
+            const safeNode = state.nodes.find((item) => state.nodeStatus[item.id]?.status === "online") || state.nodes[0];
+            state.selectedNode = safeNode?.id || null;
+            nodeSelect.value = state.selectedNode || "";
+            state.selectionFallback = true;
+        } else {
+            restoredAnything = true;
+        }
     }
-    
+
+    if (state.selectedNode) {
+        const preferredModelId = startupProjectDefault?.nodeId === state.selectedNode
+            ? startupProjectDefault.modelId
+            : (anticipationRecord.preferences.lastModelByNode[state.selectedNode] || null);
+        await loadModelsFromNode(preferredModelId);
+        restoredAnything = restoredAnything || Boolean(preferredModelId && state.modelMeta[preferredModelId]);
+    }
+
+    const draft = sessionStorage.getItem(DRAFT_SESSION_KEY);
+    if (draft && !promptInput.value) {
+        promptInput.value = draft;
+        resizeComposer();
+    }
+    applyProjectSupportDefault();
+    state.restoredSelection = restoredAnything;
+    if (restoredAnything) {
+        exposeUndo({
+            sessionId: null,
+            projectId: "",
+            template: "general",
+            nodeId: state.nodes[0]?.id || null,
+            modelId: Object.keys(state.modelMeta)[0] || null,
+            supportMode: false,
+            composer: promptInput.value
+        }, state.selectionFallback
+            ? "Stored selection unavailable; using safe fallback · Undo available"
+            : "Using last selection · Undo available");
+    }
+    renderConversationList();
+    renderMessages();
+    updateContextStrip();
+    renderPredictions();
+
     console.log("✅ DaveLLM UI ready");
     pollMonitoringBadge();
     setInterval(pollMonitoringBadge, 60000);
@@ -2099,5 +2825,3 @@ function complexityScoreClient(text = "") {
     if (t.length > 800) score += 0.2;
     return Math.min(1, score);
 }
-let projects = [];
-let selectedProjectId = localStorage.getItem("dave_project_id") || "";

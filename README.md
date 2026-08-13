@@ -60,6 +60,12 @@ The repository intentionally contains no real node addresses or verified model i
 
 Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and provide `DAVE_TOOL_ROOTS` as a JSON array of absolute paths. File read, write, and append operations share the same containment check. `shell.exec` remains disabled unless `DAVE_ENABLE_SHELL_TOOL=true` is also set. `web.fetch` accepts only bounded public HTTP/HTTPS responses and validates DNS plus each redirect target.
 
+## Local suggestions and mobile navigation
+
+The browser client derives at most three deterministic Suggested next actions from the current composer, attachment type, validated project/node/model selection, and response shape. Prediction generation lives in `static/anticipation.js`; it performs no network, DOM, or storage work, and suggestion chips never submit or change context without a visible user action. Valid last-used selections may be restored only on the empty startup state after inventory and node-health checks, with a visible status and immediate Undo. The client no longer calls `/route/decision` while sending a message, so the selected model remains under manual control.
+
+Suggestion preferences use the versioned `davellm_anticipation_v1` local-storage record. Its schema is limited to stable IDs, booleans, capped counters, and timestamps; prompt/response text, attachment names or contents, credentials, node URLs, and system prompts are excluded. Unsent composer text and the active Chat/History/Runtime mobile tab remain session-only. Reset Suggestions removes only the versioned suggestion record.
+
 ## Validation
 
 ```bash
@@ -67,6 +73,7 @@ source venv/bin/activate
 python -m py_compile app.py
 python -m pytest -q
 node --check static/app.js
+node --check static/anticipation.js
 node --check static/prompt-contract.js
 node --check desktop/main.js
 node --check desktop/preload.js

@@ -11,40 +11,46 @@
 <body>
 
     <!-- TOP BAR -->
-    <div class="topbar">
-        <div class="brand">DaveLLM</div>
+    <header class="topbar">
+        <h1 class="brand">DaveLLM</h1>
         <div class="topbar-actions">
-            <button id="credentialBtn" class="icon-btn" title="Set browser session API key">🔑</button>
-            <button id="themeToggle" class="icon-btn" title="Toggle theme">🌙</button>
-            <a href="monitoring.html" class="topbar-link" title="Monitoring">
+            <button id="credentialBtn" class="icon-btn" title="Set browser session API key" aria-label="Set browser session API key">🔑</button>
+            <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+            <a href="monitoring.html" class="topbar-link" title="Monitoring" aria-label="Open monitoring">
                 📈 <span id="monitorBadge" class="badge hidden">!</span>
             </a>
         </div>
-    </div>
+    </header>
+
+    <nav class="mobile-tabs" role="tablist" aria-label="DaveLLM sections">
+        <button id="mobileTabChat" type="button" role="tab" aria-controls="chatPanel" aria-selected="true" data-mobile-tab="chat">Chat</button>
+        <button id="mobileTabHistory" type="button" role="tab" aria-controls="historyPanel" aria-selected="false" tabindex="-1" data-mobile-tab="history">History</button>
+        <button id="mobileTabRuntime" type="button" role="tab" aria-controls="runtimePanel" aria-selected="false" tabindex="-1" data-mobile-tab="runtime">Runtime</button>
+    </nav>
 
     <!-- THREE COLUMN LAYOUT -->
     <div class="layout">
 
         <!-- LEFT COLUMN: Conversations -->
-        <div class="panel conversations">
+        <aside id="historyPanel" class="panel conversations" data-mobile-panel="history" data-heading-id="historyHeading" data-tab-id="mobileTabHistory" aria-labelledby="historyHeading">
             <div class="panel-header">
-                <h3>Conversations</h3>
-                <button id="newConvoBtn" class="icon-btn" title="New Conversation">+</button>
+                <h2 id="historyHeading">Conversations</h2>
+                <button id="newConvoBtn" class="icon-btn" title="New Conversation" aria-label="New conversation">+</button>
             </div>
             <div class="project-row">
-                <select id="projectSelect">
+                <select id="projectSelect" aria-label="Project">
                     <option value="">All Projects</option>
                 </select>
-                <button id="resyncProject" class="icon-btn" title="Re-apply project instructions to this conversation">🔄</button>
-                <button id="editProject" class="icon-btn" title="Edit project instructions">✏️</button>
+                <button id="resyncProject" class="icon-btn" title="Re-apply project instructions to this conversation" aria-label="Re-apply project instructions">🔄</button>
+                <button id="editProject" class="icon-btn" title="Edit project instructions" aria-label="Edit project instructions">✏️</button>
             </div>
             <div class="template-row">
-                <select id="templateSelect">
+                <select id="templateSelect" aria-label="Conversation template">
                     <option value="general">General</option>
                     <option value="code_review">Code Review</option>
                     <option value="brainstorm">Brainstorm</option>
                 </select>
-                <button id="createFromTemplate" class="icon-btn" title="Start from template">🚀</button>
+                <button id="createFromTemplate" class="icon-btn" title="Start from template" aria-label="Start from selected template">🚀</button>
             </div>
             <div id="convoList"></div>
             <div class="panel-subheader">Router Stats</div>
@@ -57,31 +63,47 @@
             </div>
             <div class="panel-subheader">Memories</div>
             <div id="memoryBox" class="memory-box hidden"></div>
-        </div>
+        </aside>
 
         <!-- MIDDLE COLUMN: Chat -->
-        <div class="panel prompt">
+        <main id="chatPanel" class="panel prompt mobile-active" data-mobile-panel="chat" data-heading-id="chatHeading" data-tab-id="mobileTabChat" aria-labelledby="chatHeading">
             <div class="panel-header">
-                <h3>Chat</h3>
+                <h2 id="chatHeading">Chat</h2>
             </div>
 
-            <div id="responseBox" class="response"></div>
-            <button id="scrollBottomBtn" class="scroll-bottom-btn" title="Jump to latest">⬇️</button>
+            <div id="responseBox" class="response" aria-live="polite" aria-label="Conversation messages"></div>
+            <button id="scrollBottomBtn" class="scroll-bottom-btn" title="Jump to latest" aria-label="Jump to latest message">⬇️</button>
 
             <div id="toolsBox" class="tools-box hidden"></div>
 
             <!-- model selectors now on right -->
 
             <div class="chat-footer">
+                <section id="suggestedNext" class="suggested-next" aria-labelledby="suggestedNextLabel">
+                    <div class="suggested-next-header">
+                        <span id="suggestedNextLabel">Suggested next</span>
+                    </div>
+                    <div id="suggestionChips" class="suggestion-chips" role="list"></div>
+                </section>
+                <div id="contextStrip" class="context-strip" aria-label="Current conversation context">
+                    <span id="contextStatus" class="context-status" role="status">Manual selection</span>
+                    <button id="contextProjectBtn" type="button" class="context-item" data-context-target="projectSelect"><span>Project</span><strong id="contextProjectValue">None</strong></button>
+                    <button id="contextTemplateBtn" type="button" class="context-item" data-context-target="templateSelect"><span>Template</span><strong id="contextTemplateValue">General</strong></button>
+                    <button id="contextNodeBtn" type="button" class="context-item" data-context-target="targetNodeSelect"><span>Node</span><strong id="contextNodeValue">None</strong></button>
+                    <button id="contextModelBtn" type="button" class="context-item" data-context-target="modelSelect"><span>Model</span><strong id="contextModelValue">None</strong><small id="contextModelMarker" class="context-marker hidden">Last used</small></button>
+                    <button id="undoPredictionBtn" type="button" class="text-btn hidden">Undo</button>
+                    <button id="resetSuggestionsBtn" type="button" class="text-btn">Reset suggestions</button>
+                </div>
                 <div class="footer-inputs">
+                    <label class="visually-hidden" for="promptInput">Message</label>
                     <textarea id="promptInput" placeholder="Type your message..." rows="3"></textarea>
-                    <div class="tool-row">
+                    <div id="attachmentTools" class="tool-row">
                         <label for="imageInput" class="image-upload-btn">📷 Image</label>
                         <input id="imageInput" type="file" accept="image/*" hidden />
                         <label for="audioInput" class="image-upload-btn">🎤 Audio</label>
                         <input id="audioInput" type="file" accept="audio/*" hidden />
-                        <button id="transcribeBtn" class="icon-btn" title="Transcribe audio file to text">🗣️→✍️</button>
-                        <button id="dictateBtn" class="icon-btn" title="Dictate via mic">🎙️</button>
+                        <button id="transcribeBtn" class="icon-btn" title="Transcribe audio file to text" aria-label="Transcribe selected audio file">🗣️→✍️</button>
+                        <button id="dictateBtn" class="icon-btn" title="Dictate via mic" aria-label="Dictate using microphone">🎙️</button>
                         <label for="fileInput" class="image-upload-btn">📎 File</label>
                         <input id="fileInput" type="file" hidden />
                         <label class="support-flag">
@@ -89,32 +111,35 @@
                             <span>Support</span>
                         </label>
                     </div>
-                    <div class="tool-status">
+                    <div class="tool-status" role="status" aria-live="polite">
                         <span id="imageStatus" class="image-status"></span>
                         <span id="audioStatus" class="image-status"></span>
                         <span id="fileStatus" class="image-status"></span>
                         <span id="dictateStatus" class="image-status"></span>
                     </div>
-                </div>
-                <div class="actions">
-                    <button id="sendBtn" class="primary">Send</button>
+                    <div class="composer-primary-actions">
+                        <button id="attachToolsToggle" type="button" class="attach-tools-toggle" aria-expanded="false" aria-controls="attachmentTools">Attach</button>
+                        <div class="actions">
+                            <button id="sendBtn" class="primary">Send</button>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
+        </main>
 
         <!-- RIGHT COLUMN: Nodes -->
-        <div class="panel nodes">
+        <aside id="runtimePanel" class="panel nodes" data-mobile-panel="runtime" data-heading-id="runtimeHeading" data-tab-id="mobileTabRuntime" aria-labelledby="runtimeHeading">
             <div class="panel-header">
-                <h3>Nodes</h3>
-                <button id="refreshNodes" class="icon-btn" title="Refresh Nodes">🔄</button>
+                <h2 id="runtimeHeading">Runtime</h2>
+                <button id="refreshNodes" class="icon-btn" title="Refresh Nodes" aria-label="Refresh nodes">🔄</button>
             </div>
             <div id="nodesContainer" class="node-list"></div>
             <div class="panel-subheader">Models</div>
             <div class="model-selector-row">
-                <select id="targetNodeSelect" class="node-select"></select>
-                <button id="loadModelsBtn" class="icon-btn" title="Load models from selected node">📦</button>
+                <select id="targetNodeSelect" class="node-select" aria-label="Runtime node"></select>
+                <button id="loadModelsBtn" class="icon-btn" title="Load models from selected node" aria-label="Load models from selected node">📦</button>
             </div>
-            <select id="modelSelect" class="model-select"></select>
+            <select id="modelSelect" class="model-select" aria-label="Runtime model"></select>
             <div class="routing-controls">
                 <label>Max cost ($/1k tokens)
                     <input id="routeCost" type="number" step="0.0005" min="0.0005" max="0.05" value="0.01" />
@@ -127,18 +152,19 @@
 
             <div class="panel-subheader">Model Fetcher</div>
             <div id="modelFetcher" class="fetcher-box">
-                <label class="fetcher-label">Hugging Face file URL</label>
+                <label class="fetcher-label" for="hfUrlInput">Hugging Face file URL</label>
                 <input id="hfUrlInput" type="text" placeholder="https://huggingface.co/.../model.gguf" />
-                <label class="fetcher-label">Destination (optional, inside models/)</label>
+                <label class="fetcher-label" for="hfDestInput">Destination (optional, inside models/)</label>
                 <input id="hfDestInput" type="text" placeholder="models/model.gguf" />
                 <button id="hfDownloadBtn" class="primary" style="width:100%;">Download</button>
                 <div id="hfStatus" class="fetcher-status"></div>
             </div>
-        </div>
+        </aside>
 
     </div>
 
     <script src="prompt-contract.js"></script>
+    <script src="anticipation.js"></script>
     <script src="app.js"></script>
 </body>
 
