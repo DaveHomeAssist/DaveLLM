@@ -161,6 +161,8 @@ def test_displayed_prompt_contract_and_renderer_security():
     subprocess.run(["node", "-e", script], check=True)
 
     app_source = (repo / "static" / "app.js").read_text()
+    index_source = (repo / "static" / "index.html").read_text()
+    style_source = (repo / "static" / "style.css").read_text()
     monitoring_source = (repo / "static" / "monitoring.html").read_text()
     preload_source = (repo / "desktop" / "preload.js").read_text()
     main_source = (repo / "desktop" / "main.js").read_text()
@@ -178,3 +180,17 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert "DAVE_API_KEY" not in preload_source
     assert 'details.requestHeaders["X-API-Key"] = apiKey' in main_source
     assert main_source.index("await waitForBackend(child)") < main_source.index("createWindow();")
+    assert all(
+        element_id in index_source
+        for element_id in (
+            'id="topbarStatusDot"',
+            'id="topbarNodeValue"',
+            'id="topbarStatusValue"',
+            'id="topbarModelValue"',
+        )
+    )
+    assert 'class="topbar-status-dot status-unknown"' in index_source
+    assert 'class="skip-link" href="#chatPanel"' in index_source
+    assert 'id="chatPanel"' in index_source and 'tabindex="-1"' in index_source
+    assert 'const nodeStatus = ["online", "offline"].includes(rawNodeStatus)' in app_source
+    assert "@media (prefers-reduced-motion: reduce)" in style_source

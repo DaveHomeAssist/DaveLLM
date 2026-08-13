@@ -9,15 +9,26 @@
 </head>
 
 <body>
+    <a class="skip-link" href="#chatPanel">Skip to chat</a>
 
     <!-- TOP BAR -->
     <header class="topbar">
-        <h1 class="brand">DaveLLM</h1>
+        <h1 class="brand"><span class="brand-mark" aria-hidden="true">D</span><span>DaveLLM</span></h1>
+        <div id="topbarRuntime" class="topbar-runtime">
+            <span id="topbarStatusDot" class="topbar-status-dot status-unknown" aria-hidden="true"></span>
+            <strong id="topbarNodeValue">No node</strong>
+            <span id="topbarStatusValue" class="topbar-state">Unknown</span>
+            <span class="runtime-separator" aria-hidden="true">/</span>
+            <span>Ollama</span>
+            <span class="runtime-separator" aria-hidden="true">/</span>
+            <span id="topbarModelValue">No model</span>
+            <svg class="runtime-bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 14h6l-1 8 9-13h-6V2Z" /></svg>
+        </div>
         <div class="topbar-actions">
-            <button id="credentialBtn" class="icon-btn" title="Set browser session API key" aria-label="Set browser session API key">🔑</button>
-            <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+            <button id="credentialBtn" class="icon-btn" title="Set browser session API key" aria-label="Set browser session API key"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8m-3 3 2 2m-5 1 2 2" /></svg></button>
+            <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></svg></button>
             <a href="monitoring.html" class="topbar-link" title="Monitoring" aria-label="Open monitoring">
-                📈 <span id="monitorBadge" class="badge hidden">!</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2" /></svg><span id="monitorBadge" class="badge hidden">!</span>
             </a>
         </div>
     </header>
@@ -66,7 +77,7 @@
         </aside>
 
         <!-- MIDDLE COLUMN: Chat -->
-        <main id="chatPanel" class="panel prompt mobile-active" data-mobile-panel="chat" data-heading-id="chatHeading" data-tab-id="mobileTabChat" aria-labelledby="chatHeading">
+        <main id="chatPanel" class="panel prompt mobile-active" data-mobile-panel="chat" data-heading-id="chatHeading" data-tab-id="mobileTabChat" aria-labelledby="chatHeading" tabindex="-1">
             <div class="panel-header">
                 <h2 id="chatHeading">Chat</h2>
             </div>
@@ -130,8 +141,8 @@
         <!-- RIGHT COLUMN: Nodes -->
         <aside id="runtimePanel" class="panel nodes" data-mobile-panel="runtime" data-heading-id="runtimeHeading" data-tab-id="mobileTabRuntime" aria-labelledby="runtimeHeading">
             <div class="panel-header">
-                <h2 id="runtimeHeading">Runtime</h2>
-                <button id="refreshNodes" class="icon-btn" title="Refresh Nodes" aria-label="Refresh nodes">🔄</button>
+                <h2 id="runtimeHeading">Telemetry</h2>
+                <button id="refreshNodes" class="icon-btn" title="Refresh Nodes" aria-label="Refresh nodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5" /><path d="M6.1 9a7 7 0 0 1 11.4-2.6L20 9m-16 6 2.5 2.6A7 7 0 0 0 17.9 15" /></svg></button>
             </div>
             <div id="nodesContainer" class="node-list"></div>
             <div class="panel-subheader">Models</div>
@@ -150,7 +161,7 @@
                 <div id="routeStatus" class="route-status"></div>
             </div>
 
-            <div class="panel-subheader">Model Fetcher</div>
+            <div class="panel-subheader">Models / Fetch</div>
             <div id="modelFetcher" class="fetcher-box">
                 <label class="fetcher-label" for="hfUrlInput">Hugging Face file URL</label>
                 <input id="hfUrlInput" type="text" placeholder="https://huggingface.co/.../model.gguf" />

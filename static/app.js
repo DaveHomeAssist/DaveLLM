@@ -89,13 +89,12 @@ function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", safeTheme);
     localStorage.setItem(THEME_STORAGE_KEY, safeTheme);
     if (themeToggle) {
-        const iconMap = { dark: "🌞", light: "🌙", forest: "🌲" };
         const titleMap = {
             dark: "Switch to light mode",
             light: "Switch to forest mode",
             forest: "Switch to dark mode"
         };
-        themeToggle.textContent = iconMap[safeTheme] || "🌓";
+        themeToggle.dataset.theme = safeTheme;
         themeToggle.title = titleMap[safeTheme] || "Toggle theme";
         themeToggle.setAttribute("aria-label", themeToggle.title);
     }
@@ -243,6 +242,10 @@ const contextTemplateValue = document.getElementById("contextTemplateValue");
 const contextNodeValue = document.getElementById("contextNodeValue");
 const contextModelValue = document.getElementById("contextModelValue");
 const contextModelMarker = document.getElementById("contextModelMarker");
+const topbarStatusDot = document.getElementById("topbarStatusDot");
+const topbarNodeValue = document.getElementById("topbarNodeValue");
+const topbarStatusValue = document.getElementById("topbarStatusValue");
+const topbarModelValue = document.getElementById("topbarModelValue");
 const undoPredictionBtn = document.getElementById("undoPredictionBtn");
 const attachToolsToggle = document.getElementById("attachToolsToggle");
 const attachmentTools = document.getElementById("attachmentTools");
@@ -423,10 +426,19 @@ function selectComposerText() {
 function updateContextStrip() {
     const project = projects.find((item) => item.project_id === selectedProjectId);
     const node = state.nodes.find((item) => item.id === state.selectedNode);
+    const rawNodeStatus = node ? (state.nodeStatus[node.id]?.status || "unknown") : "unknown";
+    const nodeStatus = ["online", "offline"].includes(rawNodeStatus) ? rawNodeStatus : "unknown";
+    const statusLabel = nodeStatus === "online" ? "Online" : (nodeStatus === "offline" ? "Offline" : "Unknown");
     if (contextProjectValue) contextProjectValue.textContent = project?.name || "None";
     if (contextTemplateValue) contextTemplateValue.textContent = TEMPLATE_LABELS[templateSelect?.value] || "General";
     if (contextNodeValue) contextNodeValue.textContent = node?.name || "None";
     if (contextModelValue) contextModelValue.textContent = modelSelect?.value || "None";
+    if (topbarNodeValue) topbarNodeValue.textContent = node?.name || "No node";
+    if (topbarStatusValue) topbarStatusValue.textContent = statusLabel;
+    if (topbarModelValue) topbarModelValue.textContent = modelSelect?.value || "No model";
+    if (topbarStatusDot) {
+        topbarStatusDot.className = `topbar-status-dot status-${nodeStatus}`;
+    }
     if (contextModelMarker) {
         contextModelMarker.classList.toggle("hidden", !state.restoredSelection || state.selectionFallback);
     }
@@ -1716,6 +1728,7 @@ async function fetchNodeStatus(nodes) {
             
             const div = document.createElement("div");
             div.className = "node-card";
+            if (n.id === state.selectedNode) div.classList.add("active");
             
             const statusDot = document.createElement("span");
             statusDot.className = "status-dot " + (status.status === "online" ? "status-online" : "status-offline");
@@ -1733,8 +1746,7 @@ async function fetchNodeStatus(nodes) {
             nameSpan.style.flex = "1";
             
             const statusLabel = document.createElement("span");
-            statusLabel.style.fontSize = "12px";
-            statusLabel.style.color = status.status === "online" ? "#35c759" : "#ff6b6b";
+            statusLabel.className = `node-status-label ${status.status === "online" ? "node-status-online" : "node-status-offline"}`;
             statusLabel.textContent = status.status === "online" ? "Online" : "Offline";
             
             header.appendChild(statusDot);
@@ -1742,9 +1754,7 @@ async function fetchNodeStatus(nodes) {
             header.appendChild(statusLabel);
             
             const urlSpan = document.createElement("div");
-            urlSpan.style.fontSize = "12px";
-            urlSpan.style.color = "#9ba4b5";
-            urlSpan.style.wordBreak = "break-all";
+            urlSpan.className = "node-url";
             urlSpan.textContent = n.url;
             
             div.appendChild(header);
@@ -1752,9 +1762,7 @@ async function fetchNodeStatus(nodes) {
             
             if (status.latency !== null) {
                 const latencySpan = document.createElement("div");
-                latencySpan.style.fontSize = "11px";
-                latencySpan.style.color = "#58a6ff";
-                latencySpan.style.marginTop = "4px";
+                latencySpan.className = "node-latency";
                 latencySpan.textContent = `⚡ ${status.latency}ms latency`;
                 div.appendChild(latencySpan);
             }
@@ -1769,11 +1777,11 @@ async function fetchNodeStatus(nodes) {
         nodes.forEach((n) => {
             const div = document.createElement("div");
             div.className = "node-card";
+            if (n.id === state.selectedNode) div.classList.add("active");
             const name = document.createElement("strong");
             name.textContent = n.name;
             const url = document.createElement("div");
-            url.style.fontSize = "12px";
-            url.style.color = "#9ba4b5";
+            url.className = "node-url";
             url.textContent = n.url;
             div.appendChild(name);
             div.appendChild(url);
@@ -2235,16 +2243,9 @@ function renderMessages() {
 
         const msgDiv = document.createElement("div");
         msgDiv.className = `message message-${m.role}`;
-        msgDiv.style.padding = "10px";
-        msgDiv.style.marginBottom = "10px";
-        msgDiv.style.borderRadius = "8px";
-        msgDiv.style.whiteSpace = "pre-wrap";
-        msgDiv.style.wordWrap = "break-word";
 
         const header = document.createElement("div");
-        header.style.display = "flex";
-        header.style.alignItems = "center";
-        header.style.gap = "6px";
+        header.className = "message-header";
 
         const roleLabel = document.createElement("strong");
         roleLabel.textContent = m.role.toUpperCase() + ": ";
@@ -2253,8 +2254,7 @@ function renderMessages() {
         // Feedback buttons for assistant messages
         if (m.role === "assistant" && !m.isStreaming) {
             const fb = document.createElement("div");
-            fb.style.display = "flex";
-            fb.style.gap = "4px";
+            fb.className = "message-feedback";
             const up = document.createElement("button");
             up.className = "action-icon";
             up.textContent = "👍";
@@ -2275,6 +2275,7 @@ function renderMessages() {
         msgDiv.appendChild(header);
 
         const contentSpan = document.createElement("span");
+        contentSpan.className = "message-content";
         msgDiv.appendChild(contentSpan);
 
         const renderImage = (src) => {
