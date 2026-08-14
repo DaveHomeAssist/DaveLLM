@@ -4,12 +4,12 @@
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DaveLLM — Local-First LLM Dev Server</title>
-<meta name="description" content="Run models locally. Test prompts. Ship faster. A local-first LLM development server with an OpenAI-compatible API.">
+<title>DaveLLM — Local Ollama Desktop Client</title>
+<meta name="description" content="Run authenticated local chat through a FastAPI router, Electron desktop client, and configured Ollama nodes.">
 <meta name="theme-color" content="#08090d">
 <link rel="canonical" href="https://davehomeassist.github.io/DaveLLM/">
-<meta property="og:title" content="DaveLLM — Local-First LLM Dev Server">
-<meta property="og:description" content="Run models locally. Test prompts. Ship faster.">
+<meta property="og:title" content="DaveLLM — Local Ollama Desktop Client">
+<meta property="og:description" content="Authenticated local chat across configured Ollama nodes.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://davehomeassist.github.io/DaveLLM/">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -485,6 +485,10 @@
     margin-bottom: 6px;
   }
 
+  .step-content {
+    min-width: 0;
+  }
+
   .step-code {
     font-family: var(--mono);
     font-size: 13px;
@@ -494,6 +498,8 @@
     border-radius: 6px;
     border: 1px solid var(--border);
     display: inline-block;
+    max-width: 100%;
+    overflow-x: auto;
     cursor: pointer;
     transition: border-color 0.2s;
     position: relative;
@@ -603,6 +609,7 @@
     <div class="nav-links">
       <a href="#features">Features</a>
       <a href="#quickstart">Install</a>
+      <a href="https://github.com/DaveHomeAssist/DaveLLM/blob/main/docs/OPERATIONS.md" target="_blank">Operations</a>
       <a href="https://github.com/DaveHomeAssist/DaveLLM" target="_blank">GitHub</a>
     </div>
   </nav>
@@ -610,11 +617,11 @@
   <!-- Hero -->
   <section class="hero">
     <div class="hero-label">
-      Local LLM Dev Server
+      Local Ollama Desktop Client
       <span class="tag">Alpha</span>
     </div>
-    <h1>Run models.<br>Test prompts.<br>Ship faster.</h1>
-    <p class="hero-sub">A local-first LLM development server. No API keys, no cloud dependency, no data leaving your machine. Just models running on your hardware with a clean API.</p>
+    <h1>Choose a node.<br>Pick a model.<br>Start chatting.</h1>
+    <p class="hero-sub">An authenticated Electron and browser client backed by a FastAPI router. DaveLLM discovers models from configured Ollama nodes and keeps conversations on the router host.</p>
     <div class="hero-actions">
       <a href="#quickstart" class="btn btn-primary">Get started</a>
       <a href="https://github.com/DaveHomeAssist/DaveLLM" target="_blank" class="btn btn-ghost">View source</a>
@@ -630,19 +637,16 @@
       <span class="terminal-title">~/projects/DaveLLM</span>
     </div>
     <div class="terminal-body" id="terminalBody">
-      <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">davellm start</span> <span class="t-flag">--model mistral-7b</span></span>
+      <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">export</span> <span class="t-val">DAVE_API_KEY='&lt;local-secret&gt;'</span></span>
+      <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">export</span> <span class="t-val">DAVE_NODES='&lt;configured-node-json&gt;'</span></span>
+      <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">npm start</span></span>
       <span class="t-line blank"></span>
-      <span class="t-line"><span class="t-dim">  Loading model...</span></span>
-      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">Model loaded</span> <span class="t-val">mistral-7b-instruct-v0.2.Q4_K_M</span> <span class="t-dim">(4.2 GB)</span></span>
-      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">API server</span> <span class="t-val">http://localhost:3000/v1</span></span>
-      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">Playground</span> <span class="t-val">http://localhost:3000/ui</span></span>
+      <span class="t-line"><span class="t-dim">  Starting FastAPI router...</span></span>
+      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">Router health</span> <span class="t-val">http://127.0.0.1:8000/health</span></span>
+      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">Electron UI</span> <span class="t-val">http://127.0.0.1:8000/</span></span>
+      <span class="t-line"><span class="t-ok">  ✓</span> <span class="t-dim">Model inventory</span> <span class="t-val">configured Ollama nodes</span></span>
       <span class="t-line blank"></span>
-      <span class="t-line"><span class="t-comment">  # OpenAI-compatible — drop in anywhere</span></span>
-      <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">curl</span> <span class="t-val">localhost:3000/v1/chat/completions</span> <span class="t-flag">\</span></span>
-      <span class="t-line"><span class="t-dim">    -H</span> <span class="t-val">"Content-Type: application/json"</span> <span class="t-flag">\</span></span>
-      <span class="t-line"><span class="t-dim">    -d</span> <span class="t-val">'{"model":"local","messages":[{"role":"user","content":"hello"}]}'</span></span>
-      <span class="t-line blank"></span>
-      <span class="t-line"><span class="t-ok">  200 OK</span> <span class="t-dim">— 142 tokens in 1.3s (109 tok/s)</span></span>
+      <span class="t-line"><span class="t-comment">  # Browser mode uses the same authenticated router at port 8000</span></span>
       <span class="t-line blank"></span>
       <span class="t-line"><span class="t-prompt">$</span> <span class="cursor-blink"></span></span>
     </div>
@@ -653,24 +657,24 @@
     <div class="section-label">// What it does</div>
     <div class="feature-grid">
       <div class="feature">
-        <div class="feature-icon">⊘</div>
-        <h3>Local-first</h3>
-        <p>Runs entirely on your machine. No API keys to manage, no usage caps, no data transmitted externally. Your prompts stay yours.</p>
-      </div>
-      <div class="feature">
-        <div class="feature-icon">/v1</div>
-        <h3>OpenAI-compatible API</h3>
-        <p>Drop-in replacement for OpenAI endpoints. Existing SDKs, scripts, and tools work without modification — just change the base URL.</p>
+        <div class="feature-icon">◆</div>
+        <h3>Authenticated locally</h3>
+        <p><code>DAVE_API_KEY</code> protects operational routes. Electron keeps the credential outside renderer state; browser mode stores it for the current tab session.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">↔</div>
-        <h3>Model-agnostic</h3>
-        <p>Swap models via config. Point it at any GGUF model file and go. Switch between models without restarting the server.</p>
+        <h3>Configured Ollama nodes</h3>
+        <p><code>DAVE_NODES</code> defines the available Ollama hosts. The router checks each node's live inventory before allowing a chat request.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">◎</div>
+        <h3>Inventory-bound models</h3>
+        <p>Model IDs come from Ollama's <code>/api/tags</code> response. Unknown nodes, unloaded inventories, and unavailable models fail explicitly.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">▶</div>
-        <h3>Built-in playground</h3>
-        <p>Web UI at <code style="color:var(--amber);background:var(--amber-dim);padding:1px 6px;border-radius:3px;font-size:12px;">/ui</code> for testing prompts interactively. No curl required for iteration.</p>
+        <h3>Desktop and browser UI</h3>
+        <p>Use the Electron desktop client or open <code style="color:var(--amber);background:var(--amber-dim);padding:1px 6px;border-radius:3px;font-size:12px;">http://127.0.0.1:8000/</code> after starting uvicorn for browser mode.</p>
       </div>
     </div>
   </section>
@@ -681,22 +685,22 @@
     <div class="arch-diagram">
       <div class="arch-node client">
         <div class="arch-node-label">Client</div>
-        <div class="arch-node-name">Your app / curl / SDK</div>
+        <div class="arch-node-name">Electron / Browser UI</div>
       </div>
       <div class="arch-arrow">→</div>
       <div class="arch-node server">
-        <div class="arch-node-label">Server</div>
-        <div class="arch-node-name">DaveLLM API</div>
+        <div class="arch-node-label">Router</div>
+        <div class="arch-node-name">FastAPI on port 8000</div>
       </div>
       <div class="arch-arrow">→</div>
       <div class="arch-node runtime">
-        <div class="arch-node-label">Runtime</div>
-        <div class="arch-node-name">Inference Engine</div>
+        <div class="arch-node-label">Node</div>
+        <div class="arch-node-name">Configured Ollama Host</div>
       </div>
       <div class="arch-arrow">→</div>
       <div class="arch-node model">
         <div class="arch-node-label">Model</div>
-        <div class="arch-node-name">GGUF / Local weights</div>
+        <div class="arch-node-name">Discovered Inventory</div>
       </div>
     </div>
   </section>
@@ -718,17 +722,19 @@
         <div class="step-num">2</div>
         <div class="step-content">
           <h4>Install</h4>
-          <div class="step-code" onclick="copyToClipboard(this, 'npm install')">
-            npm install
+          <div class="step-code" onclick="copyToClipboard(this, 'python3 -m venv venv && ./venv/bin/python -m pip install -r requirements.txt && npm ci')">
+            python3 -m venv venv &amp;&amp; ./venv/bin/python -m pip install -r requirements.txt &amp;&amp; npm ci
           </div>
         </div>
       </div>
       <div class="step">
         <div class="step-num">3</div>
         <div class="step-content">
-          <h4>Start</h4>
-          <div class="step-code" onclick="copyToClipboard(this, 'npx davellm start')">
-            npx davellm start
+          <h4>Configure and start</h4>
+          <div class="step-code">
+            export DAVE_API_KEY='&lt;local-secret&gt;'<br>
+            export DAVE_NODES='&lt;configured-node-json&gt;'<br>
+            npm start
           </div>
         </div>
       </div>
