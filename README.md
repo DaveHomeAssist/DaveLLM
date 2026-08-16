@@ -2,6 +2,17 @@
 
 DaveLLM is an Electron desktop client backed by a FastAPI router. The router discovers models from configured Ollama nodes, streams OpenAI-compatible chat responses, and persists conversations, projects, vector indexes, feedback, performance, and cost data on the router host.
 
+## Documentation
+
+| Document | Authority |
+|---|---|
+| [README.md](README.md) | Primary setup, configuration, feature, and validation guide. |
+| [INTEGRATION.md](INTEGRATION.md) | Authoritative frontend/backend flow, authentication, and API contracts. |
+| [CLAUDE.md](CLAUDE.md) | Maintainer architecture, trust boundaries, and repository constraints. |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Placeholder-only launch, health, inventory, persistence, and troubleshooting runbook. |
+| [dave-llm-feature-analysis-2026-03-25.md](dave-llm-feature-analysis-2026-03-25.md) | Dated feature-status analysis with explicit verification boundaries. |
+| [Public landing page](https://davehomeassist.github.io/DaveLLM/) | Published product overview and quickstart; not the desktop runtime static root. |
+
 ## Requirements
 
 - Python 3
@@ -82,7 +93,7 @@ npm ci
 npm ls --depth=0
 ```
 
-Runtime UI files are under `static/`; only that directory is mounted at `/`. The separate `docs/` content is unchanged and is not used by the desktop runtime.
+Runtime UI files are under `static/`; only that directory is mounted at `/`. The separate `docs/` content is published through GitHub Pages and is not used by the desktop runtime.
 
 ## Dependency note
 
