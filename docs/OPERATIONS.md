@@ -37,6 +37,18 @@ npm start
 
 Electron starts uvicorn on loopback, waits for public `GET /health`, injects `X-API-Key` only for its exact backend origin, and loads the runtime UI from `static/`.
 
+### Install the one-click macOS launcher
+
+After the standard setup is complete, run:
+
+```bash
+npm run install:macos
+```
+
+The installer creates or preserves the `com.davellm.api-key` generic-password item in the current user's macOS Keychain and installs `~/Applications/DaveLLM Launcher.app`. The launcher retrieves the key at runtime, discovers the Tailscale peers named `dominic` and `walter`, constructs `DAVE_NODES` only in process memory, sets `DAVE_DATA_DIR` to `~/Library/Application Support/DaveLLM`, and runs `npm start` from the repository root. No key or resolved node address is written into source control.
+
+Double-click **DaveLLM Launcher** for normal operation. Review `~/Library/Logs/DaveLLM/launcher.log` if startup fails. The launcher stops before starting a second backend when TCP port `8000` is already occupied.
+
 ## Launch browser mode
 
 From the repository root with the virtual environment and required variables configured:

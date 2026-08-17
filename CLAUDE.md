@@ -9,6 +9,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - `app.py`: FastAPI routes, persistence, inventory, chat, tools, monitoring
 - `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
 - `desktop/`: Electron main process and preload bridge
+- `scripts/macos/`: Keychain-backed launcher and local app installer; node addresses are resolved from live Tailscale state
 - `tests/`: source-aligned FastAPI, mocked Ollama transport, security, and renderer contract tests
 - `docs/`: separate existing documentation artifact; do not use it as the runtime static root
 
@@ -19,6 +20,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - Electron reads the key only in `desktop/main.js` and injects it only for the exact loopback backend origin.
 - The preload exposes the API base and an Electron marker, never the key.
 - Browser credentials use `sessionStorage`, never persistent `localStorage`.
+- The macOS launcher stores only `DAVE_API_KEY` in Keychain and constructs `DAVE_NODES` in memory from live Tailscale peer records.
 - Only `static/` is mounted at `/`; source, Git metadata, JSON, SQLite, and logs must remain unreachable.
 - Tools default off. File tools require explicit absolute roots. Shell execution requires a second opt-in.
 

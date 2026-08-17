@@ -4,6 +4,7 @@
   "description": "Electron shell for DaveLLM",
   "main": "desktop/main.js",
   "scripts": {
+    "install:macos": "zsh scripts/macos/install-launcher.sh",
     "start": "electron ."
   },
   "devDependencies": {

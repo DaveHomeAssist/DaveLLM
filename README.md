@@ -41,6 +41,18 @@ npm start
 
 Electron starts uvicorn, waits up to 15 seconds for public `/health`, injects `X-API-Key` only into requests to its exact loopback backend origin, and then loads the UI. Override the Python executable with `DAVE_PYTHON`, the port with `DAVE_PORT`, or the readiness timeout with `DAVE_STARTUP_TIMEOUT_MS`.
 
+### One-click macOS launcher
+
+Install a Keychain-backed launcher after completing the normal Python and npm setup:
+
+```bash
+npm run install:macos
+```
+
+The installer creates a strong `DAVE_API_KEY` in macOS Keychain when the `com.davellm.api-key` item does not already exist, preserves an existing item, and installs `~/Applications/DaveLLM Launcher.app`. The launcher resolves the Tailscale peers named `dominic` and `walter` at launch time, constructs `DAVE_NODES` in memory, uses `~/Library/Application Support/DaveLLM` for persistence, and starts the existing Electron application. It does not write the key, live node addresses, or generated node JSON to the repository.
+
+Double-click **DaveLLM Launcher** in `~/Applications` for subsequent launches. Startup failures are written to `~/Library/Logs/DaveLLM/launcher.log`. Stop any browser-mode process already using TCP port `8000` before launching the desktop app.
+
 ## Browser mode
 
 ```bash
