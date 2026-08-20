@@ -375,3 +375,109 @@ def test_title_and_embeddings_use_raw_history_indexes(router_factory):
     assert first_indexes == [(0,), (1,)]
     assert long_indexes == [(12,), (13,)]
     assert template_indexes == [(0,), (1,)]
+
+
+def test_unreachable_node_reports_reason_and_preserves_inventory(router_factory):
+    router, client, _ = router_factory()
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
+    assert router.MODEL_INVENTORY["node-test"] == {MODEL_ID}
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(f"{TEST_NODE_URL}/api/tags").mock(
+            side_effect=httpx.ConnectError("connection refused")
+        )
+        response = client.get("/nodes/node-test/models", headers=AUTH)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["models"] == []
+    assert payload["error"] and TEST_NODE_URL in payload["error"]
+    # A transient outage must not erase an inventory that was read successfully.
+    assert router.MODEL_INVENTORY["node-test"] == {MODEL_ID}
+
+
+def test_node_without_pulled_models_is_not_reported_as_an_error(router_factory):
+    _, client, _ = router_factory()
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(f"{TEST_NODE_URL}/api/tags").mock(
+            return_value=httpx.Response(200, json={"models": []})
+        )
+        response = client.get("/nodes/node-test/models", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "node_id": "node-test",
+        "node_name": "Test Ollama",
+        "models": [],
+        "error": None,
+    }
+
+
+def test_node_http_error_is_surfaced(router_factory):
+    _, client, _ = router_factory()
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(f"{TEST_NODE_URL}/api/tags").mock(
+            return_value=httpx.Response(500, text="boom")
+        )
+        response = client.get("/nodes/node-test/models", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["models"] == []
+    assert "500" in response.json()["error"]
+
+
+def test_node_status_reports_offline_reason(router_factory):
+    _, client, _ = router_factory()
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(f"{TEST_NODE_URL}/api/tags").mock(
+            side_effect=httpx.ConnectError("connection refused")
+        )
+        statuses = client.get("/nodes/status", headers=AUTH).json()
+
+    assert statuses[0]["status"] == "offline"
+    assert "OLLAMA_HOST" in statuses[0]["error"]
+
+
+def test_vision_detection_requires_token_boundaries(router_factory):
+    _, client, _ = router_factory()
+
+    tags = ["gemma3:12b", "llama3.2:3b", "qwen2.5vl:7b", "llava:13b-vision", "mm:latest"]
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(f"{TEST_NODE_URL}/api/tags").mock(
+            return_value=httpx.Response(
+                200, json={"models": [{"name": t, "model": t} for t in tags]}
+            )
+        )
+        models = client.get("/nodes/node-test/models", headers=AUTH).json()["models"]
+
+    vision = {m["id"]: m["vision"] for m in models}
+    assert vision["gemma3:12b"] is False
+    assert vision["llama3.2:3b"] is False
+    assert vision["qwen2.5vl:7b"] is True
+    assert vision["llava:13b-vision"] is True
+    assert vision["mm:latest"] is True
+
+
+def test_malformed_node_env_registers_no_nodes_loudly(monkeypatch, tmp_path, capsys):
+    import importlib
+    import sys
+
+    monkeypatch.setenv("DAVE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DAVE_API_KEY", TEST_API_KEY)
+    monkeypatch.setenv("DAVE_NODES", "{not json}")
+
+    sys.modules.pop("app", None)
+    try:
+        router = importlib.import_module("app")
+        assert router.NODE_CONFIGS == []
+        # The empty inventory has to explain itself rather than look like
+        # "Ollama has no models".
+        assert "DAVE_NODES" in capsys.readouterr().out
+    finally:
+        sys.modules.pop("app", None)

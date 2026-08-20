@@ -1833,6 +1833,7 @@ async function loadModelsFromNode(preferredModelId = null) {
 
         const data = await res.json();
         const models = data.models || [];
+        const nodeError = data.error || null;
         const normalizedModels = models
             .map((m) => normalizeModelMeta(m))
             .filter(Boolean);
@@ -1843,8 +1844,12 @@ async function loadModelsFromNode(preferredModelId = null) {
         if (normalizedModels.length === 0) {
             const opt = document.createElement("option");
             opt.value = "";
-            opt.textContent = "No models available";
+            // An unreachable node and a node with nothing pulled both yield an
+            // empty list; say which one happened.
+            opt.textContent = nodeError ? "Node unreachable" : "No models pulled on node";
+            opt.title = nodeError || "";
             modelSelect.appendChild(opt);
+            if (nodeError) console.error(`Node ${state.selectedNode}: ${nodeError}`);
         } else {
             normalizedModels.forEach((meta) => {
                 state.modelMeta[meta.id] = meta;
@@ -2399,7 +2404,7 @@ sendBtn.onclick = () => {
 
 refreshNodesBtn.onclick = fetchNodes;
 newConvoBtn.onclick = createNewConversation;
-loadModelsBtn.onclick = loadModelsFromNode;
+loadModelsBtn.onclick = () => loadModelsFromNode();
 
 nodeSelect.addEventListener("change", (e) => {
     clearUndoState();

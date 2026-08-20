@@ -425,7 +425,17 @@ _env_nodes = os.getenv("DAVE_NODES")
 if _env_nodes:
     try:
         DEFAULT_NODES = [NodeConfig(**n) for n in json.loads(_env_nodes)]
-    except Exception:
+    except Exception as exc:
+        # Registering zero nodes silently looks identical to "Ollama has no
+        # models"; say why the inventory is empty instead.
+        print(
+            "❌ DAVE_NODES was set but could not be parsed, so no nodes are "
+            f"registered: {exc}"
+        )
+        print(
+            '   Expected JSON: [{"id":"<node-id>","name":"<display-name>",'
+            '"url":"http://<ollama-host>:11434"}]'
+        )
         DEFAULT_NODES = []
 else:
     DEFAULT_NODES = [
@@ -454,6 +464,20 @@ else:
 NODE_CONFIGS: List[NodeConfig] = DEFAULT_NODES
 NODE_CYCLE = cycle(NODE_CONFIGS)
 _node_lock = threading.Lock()
+
+def _node_timeout() -> float:
+    """Seconds to wait on a node's /api/tags. Override with DAVE_NODE_TIMEOUT."""
+    raw = os.getenv("DAVE_NODE_TIMEOUT", "")
+    if raw:
+        try:
+            value = float(raw)
+            if value > 0:
+                return value
+        except ValueError:
+            print(f"⚠️ Ignoring invalid DAVE_NODE_TIMEOUT={raw!r}; using 10s")
+    return 10.0
+
+NODE_TIMEOUT = _node_timeout()
 
 def choose_node() -> NodeConfig:
     """Thread-safe round-robin selection of nodes."""
@@ -605,11 +629,26 @@ def choose_model_for_prompt(prompt: str, prefs: RoutePreferences, conversation_l
         reason=reason,
     )
 
+def describe_node_error(node: NodeConfig, exc: Exception) -> str:
+    """Turn a transport failure into a reason an operator can act on."""
+    if isinstance(exc, httpx.TimeoutException):
+        return (
+            f"{node.url} did not answer /api/tags within {NODE_TIMEOUT:g}s "
+            "(raise DAVE_NODE_TIMEOUT if the node is just slow)"
+        )
+    if isinstance(exc, httpx.ConnectError):
+        return (
+            f"cannot connect to {node.url} (is Ollama running and bound beyond "
+            "loopback? set OLLAMA_HOST=0.0.0.0:11434 on the node)"
+        )
+    return f"{type(exc).__name__} talking to {node.url}: {exc}"
+
 async def get_node_health(node: NodeConfig) -> dict:
     """Check Ollama node health and latency through its model inventory."""
+    error = None
     try:
         start = time.time()
-        async with httpx.AsyncClient(timeout=3) as client:
+        async with httpx.AsyncClient(timeout=NODE_TIMEOUT) as client:
             resp = await client.get(f"{node.url}/api/tags")
         latency = (time.time() - start) * 1000  # ms
 
@@ -618,20 +657,28 @@ async def get_node_health(node: NodeConfig) -> dict:
                 "status": "online",
                 "latency": round(latency, 1),
                 "node_id": node.id,
-                "name": node.name
+                "name": node.name,
+                "error": None,
             }
-    except Exception:
-        pass
+        error = f"{node.url}/api/tags returned HTTP {resp.status_code}"
+    except Exception as exc:
+        error = describe_node_error(node, exc)
 
     return {
         "status": "offline",
         "latency": None,
         "node_id": node.id,
-        "name": node.name
+        "name": node.name,
+        "error": error,
     }
 
-async def get_node_models(node: NodeConfig) -> list:
-    """Fetch Ollama's available models and flag vision capability."""
+async def fetch_node_models(node: NodeConfig) -> dict:
+    """Fetch Ollama's models as {"models": [...], "error": str | None}.
+
+    An empty list with ``error`` set means the node could not be reached; an
+    empty list and no ``error`` means the node genuinely has nothing pulled.
+    Callers have to be able to tell those two apart.
+    """
 
     def detect_vision(model_obj, model_id: str) -> bool:
         """Heuristic detection of vision-capable models."""
@@ -639,13 +686,14 @@ async def get_node_models(node: NodeConfig) -> list:
             return False
 
         lid = model_id.lower()
-        # Basic filename heuristics, including common "vl" (vision-language) patterns
-        if (
-            "vision" in lid
-            or "multimodal" in lid
-            or "mm" in lid
-            or "vl" in lid
-        ):
+        # Basic filename heuristics, including common "vl" (vision-language)
+        # patterns. "mm" and "vl" match as whole tokens only, otherwise every
+        # "gemma" tag is mislabelled as vision-capable.
+        if "vision" in lid or "multimodal" in lid:
+            return True
+        if any(token in {"mm", "vl"} for token in re.split(r"[^a-z0-9]+", lid)):
+            return True
+        if re.search(r"[0-9](?:\.[0-9]+)?vl\b", lid):
             return True
 
         if isinstance(model_obj, dict):
@@ -670,7 +718,7 @@ async def get_node_models(node: NodeConfig) -> list:
         return False
 
     try:
-        async with httpx.AsyncClient(timeout=3) as client:
+        async with httpx.AsyncClient(timeout=NODE_TIMEOUT) as client:
             resp = await client.get(f"{node.url}/api/tags")
         if resp.is_success:
             data = resp.json()
@@ -717,18 +765,21 @@ async def get_node_models(node: NodeConfig) -> list:
                     f"✅ Fetched {len(normalized_models)} models from {node.name}: "
                     f"{[m['id'] for m in normalized_models]}"
                 )
-                return normalized_models
+                return {"models": normalized_models, "error": None}
 
-            print(f"⚠️ Node {node.name} returned empty model list")
-            return []
-    except httpx.TimeoutException:
-        print(f"⚠️ Node {node.name} timed out fetching models")
-    except httpx.ConnectError:
-        print(f"⚠️ Cannot connect to {node.name} at {node.url}")
-    except Exception as e:
-        print(f"⚠️ Error fetching models from {node.name}: {e}")
+            print(
+                f"⚠️ Node {node.name} is reachable but has no models pulled "
+                f"(run `ollama pull <model>` on {node.url})"
+            )
+            return {"models": [], "error": None}
 
-    return []
+        error = f"{node.url}/api/tags returned HTTP {resp.status_code}"
+        print(f"⚠️ Node {node.name}: {error}")
+        return {"models": [], "error": error}
+    except Exception as exc:
+        error = describe_node_error(node, exc)
+        print(f"⚠️ Node {node.name}: {error}")
+        return {"models": [], "error": error}
 
 # ============================================================
 # VECTOR MEMORY STORAGE (SQLite-based)
@@ -1422,13 +1473,20 @@ async def get_node_models_endpoint(node_id: str, _auth=Depends(require_api_key))
     if not node:
         raise HTTPException(404, f"Node '{node_id}' not found")
 
-    models = await get_node_models(node)
-    MODEL_INVENTORY[node_id] = {model["id"] for model in models}
-     
+    result = await fetch_node_models(node)
+    models = result["models"]
+    error = result["error"]
+
+    # Only publish an inventory we actually read. Overwriting it after a
+    # transient failure would reject models the node really does serve.
+    if error is None:
+        MODEL_INVENTORY[node_id] = {model["id"] for model in models}
+
     return {
         "node_id": node_id,
         "node_name": node.name,
-        "models": models
+        "models": models,
+        "error": error,
     }
 
 @app.api_route("/models/download", methods=["POST", "OPTIONS"])
