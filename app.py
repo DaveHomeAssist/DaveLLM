@@ -686,14 +686,17 @@ async def fetch_node_models(node: NodeConfig) -> dict:
             return False
 
         lid = model_id.lower()
-        # Basic filename heuristics, including common "vl" (vision-language)
-        # patterns. "mm" and "vl" match as whole tokens only, otherwise every
-        # "gemma" tag is mislabelled as vision-capable.
+        # Basic filename heuristics. "mm" matches as a whole token only,
+        # otherwise every "gemma" tag is mislabelled as vision-capable.
         if "vision" in lid or "multimodal" in lid:
             return True
-        if any(token in {"mm", "vl"} for token in re.split(r"[^a-z0-9]+", lid)):
+        if "mm" in re.split(r"[^a-z0-9]+", lid):
             return True
-        if re.search(r"[0-9](?:\.[0-9]+)?vl\b", lid):
+        # "vl" (vision-language) shows up alone, glued to the family name, and
+        # with a version suffix: vl, qwen2.5vl, internvl2, deepseek-vl2. Require
+        # a non-alphanumeric boundary after the optional version digits so that
+        # longer words merely containing "vl" do not match.
+        if re.search(r"vl[0-9]*(?![a-z0-9])", lid):
             return True
 
         if isinstance(model_obj, dict):

@@ -447,7 +447,15 @@ def test_node_status_reports_offline_reason(router_factory):
 def test_vision_detection_requires_token_boundaries(router_factory):
     _, client, _ = router_factory()
 
-    tags = ["gemma3:12b", "llama3.2:3b", "qwen2.5vl:7b", "llava:13b-vision", "mm:latest"]
+    tags = [
+        "gemma3:12b",
+        "llama3.2:3b",
+        "qwen2.5vl:7b",
+        "llava:13b-vision",
+        "mm:latest",
+        "internvl2:latest",
+        "deepseek-vl2:latest",
+    ]
     with respx.mock(assert_all_called=True) as mock:
         mock.get(f"{TEST_NODE_URL}/api/tags").mock(
             return_value=httpx.Response(
@@ -462,6 +470,9 @@ def test_vision_detection_requires_token_boundaries(router_factory):
     assert vision["qwen2.5vl:7b"] is True
     assert vision["llava:13b-vision"] is True
     assert vision["mm:latest"] is True
+    # A "vl" marker carrying its own version digits is still vision-language.
+    assert vision["internvl2:latest"] is True
+    assert vision["deepseek-vl2:latest"] is True
 
 
 def test_malformed_node_env_registers_no_nodes_loudly(monkeypatch, tmp_path, capsys):
