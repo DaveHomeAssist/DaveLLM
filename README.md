@@ -70,6 +70,17 @@ The UI loads nodes from `GET /nodes`, then loads the selected node's inventory f
 
 The repository intentionally contains no real node addresses or verified model inventory. Cluster reachability and installed models remain runtime-dependent.
 
+### When no models load
+
+`GET /nodes/{node_id}/models` and `GET /nodes/status` both return an `error` field so an empty inventory explains itself instead of looking like an empty cluster:
+
+- `error: null` with an empty `models` list means the node answered `/api/tags` and has nothing pulled. Run `ollama pull <model>` on that node.
+- `error` set means the node was not reached. The message names the cause: connection refused, an HTTP status, or a timeout.
+- A node that answers `curl http://127.0.0.1:11434/api/tags` locally but refuses the router is bound to loopback only. Start it with `OLLAMA_HOST=0.0.0.0:11434`.
+- A malformed `DAVE_NODES` value registers zero nodes. The router now prints the parse error and the expected JSON shape at startup instead of failing silently.
+
+`DAVE_NODE_TIMEOUT` sets the per-node `/api/tags` timeout in seconds and defaults to `10`. Raise it for nodes that are slow to answer while loading a large model.
+
 ## Data and tools
 
 `DAVE_DATA_DIR` relocates all six persistence artifacts. When unset, the current working directory remains the default.

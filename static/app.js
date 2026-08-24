@@ -664,16 +664,24 @@ function replaceSelectOptions(select, label, value = "") {
     select.replaceChildren(option);
 }
 
+// Mirrors detect_vision() in app.py: "mm" only as a whole token, so "gemma" is
+// not treated as vision-capable, and "vl" with an optional version suffix so
+// qwen2.5vl, internvl2 and deepseek-vl2 are.
+function modelIdLooksVisionCapable(modelId) {
+    const lowerId = String(modelId || "").toLowerCase();
+    if (!lowerId) return false;
+    if (lowerId.includes("vision") || lowerId.includes("multimodal")) return true;
+    if (lowerId.split(/[^a-z0-9]+/).includes("mm")) return true;
+    return /vl[0-9]*(?![a-z0-9])/.test(lowerId);
+}
+
 function normalizeModelMeta(model) {
     if (!model) return null;
 
     const id = typeof model === "string" ? model : (model.id || model.model || model.name);
     if (!id) return null;
 
-    const lowerId = id.toLowerCase();
-    const visionFromId = lowerId.includes("vision") || lowerId.includes("multimodal") || lowerId.includes("mm");
-
-    let vision = visionFromId;
+    let vision = modelIdLooksVisionCapable(id);
 
     if (typeof model === "object") {
         const caps = model.capabilities || {};
@@ -705,7 +713,7 @@ function modelSupportsVision(modelId) {
     if (!modelId) return false;
     const meta = state.modelMeta[modelId];
     if (meta) return !!meta.vision;
-    return ["vision", "multimodal", "mm"].some((flag) => modelId.toLowerCase().includes(flag));
+    return modelIdLooksVisionCapable(modelId);
 }
 
 function updateImageSupportNotice() {
@@ -1833,6 +1841,7 @@ async function loadModelsFromNode(preferredModelId = null) {
 
         const data = await res.json();
         const models = data.models || [];
+        const nodeError = data.error || null;
         const normalizedModels = models
             .map((m) => normalizeModelMeta(m))
             .filter(Boolean);
@@ -1843,8 +1852,12 @@ async function loadModelsFromNode(preferredModelId = null) {
         if (normalizedModels.length === 0) {
             const opt = document.createElement("option");
             opt.value = "";
-            opt.textContent = "No models available";
+            // An unreachable node and a node with nothing pulled both yield an
+            // empty list; say which one happened.
+            opt.textContent = nodeError ? "Node unreachable" : "No models pulled on node";
+            opt.title = nodeError || "";
             modelSelect.appendChild(opt);
+            if (nodeError) console.error(`Node ${state.selectedNode}: ${nodeError}`);
         } else {
             normalizedModels.forEach((meta) => {
                 state.modelMeta[meta.id] = meta;
@@ -2399,7 +2412,7 @@ sendBtn.onclick = () => {
 
 refreshNodesBtn.onclick = fetchNodes;
 newConvoBtn.onclick = createNewConversation;
-loadModelsBtn.onclick = loadModelsFromNode;
+loadModelsBtn.onclick = () => loadModelsFromNode();
 
 nodeSelect.addEventListener("change", (e) => {
     clearUndoState();
