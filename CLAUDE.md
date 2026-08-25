@@ -20,7 +20,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - Electron reads the key only in `desktop/main.js` and injects it only for the exact loopback backend origin.
 - The preload exposes the API base and an Electron marker, never the key.
 - Browser credentials use `sessionStorage`, never persistent `localStorage`.
-- The macOS launcher stores only `DAVE_API_KEY` in Keychain and constructs `DAVE_NODES` in memory from live Tailscale peer records.
+- The macOS launcher stores only `DAVE_API_KEY` in Keychain and constructs `DAVE_NODES` in memory from live Tailscale peer records. Dominic and Walter are required; Duncan is appended only when online and Ollama-responsive, and never blocks startup.
 - Only `static/` is mounted at `/`; source, Git metadata, JSON, SQLite, and logs must remain unreachable.
 - Tools default off. File tools require explicit absolute roots. Shell execution requires a second opt-in.
 

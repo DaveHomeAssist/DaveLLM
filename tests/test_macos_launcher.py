@@ -30,6 +30,24 @@ def test_macos_launcher_uses_keychain_and_live_tailscale_inventory():
     assert "sessionStorage" not in launcher
 
 
+def test_macos_launcher_adds_only_a_healthy_optional_duncan_node():
+    launcher = LAUNCHER.read_text()
+
+    for required in (
+        "resolve_optional_node_ip duncan",
+        'select(.Online == true)',
+        'ollama_is_healthy "$duncan_url"',
+        '"${node_url}/api/tags"',
+        '{id: "duncan", name: "Duncan", url: $duncan_url}',
+        'if $duncan_node == null then [] else [$duncan_node] end',
+        "optional node unavailable: duncan",
+        "optional node offline or not found: duncan",
+    ):
+        assert required in launcher
+
+    assert "resolve_node_ip duncan" not in launcher
+
+
 def test_macos_installer_generates_a_key_and_one_click_app_without_printing_it():
     installer = INSTALLER.read_text()
 

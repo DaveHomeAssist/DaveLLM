@@ -56,15 +56,51 @@ resolve_node_ip() {
     print -r -- "$node_ip"
 }
 
+resolve_optional_node_ip() {
+    local node_name="$1"
+    local node_ip
+    node_ip="$(print -r -- "$tailscale_status" | "$JQ_BIN" -r --arg node "$node_name" '
+        [
+            .Peer[]
+            | select(((.HostName // "") | ascii_downcase) == ($node | ascii_downcase))
+            | select(.Online == true)
+            | .TailscaleIPs[]
+            | select(test("^[0-9]+(\\.[0-9]+){3}$"))
+        ][0] // empty
+    ' 2>/dev/null)" || return 0
+    [[ -n "$node_ip" ]] && print -r -- "$node_ip"
+    return 0
+}
+
+ollama_is_healthy() {
+    local node_url="$1"
+    /usr/bin/curl --fail --silent --max-time 4 "${node_url}/api/tags" >/dev/null 2>&1
+}
+
 dominic_ip="$(resolve_node_ip dominic)"
 walter_ip="$(resolve_node_ip walter)"
+duncan_node="null"
+duncan_ip="$(resolve_optional_node_ip duncan)"
+if [[ -n "$duncan_ip" ]]; then
+    duncan_url="http://${duncan_ip}:11434"
+    if ollama_is_healthy "$duncan_url"; then
+        duncan_node="$($JQ_BIN -cn \
+            --arg duncan_url "$duncan_url" \
+            '{id: "duncan", name: "Duncan", url: $duncan_url}')"
+    else
+        print -u2 -- "DaveLLM launcher: optional node unavailable: duncan"
+    fi
+else
+    print -u2 -- "DaveLLM launcher: optional node offline or not found: duncan"
+fi
 nodes_json="$($JQ_BIN -cn \
     --arg dominic_url "http://${dominic_ip}:11434" \
     --arg walter_url "http://${walter_ip}:11434" \
-    '[
+    --argjson duncan_node "$duncan_node" \
+    '([
         {id: "dominic", name: "Dominic", url: $dominic_url},
         {id: "walter", name: "Walter", url: $walter_url}
-    ]')"
+    ] + if $duncan_node == null then [] else [$duncan_node] end)')"
 
 if /usr/sbin/lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
     fail "TCP port 8000 is already in use; stop the existing DaveLLM/browser-mode process first"

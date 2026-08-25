@@ -49,7 +49,7 @@ Install a Keychain-backed launcher after completing the normal Python and npm se
 npm run install:macos
 ```
 
-The installer creates a strong `DAVE_API_KEY` in macOS Keychain when the `com.davellm.api-key` item does not already exist, preserves an existing item, and installs `~/Applications/DaveLLM Launcher.app`. The launcher resolves the Tailscale peers named `dominic` and `walter` at launch time, constructs `DAVE_NODES` in memory, uses `~/Library/Application Support/DaveLLM` for persistence, and starts the existing Electron application. It does not write the key, live node addresses, or generated node JSON to the repository.
+The installer creates a strong `DAVE_API_KEY` in macOS Keychain when the `com.davellm.api-key` item does not already exist, preserves an existing item, and installs `~/Applications/DaveLLM Launcher.app`. The launcher requires the Tailscale peers named `dominic` and `walter`, then adds `duncan` only when that peer is online and its Ollama `/api/tags` endpoint responds within four seconds. An unavailable Duncan is logged and skipped without blocking startup. The launcher constructs `DAVE_NODES` in memory, uses `~/Library/Application Support/DaveLLM` for persistence, and starts the existing Electron application. It does not write the key, live node addresses, or generated node JSON to the repository.
 
 Double-click **DaveLLM Launcher** in `~/Applications` for subsequent launches. Startup failures are written to `~/Library/Logs/DaveLLM/launcher.log`. Stop any browser-mode process already using TCP port `8000` before launching the desktop app.
 
