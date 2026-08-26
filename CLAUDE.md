@@ -59,6 +59,8 @@ export DAVE_NODES='[{"id":"<node-id>","name":"<display-name>","url":"http://<oll
 npm start
 ```
 
+GitHub Actions enforces these checks on every push to `main` and every pull request via `.github/workflows/ci.yml`.
+
 Required checks after relevant changes:
 
 ```bash

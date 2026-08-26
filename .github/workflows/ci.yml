@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Compile check
+        run: python -m py_compile app.py
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: JavaScript syntax check
+        run: node --check static/app.js static/prompt-contract.js desktop/main.js desktop/preload.js
+
+      - name: Shell syntax check
+        run: bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
+
+      - name: npm install
+        run: npm ci
+
+      - name: Dependency tree check
+        run: npm ls --depth=0
+
+      - name: Whitespace check
+        run: git diff --check
