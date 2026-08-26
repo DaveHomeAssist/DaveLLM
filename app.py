@@ -1492,6 +1492,30 @@ async def get_node_models_endpoint(node_id: str, _auth=Depends(require_api_key))
         "error": error,
     }
 
+ALLOWED_MODEL_DOWNLOAD_HOSTS = ("huggingface.co", "hf.co")
+MAX_MODEL_DOWNLOAD_REDIRECTS = 5
+
+def _validate_model_download_url(url: str) -> str:
+    """
+    Allow only credential-free URLs whose exact host is Hugging Face (or a
+    subdomain, such as the cdn-lfs endpoints large files redirect to).
+    Substring checks on the netloc are bypassable with userinfo tricks like
+    http://huggingface.co@127.0.0.1:8000/, which is an SSRF against loopback
+    services, so match the parsed hostname exactly.
+    """
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(400, "Only http/https URLs are supported")
+    parsed = urlparse(url)
+    if parsed.username is not None or parsed.password is not None:
+        raise HTTPException(400, "URLs with embedded credentials are not allowed")
+    host = (parsed.hostname or "").lower()
+    if not any(
+        host == allowed or host.endswith("." + allowed)
+        for allowed in ALLOWED_MODEL_DOWNLOAD_HOSTS
+    ):
+        raise HTTPException(400, "Only Hugging Face URLs are allowed for safety")
+    return url
+
 @app.api_route("/models/download", methods=["POST", "OPTIONS"])
 def download_model(req: ModelDownloadRequest, request: Request, _auth=Depends(require_api_key)):
     """
@@ -1499,13 +1523,8 @@ def download_model(req: ModelDownloadRequest, request: Request, _auth=Depends(re
     """
     if request.method == "OPTIONS":
         return {"status": "ok"}
-    url = req.url.strip()
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(400, "Only http/https URLs are supported")
-
+    url = _validate_model_download_url(req.url.strip())
     parsed = urlparse(url)
-    if "huggingface.co" not in parsed.netloc:
-        raise HTTPException(400, "Only Hugging Face URLs are allowed for safety")
 
     dest_root = Path("models")
     dest_root.mkdir(parents=True, exist_ok=True)
@@ -1525,23 +1544,44 @@ def download_model(req: ModelDownloadRequest, request: Request, _auth=Depends(re
 
     max_bytes = 10 * 1024 * 1024 * 1024  # 10GB cap
     total = 0
+    wrote_file = False
     try:
-        with requests.get(url, stream=True, timeout=30) as r:
+        # Follow redirects manually so every hop is revalidated against the
+        # Hugging Face allowlist instead of trusting wherever the first
+        # response points.
+        redirects = 0
+        while True:
+            r = requests.get(url, stream=True, timeout=30, allow_redirects=False)
+            if r.status_code in (301, 302, 303, 307, 308):
+                location = r.headers.get("Location", "")
+                r.close()
+                redirects += 1
+                if redirects > MAX_MODEL_DOWNLOAD_REDIRECTS:
+                    raise HTTPException(400, "Too many redirects")
+                if not location:
+                    raise HTTPException(502, "Redirect response missing a Location header")
+                url = _validate_model_download_url(urljoin(url, location).strip())
+                continue
+            break
+        with r:
             r.raise_for_status()
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             with open(dest_path, "wb") as f:
+                wrote_file = True
                 for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
                     if not chunk:
                         continue
                     total += len(chunk)
                     if total > max_bytes:
-                        f.close()
-                        dest_path.unlink(missing_ok=True)
                         raise HTTPException(400, "File too large (over 10GB limit)")
                     f.write(chunk)
     except HTTPException:
+        if wrote_file:
+            dest_path.unlink(missing_ok=True)
         raise
     except Exception as e:
+        if wrote_file:
+            dest_path.unlink(missing_ok=True)
         raise HTTPException(500, f"Download failed: {e}")
 
     return {
