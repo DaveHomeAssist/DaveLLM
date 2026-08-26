@@ -13,7 +13,10 @@ const STARTUP_TIMEOUT_MS = Number(process.env.DAVE_STARTUP_TIMEOUT_MS || 15000);
 process.env.DAVE_API_BASE = API_BASE;
 
 function startBackend() {
-  const venvPython = path.join(process.cwd(), "venv", "bin", "python");
+  const venvPython =
+    process.platform === "win32"
+      ? path.join(process.cwd(), "venv", "Scripts", "python.exe")
+      : path.join(process.cwd(), "venv", "bin", "python");
   const pythonCmd = process.env.DAVE_PYTHON || venvPython;
   const args = ["-m", "uvicorn", "app:app", "--host", HOST, "--port", PORT];
 

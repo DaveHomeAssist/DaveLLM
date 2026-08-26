@@ -40,7 +40,7 @@ export DAVE_NODES='[{"id":"<node-id>","name":"<display-name>","url":"http://<oll
 npm start
 ```
 
-Electron starts uvicorn, waits up to 15 seconds for public `/health`, injects `X-API-Key` only into requests to its exact loopback backend origin, and then loads the UI. Override the Python executable with `DAVE_PYTHON`, the port with `DAVE_PORT`, or the readiness timeout with `DAVE_STARTUP_TIMEOUT_MS`.
+Electron starts uvicorn, waits up to 15 seconds for public `/health`, injects `X-API-Key` only into requests to its exact loopback backend origin, and then loads the UI. The default Python is the repository virtual environment (`venv/bin/python` on macOS and Linux, `venv\Scripts\python.exe` on Windows). Override the Python executable with `DAVE_PYTHON`, the port with `DAVE_PORT`, or the readiness timeout with `DAVE_STARTUP_TIMEOUT_MS`.
 
 ### One-click macOS launcher
 

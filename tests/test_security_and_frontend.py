@@ -1,6 +1,7 @@
 import os
 import socket
 import subprocess
+import sys
 from pathlib import Path
 
 import httpx
@@ -134,6 +135,14 @@ def test_data_dir_contains_every_persistence_artifact(router_factory):
     assert all(path.parent == data_dir.resolve() for path in paths)
 
 
+def _repo_python(repo):
+    if os.name == "nt":
+        venv_python = repo / "venv" / "Scripts" / "python.exe"
+    else:
+        venv_python = repo / "venv" / "bin" / "python"
+    return str(venv_python) if venv_python.exists() else sys.executable
+
+
 def test_unset_data_dir_preserves_current_directory_default(tmp_path):
     repo = Path(__file__).resolve().parents[1]
     env = dict(os.environ)
@@ -142,7 +151,7 @@ def test_unset_data_dir_preserves_current_directory_default(tmp_path):
     env["DAVE_NODES"] = "[]"
     env["PYTHONPATH"] = str(repo)
     result = subprocess.run(
-        [str(repo / "venv" / "bin" / "python"), "-c", "import app; print(app.BASE_DIR)"],
+        [_repo_python(repo), "-c", "import app; print(app.BASE_DIR)"],
         cwd=tmp_path,
         env=env,
         check=True,
