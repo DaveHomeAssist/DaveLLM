@@ -121,6 +121,7 @@ def test_data_dir_contains_every_persistence_artifact(router_factory):
         router.VECTOR_DB,
         router.FEEDBACK_DB,
         router.PERFORMANCE_DB,
+        router.PROJECT_CONTEXT_DB,
         router.COST_LOG,
     }
     assert {path.name for path in paths} == {
@@ -130,6 +131,7 @@ def test_data_dir_contains_every_persistence_artifact(router_factory):
         "dave_vectors.db",
         "feedback.db",
         "performance.db",
+        "dave_project_context.db",
         "cost_log.jsonl",
     }
     assert all(path.parent == data_dir.resolve() for path in paths)
@@ -174,6 +176,7 @@ def test_displayed_prompt_contract_and_renderer_security():
     app_source = (repo / "static" / "app.js").read_text()
     index_source = (repo / "static" / "index.html").read_text()
     style_source = (repo / "static" / "style.css").read_text()
+    gsap_source = (repo / "static" / "vendor" / "gsap" / "gsap.min.js").read_text()
     monitoring_source = (repo / "static" / "monitoring.html").read_text()
     preload_source = (repo / "desktop" / "preload.js").read_text()
     main_source = (repo / "desktop" / "main.js").read_text()
@@ -212,6 +215,34 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert 'id="effectiveInstructions"' in index_source
     assert 'id="notepadPanel"' in index_source
     assert 'id="notepadInput"' in index_source
+    assert 'id="projectHomeDialog"' in index_source
+    assert 'id="projectHomeInstructions"' in index_source
+    assert 'id="projectFilesList"' in index_source
+    assert 'id="projectArtifactsList"' in index_source
+    assert 'id="brainPinned"' in index_source
+    assert 'id="brainActive"' in index_source
+    assert 'id="brainRecent"' in index_source
+    assert 'id="previewProjectContext"' in index_source
+    assert 'id="projectContextPreviewOutput"' in index_source
+    assert "async function openProjectHomepage()" in app_source
+    assert "/homepage`)" in app_source
+    assert "/context-preview`)" in app_source
+    assert "/brain/compact`)" in app_source
+    assert "/project`)" in app_source
+    assert "vendor/lucide/lucide.svg#image" in index_source
+    assert "vendor/lucide/lucide.svg#file-audio" in index_source
+    assert "vendor/lucide/lucide.svg#captions" in index_source
+    assert "vendor/lucide/lucide.svg#mic" in index_source
+    assert "vendor/lucide/lucide.svg#paperclip" in index_source
+    assert '<script src="vendor/gsap/gsap.min.js"></script>' in index_source
+    assert "GSAP 3.15.0" in gsap_source[:200]
+    assert "window.gsap.matchMedia()" in app_source
+    assert '"(prefers-reduced-motion: no-preference)"' in app_source
+    assert '"(prefers-reduced-motion: reduce)"' in app_source
+    assert all(
+        glyph not in index_source + app_source
+        for glyph in ("📷", "🎤", "🗣️", "✍️", "🎙️", "⏹️", "📎")
+    )
     assert 'aria-controls="notepadPanel"' in index_source
     assert "navigator.clipboard?.writeText" in app_source
     assert "rawMessageText(message)" in app_source

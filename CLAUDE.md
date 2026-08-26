@@ -2,13 +2,15 @@
 
 ## Product
 
-DaveLLM is a FastAPI router with an Electron and browser UI for authenticated chat against configured Ollama nodes. The repository preserves conversation and project JSON semantics, SQLite vector/feedback/performance stores, streamed chat, attachments, export, monitoring, and optional local tools.
+DaveLLM is a FastAPI router with an Electron and browser UI for authenticated chat against configured Ollama nodes. The repository preserves conversation and core project JSON semantics, normalized SQLite project context plus vector/feedback/performance stores, streamed chat, attachments, export, monitoring, and optional local tools.
 
 ## Source layout
 
 - `app.py`: FastAPI routes, persistence, inventory, chat, tools, monitoring
+- `project_context.py`: normalized Project Homepage storage, BRAIN revisions, file/artifact retrieval, and bounded request assembly
 - `tool_executor.py`: runtime tool registry, schema validation, timing, approval boundaries, and bounded executor loop
 - `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
+- `static/vendor/`: pinned browser-only Lucide and GSAP assets with their license notices; no CDN runtime path
 - `desktop/`: Electron main process and preload bridge
 - `scripts/macos/`: Keychain-backed launcher and local app installer; node addresses are resolved from live Tailscale state
 - `tests/`: source-aligned FastAPI, mocked Ollama transport, security, and renderer contract tests
@@ -27,6 +29,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - The agent loop defaults to eight model steps, returns partial transcripts, and requires per-run approval for mutating or execution tools.
 - Global, project, and session instruction layers are visible in the UI and resolve into one exact primary system message.
 - Project notepads are plain text in project persistence. Do not add rich text, history, collaboration, or browser note storage.
+- Existing-chat project changes must use the explicit attachment endpoint and apply only to future messages.
 
 ## Ollama integration
 
@@ -39,10 +42,12 @@ Every runtime persistence path is based on `BASE_DIR`, which is derived from `DA
 - `dave_conversations.json`
 - `dave_projects.json`
 - `dave_settings.json`
+- `dave_project_context.db`
 - `dave_vectors.db`
 - `feedback.db`
 - `performance.db`
 - `cost_log.jsonl`
+- `project_uploads/`
 
 Do not import, move, or infer legacy model or data locations.
 
@@ -64,7 +69,7 @@ GitHub Actions enforces these checks on every push to `main` and every pull requ
 Required checks after relevant changes:
 
 ```bash
-python -m py_compile app.py
+python -m py_compile app.py project_context.py scripts/project_context_cli.py
 python -m pytest -q
 node --check static/app.js static/prompt-contract.js desktop/main.js desktop/preload.js
 bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
@@ -78,4 +83,4 @@ git diff --check
 - Real node reachability, installed model inventory, inference quality, Whisper execution, and hardware performance require cluster access and are not proven by repository tests.
 - Electron is pinned to `^44.0.0` (upgraded from `^30.0.0` per audit finding H-1, 2026-08-26). npm audit reports no known vulnerabilities at this line; keep the pin on a supported major.
 - FastAPI startup/shutdown event deprecation warnings are known; a lifespan migration is deferred because it is outside the P0 stabilization scope.
-- JSON conversation/project persistence is preserved. A SQLite migration is deferred.
+- Conversation JSON and core project metadata remain compatible. Project Instructions, BRAIN revisions, uploaded-file indexes, and artifact history are normalized in `dave_project_context.db`; a full conversation migration remains deferred.

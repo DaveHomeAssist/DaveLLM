@@ -48,6 +48,8 @@ def test_static_root_is_isolated(router_factory):
         "/feedback.db",
         "/performance.db",
         "/dave_vectors.db",
+        "/dave_project_context.db",
+        "/project_uploads/example.txt",
         "/cost_log.jsonl",
     ):
         assert client.get(path).status_code == 404, path

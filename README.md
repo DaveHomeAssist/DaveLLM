@@ -84,15 +84,17 @@ The repository intentionally contains no real node addresses or verified model i
 
 ## Data and tools
 
-`DAVE_DATA_DIR` relocates all seven persistence artifacts. When unset, the current working directory remains the default.
+`DAVE_DATA_DIR` relocates all eight persistence files and the project-upload directory. When unset, the current working directory remains the default.
 
 - `dave_conversations.json`
 - `dave_projects.json`
 - `dave_settings.json`
+- `dave_project_context.db`
 - `dave_vectors.db`
 - `feedback.db`
 - `performance.db`
 - `cost_log.jsonl`
+- `project_uploads/`
 
 Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and provide `DAVE_TOOL_ROOTS` as a JSON array of absolute paths. File read, write, and append operations share the same containment check. `shell.exec` remains disabled unless `DAVE_ENABLE_SHELL_TOOL=true` is also set. `web.fetch` accepts only bounded public HTTP/HTTPS responses and validates DNS plus each redirect target.
 
@@ -103,6 +105,32 @@ The tool registry publishes one JSON schema per active tool. `POST /tools/agent/
 The Chat header opens a layered instruction editor. It shows the global default, attached project instructions, session override, precedence, live character and token estimates, and the exact effective system text. Saves apply to the next message without restarting the application. Session overrides and the editable runtime global default each have a one-action reset.
 
 Completed user and assistant messages expose keyboard-reachable Copy and Add to notepad actions. Copy preserves raw message source. The plain-text notepad persists per project, autosaves, stays inside Chat, can accept a selection from either message role, and can send its full contents as one user message.
+
+## Project Homepage and BRAIN
+
+Project Home is the inspectable owner for exactly four request-context components: Project Instructions, File Context Uploads, Artifact History, and BRAIN. Its baseline budget is deterministic: 25 percent instructions, 25 percent BRAIN, 30 percent files, and 20 percent artifacts. Unused capacity rolls forward to BRAIN, then files, then artifacts; instructions and protected BRAIN text are rejected instead of silently truncated. Preview context assembles the exact next-request messages without calling a model.
+
+BRAIN stores pinned facts, active work, and compactable recent context in `dave_project_context.db`. Threshold and explicit compaction create immutable revisions; duplicate, resolved, superseded, and raw tool-log lines can be removed while pinned and active tiers remain verbatim. Delete is recoverable for `DAVE_BRAIN_RECOVERY_DAYS`, after which the daily worker permanently clears old content and starts a fresh revision history.
+
+The authenticated local CLI uses the running router and `DAVE_API_KEY`:
+
+```bash
+python scripts/project_context_cli.py show <project-id>
+python scripts/project_context_cli.py pin <project-id> --text 'Decision: verify before release.'
+python scripts/project_context_cli.py compact <project-id>
+python scripts/project_context_cli.py revisions <project-id>
+python scripts/project_context_cli.py restore <project-id> 2
+```
+
+Project-context configuration:
+
+- `DAVE_MODEL_CONTEXT_DEFAULT` — fallback model window, default `32768`.
+- `DAVE_MODEL_CONTEXT_WINDOWS` — JSON object of model IDs to context-window tokens.
+- `DAVE_PROJECT_CONTEXT_TOKENS` — new-project context budget, default `16384`.
+- `DAVE_BRAIN_COMPACT_TOKENS` — new-project compaction threshold, default `3072`.
+- `DAVE_BRAIN_RECOVERY_DAYS` — soft-delete recovery window, default `30`.
+
+The Project Homepage uses a vendored GSAP 3.15.0 core timeline for its precision-control-deck reveal and context-preview feedback. It animates transform and opacity only, switches directly to final states under `prefers-reduced-motion: reduce`, and performs no CDN request. The vendored notice is in `static/vendor/gsap/NOTICE.md`.
 
 ## Local suggestions and mobile navigation
 
@@ -115,6 +143,7 @@ Suggestion preferences use the versioned `davellm_anticipation_v1` local-storage
 ```bash
 source venv/bin/activate
 python -m py_compile app.py
+python -m py_compile project_context.py scripts/project_context_cli.py
 python -m py_compile tool_executor.py
 python -m pytest -q
 node --check static/app.js

@@ -1,5 +1,19 @@
 # Execute the Dave LLM prompt series
 
+## Completion ledger
+
+| Prompt | Required contract | Completion evidence |
+|---|---|---|
+| P0 | Shared context | Verified repo, runtime, model, and deployment boundaries below |
+| P1 | Harness decision | Decision, tradeoffs, flip conditions, and confidence recorded below |
+| P2 | Executor design and code | Bounded registry-driven loop, approvals, error budget, and tests implemented |
+| P3 | BRAIN plan | Plan delivered, then fully implemented with revisions, compaction, recovery, API, UI, and CLI |
+| P4 | Project Homepage plan | Plan delivered, then fully implemented with four components, allocator, preview, and explicit attachment |
+| P5 | Instruction UI code | Implemented and covered by exact-payload tests |
+| P6 | Copy actions code | Implemented for both message roles with raw-source preservation |
+| P7 | Lightweight notepad code | Implemented with scoped persistence and autosave |
+| P8 | Icon review | Review delivered, then the recommended licensed Lucide replacement implemented |
+
 ## Establish shared context
 
 | Slot | Verified value |
@@ -135,6 +149,8 @@ Checkpoint: The allowlist test refuses a sibling path, and the ceiling test retu
 
 Checkpoint: BRAIN drops duplicate chatter, superseded drafts, resolved transient troubleshooting, and raw tool logs after a recoverable snapshot. It never drops pinned facts or open decisions automatically.
 
+Implementation closeout (2026-08-26): Completed in `project_context.py`, authenticated FastAPI routes, the Project Homepage BRAIN panel, the daily/queued compaction worker, and `scripts/project_context_cli.py`. Automated coverage proves protected-tier preservation, deterministic transient-line removal, optimistic revisions, explicit compaction, soft delete, restore, and recovery-window expiry.
+
 ## Specify Project Homepage container
 
 ### PLAN
@@ -187,6 +203,8 @@ Project Instructions cannot silently overflow their share. The editor shows the 
 
 Checkpoint: At a 16,384-token project budget, 4,096 + 4,096 + 4,915 + 3,277 equals 16,384.
 
+Implementation closeout (2026-08-26): Completed with normalized stores for all four components, exact baseline arithmetic, unused-token rollover in BRAIN/files/artifacts order, ranked bounded request injection, automatic assistant-output capture, explicit future-only chat attachment events, and an authenticated no-send context preview. The responsive Project Homepage renders all four empty states and their independent lifecycle controls. A locally vendored GSAP timeline adds staged control-deck motion while `prefers-reduced-motion` bypasses it completely.
+
 ## Expose system instructions in UI
 
 ### CODE
@@ -211,7 +229,7 @@ python -m pytest -q tests/test_api_contracts.py
 
 Open Instructions, edit all available layers, confirm the effective preview, choose Save and apply, send one message, and inspect that the first Ollama message matches the preview exactly.
 
-5. Not done: This does not implement the broader Project Homepage from P4 or change model context windows.
+5. Follow-on note: The broader Project Homepage and configurable model-context windows were subsequently implemented by the P3/P4 closeout above.
 
 Checkpoint: The API test saves all three layers, sends the next message, and proves the first Ollama message equals the on-screen precedence result.
 
@@ -285,4 +303,4 @@ Nice to have: Apply the same family later to project, template, history, search,
 | Reveal attachments | Attach text | Keep Attach text | A generic menu or plus icon would hide the control's purpose. |
 | Send message | Send text | Keep Send text | The explicit verb is clearer than a direction-dependent arrow. |
 
-5. Prioritized next action: Vendor only `Image`, `FileAudio`, `Captions`, `Mic`, `Square`, and `Paperclip` SVGs plus their required license notices, then replace the composer emoji without adding a runtime package or CDN request.
+5. Implementation closeout (2026-08-26): Vendored the six-icon Lucide sprite and ISC/Feather MIT notices under `static/vendor/lucide/`, replaced the audited composer emoji, retained visible Image, Audio, Transcribe, and File text, and kept accessible names and 44-pixel mobile targets without a runtime package or CDN request.
