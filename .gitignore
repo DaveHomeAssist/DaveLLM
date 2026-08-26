@@ -13,3 +13,4 @@ node_modules/
 dist/
 .DS_Store
 tmp_audio_*
+project_uploads/

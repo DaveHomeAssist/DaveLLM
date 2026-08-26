@@ -40,6 +40,14 @@ from tool_executor import (
     run_executor_loop,
     run_tool,
 )
+from project_context import (
+    ContextBudgetError,
+    ProjectContextError,
+    ProjectContextStore,
+    RevisionConflictError,
+    component_quotas,
+    estimate_tokens as estimate_project_tokens,
+)
 
 # ============================================================
 # CONSTANTS
@@ -55,6 +63,8 @@ PERFORMANCE_DB = BASE_DIR / "performance.db"
 PROJECTS_FILE = BASE_DIR / "dave_projects.json"
 SETTINGS_FILE = BASE_DIR / "dave_settings.json"
 COST_LOG = BASE_DIR / "cost_log.jsonl"
+PROJECT_CONTEXT_DB = BASE_DIR / "dave_project_context.db"
+PROJECT_UPLOADS_DIR = BASE_DIR / "project_uploads"
 BUDGET_DEFAULT = float(os.getenv("DAVE_BUDGET_DEFAULT", "100"))
 USER_BUDGETS = {}
 if os.getenv("DAVE_USER_BUDGETS"):
@@ -68,6 +78,13 @@ MAX_WEB_FETCH_BYTES = 1024 * 1024
 MAX_WEB_FETCH_REDIRECTS = 5
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB base64 ≈ 3.75MB binary
 MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20MB
+try:
+    DEFAULT_MODEL_CONTEXT_WINDOW = int(os.getenv("DAVE_MODEL_CONTEXT_DEFAULT", "32768"))
+    DEFAULT_PROJECT_CONTEXT_TOKENS = int(os.getenv("DAVE_PROJECT_CONTEXT_TOKENS", "16384"))
+    DEFAULT_BRAIN_COMPACT_TOKENS = int(os.getenv("DAVE_BRAIN_COMPACT_TOKENS", "3072"))
+    BRAIN_RECOVERY_DAYS = int(os.getenv("DAVE_BRAIN_RECOVERY_DAYS", "30"))
+except ValueError as exc:
+    raise RuntimeError("DaveLLM token and recovery settings must be integers") from exc
 WHISPER_BIN = Path(os.getenv("DAVE_WHISPER_BIN", "./whisper.cpp/build/bin/whisper-cli"))
 WHISPER_MODEL = Path(os.getenv("DAVE_WHISPER_MODEL", "./whisper.cpp/models/ggml-tiny.en.bin"))
 FFMPEG_BIN = os.getenv("FFMPEG_BIN") or shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
@@ -124,9 +141,28 @@ def _load_tool_roots() -> List[Path]:
         return []
 
 
+def _load_model_context_windows() -> Dict[str, int]:
+    raw = os.getenv("DAVE_MODEL_CONTEXT_WINDOWS", "{}")
+    try:
+        values = json.loads(raw)
+        if not isinstance(values, dict):
+            raise ValueError("must be a JSON object")
+        windows = {str(key): int(value) for key, value in values.items()}
+        if any(value < 4_096 for value in windows.values()):
+            raise ValueError("every model context window must be at least 4,096 tokens")
+        return windows
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        import logging as _logging
+        _logging.getLogger("dave_llm").warning(
+            "Ignoring invalid DAVE_MODEL_CONTEXT_WINDOWS configuration: %s", exc
+        )
+        return {}
+
+
 TOOLS_ENABLED = _env_flag("DAVE_ENABLE_TOOLS")
 SHELL_TOOL_ENABLED = _env_flag("DAVE_ENABLE_SHELL_TOOL")
 TOOL_ROOTS = _load_tool_roots()
+MODEL_CONTEXT_WINDOWS = _load_model_context_windows()
 
 def track_model_failure(model_id: str, error_type: str):
     if model_id not in MODEL_HEALTH:
@@ -374,6 +410,18 @@ def save_settings(settings: Dict[str, str]):
 CONVERSATIONS: Dict[str, dict] = load_conversations()
 PROJECTS: Dict[str, dict] = load_projects()
 SETTINGS: Dict[str, str] = load_settings()
+PROJECT_CONTEXT = ProjectContextStore(
+    PROJECT_CONTEXT_DB,
+    PROJECT_UPLOADS_DIR,
+    default_context_budget=DEFAULT_PROJECT_CONTEXT_TOKENS,
+    default_brain_threshold=DEFAULT_BRAIN_COMPACT_TOKENS,
+)
+for _project_id, _project in PROJECTS.items():
+    PROJECT_CONTEXT.ensure_project(
+        _project_id,
+        instructions=str(_project.get("system_prompt") or ""),
+        context_budget_tokens=_project.get("context_budget_tokens"),
+    )
 
 # ============================================================
 # FASTAPI SETUP
@@ -584,6 +632,14 @@ def get_project(project_id: str, user_id: str) -> dict:
         raise HTTPException(404, f"Project '{project_id}' not found")
     if proj.get("user_id", "default") != user_id:
         raise HTTPException(403, "Forbidden: project not owned by user")
+    PROJECT_CONTEXT.ensure_project(
+        project_id,
+        instructions=str(proj.get("system_prompt") or ""),
+        context_budget_tokens=proj.get("context_budget_tokens"),
+    )
+    profile = PROJECT_CONTEXT.get_profile(project_id)
+    proj["system_prompt"] = profile["instructions"]
+    proj["context_budget_tokens"] = profile["context_budget_tokens"]
     return proj
 
 def list_projects_for_user(user_id: str) -> List[dict]:
@@ -592,6 +648,22 @@ def list_projects_for_user(user_id: str) -> List[dict]:
 def estimate_tokens(text: str) -> int:
     # Rough heuristic: 1 token ~ 4 chars
     return max(1, len(text) // 4)
+
+
+def get_model_context_window(model_id: str) -> int:
+    return int(MODEL_CONTEXT_WINDOWS.get(model_id, DEFAULT_MODEL_CONTEXT_WINDOW))
+
+
+def content_token_count(content) -> int:
+    if isinstance(content, str):
+        return estimate_project_tokens(content)
+    if isinstance(content, list):
+        return sum(
+            estimate_project_tokens(part.get("text", ""))
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return estimate_project_tokens(str(content or ""))
 
 def get_model_meta(model_id: str) -> dict:
     return MODEL_CATALOG.get(model_id, {})
@@ -1515,12 +1587,59 @@ def prepare_history_for_prompt(messages: List[dict]) -> List[dict]:
     return prune_conversation_history(messages[legacy_count:])
 
 
-def build_messages_for_node(system_prompt: str, history: List[dict]) -> List[dict]:
-    """Build an Ollama payload with exactly one canonical primary system prompt."""
+def build_messages_for_node(
+    system_prompt: str,
+    history: List[dict],
+    project_context: Optional[List[dict]] = None,
+) -> List[dict]:
+    """Build an Ollama payload with instructions before bounded project evidence."""
     return [
         {"role": "system", "content": system_prompt},
+        *[dict(message) for message in (project_context or [])],
         *[dict(message) for message in history],
     ]
+
+
+def build_project_messages_for_node(
+    *,
+    project_id: Optional[str],
+    project: dict,
+    model_id: str,
+    output_reserve: int,
+    query: str,
+    system_prompt: str,
+    history: List[dict],
+) -> tuple[List[dict], dict]:
+    """Assemble the P4 order and reserve exact room for all four components."""
+    if not project_id:
+        return build_messages_for_node(system_prompt, history), {}
+    base_messages = build_messages_for_node(system_prompt, history)
+    base_tokens = sum(content_token_count(message.get("content")) for message in base_messages)
+    project_instruction_tokens = estimate_project_tokens(project.get("system_prompt") or "")
+    non_project_tokens = max(0, base_tokens - project_instruction_tokens)
+    context_window = get_model_context_window(model_id)
+    safety_margin = max(512, round(context_window * 0.05))
+    available_project_tokens = (
+        context_window
+        - max(1, int(output_reserve or 2048))
+        - safety_margin
+        - non_project_tokens
+    )
+    assembled = PROJECT_CONTEXT.build_context_messages(
+        project_id,
+        query=query,
+        available_tokens=available_project_tokens,
+    )
+    return (
+        build_messages_for_node(system_prompt, history, assembled["messages"]),
+        {
+            **assembled["budget"],
+            "model_context_window": context_window,
+            "output_reserve": max(1, int(output_reserve or 2048)),
+            "safety_margin": safety_margin,
+            "non_project_tokens": non_project_tokens,
+        },
+    )
 
 def generate_conversation_summary(older_messages: List[dict]) -> str:
     """Use a cheap local model to summarize older turns."""
@@ -1652,26 +1771,35 @@ class ProjectCreate(BaseModel):
     name: str
     system_prompt: Optional[str] = None
     preferred_model: Optional[str] = None
+    preferred_node: Optional[str] = None
     max_budget: Optional[float] = None
     description: Optional[str] = None
+    context_budget_tokens: Optional[int] = Field(default=16_384, ge=1_024, le=262_144)
+    archived: bool = False
 
 class ProjectResponse(BaseModel):
     project_id: str
     name: str
     system_prompt: Optional[str] = None
     preferred_model: Optional[str] = None
+    preferred_node: Optional[str] = None
     max_budget: Optional[float] = None
     created_at: Optional[str] = None
     user_id: Optional[str] = None
     description: Optional[str] = None
     notepad: str = ""
+    context_budget_tokens: int = 16_384
+    archived: bool = False
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     system_prompt: Optional[str] = None
     preferred_model: Optional[str] = None
+    preferred_node: Optional[str] = None
     max_budget: Optional[float] = None
     description: Optional[str] = None
+    context_budget_tokens: Optional[int] = Field(default=None, ge=1_024, le=262_144)
+    archived: Optional[bool] = None
 
 class ResyncRequest(BaseModel):
     project_id: Optional[str] = None
@@ -1699,6 +1827,42 @@ class NotepadUpdate(BaseModel):
         if len(value) > 200_000:
             raise ValueError("Notepad exceeds 200,000 characters")
         return value
+
+
+class BrainUpdate(BaseModel):
+    pinned_text: Optional[str] = None
+    active_text: Optional[str] = None
+    recent_text: Optional[str] = None
+    compact_threshold: Optional[int] = Field(default=None, ge=128, le=262_144)
+    expected_revision: Optional[int] = Field(default=None, ge=1)
+
+    @field_validator("pinned_text", "active_text", "recent_text")
+    @classmethod
+    def validate_brain_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and len(value) > 1_000_000:
+            raise ValueError("A BRAIN tier exceeds 1,000,000 characters")
+        return value
+
+
+class ArtifactUpdate(BaseModel):
+    pinned: Optional[bool] = None
+    archived: Optional[bool] = None
+    title: Optional[str] = Field(default=None, max_length=300)
+
+
+class ProjectFileUpdate(BaseModel):
+    attached: bool
+
+
+class ProjectAttachmentUpdate(BaseModel):
+    project_id: Optional[str] = None
+
+
+class ProjectContextPreviewRequest(BaseModel):
+    query: str = Field(default="", max_length=1_000_000)
+    conversation_id: Optional[str] = None
+    model: Optional[str] = None
+    max_tokens: int = Field(default=2_048, ge=1, le=262_144)
 
 
 class AgentRunRequest(BaseModel):
@@ -1743,6 +1907,114 @@ class AgentRunRequest(BaseModel):
         if not 1 <= value <= 8:
             raise ValueError("error_budget must be between 1 and 8")
         return value
+
+
+BRAIN_COMPACTION_QUEUE: asyncio.Queue[str] = asyncio.Queue()
+BRAIN_COMPACTION_PENDING: set[str] = set()
+BACKGROUND_TASKS: list[asyncio.Task] = []
+
+
+def context_http_error(exc: ProjectContextError) -> HTTPException:
+    if isinstance(exc, RevisionConflictError):
+        return HTTPException(409, str(exc))
+    if isinstance(exc, ContextBudgetError):
+        return HTTPException(422, str(exc))
+    return HTTPException(400, str(exc))
+
+
+def backfill_project_artifacts(project_id: str, user_id: str) -> None:
+    """Make existing assistant outputs retrievable without rewriting conversations."""
+    get_project(project_id, user_id)
+    for conversation_id, conversation in CONVERSATIONS.items():
+        if conversation.get("user_id", "default") != user_id:
+            continue
+        if conversation.get("project_id") != project_id:
+            continue
+        for index, message in enumerate(conversation.get("messages", [])):
+            if message.get("role") != "assistant" or not isinstance(message.get("content"), str):
+                continue
+            PROJECT_CONTEXT.add_artifact(
+                project_id,
+                title=conversation.get("title") or "Assistant output",
+                body=message["content"],
+                conversation_id=conversation_id,
+                source_message_index=index,
+            )
+
+
+def capture_project_artifact(
+    project_id: Optional[str],
+    conversation_id: str,
+    message_index: int,
+    body: str,
+) -> None:
+    if not project_id or not body:
+        return
+    try:
+        conversation = CONVERSATIONS.get(conversation_id, {})
+        PROJECT_CONTEXT.add_artifact(
+            project_id,
+            title=conversation.get("title") or "Assistant output",
+            body=body,
+            conversation_id=conversation_id,
+            source_message_index=message_index,
+        )
+    except ProjectContextError as exc:
+        record_error("artifact_capture", str(exc))
+
+
+def enqueue_brain_compaction(project_id: str) -> bool:
+    if project_id in BRAIN_COMPACTION_PENDING:
+        return False
+    BRAIN_COMPACTION_PENDING.add(project_id)
+    BRAIN_COMPACTION_QUEUE.put_nowait(project_id)
+    return True
+
+
+async def brain_compaction_worker() -> None:
+    """Compact queued projects and reconcile threshold crossings once per day."""
+    reconciliation_interval = 86_400
+    next_reconciliation = time.monotonic() + reconciliation_interval
+    while True:
+        queued_project: Optional[str] = None
+        try:
+            timeout = max(0.0, next_reconciliation - time.monotonic())
+            queued_project = await asyncio.wait_for(
+                BRAIN_COMPACTION_QUEUE.get(),
+                timeout=timeout,
+            )
+            await asyncio.to_thread(PROJECT_CONTEXT.compact_brain, queued_project)
+        except asyncio.TimeoutError:
+            pass
+        except asyncio.CancelledError:
+            raise
+        except ProjectContextError as exc:
+            record_error("brain_compaction", str(exc))
+        except Exception as exc:
+            record_error("brain_compaction", str(exc))
+        finally:
+            if queued_project is not None:
+                BRAIN_COMPACTION_PENDING.discard(queued_project)
+                BRAIN_COMPACTION_QUEUE.task_done()
+        if time.monotonic() >= next_reconciliation:
+            try:
+                await asyncio.to_thread(
+                    PROJECT_CONTEXT.purge_expired_brains,
+                    BRAIN_RECOVERY_DAYS,
+                )
+                for project_id in list(PROJECTS):
+                    try:
+                        brain = PROJECT_CONTEXT.get_brain(project_id)
+                        if brain["should_compact"]:
+                            enqueue_brain_compaction(project_id)
+                    except ProjectContextError as exc:
+                        record_error("brain_reconcile", str(exc))
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                record_error("brain_reconcile", str(exc))
+            finally:
+                next_reconciliation = time.monotonic() + reconciliation_interval
 
 # ============================================================
 # ROUTES
@@ -1973,24 +2245,32 @@ async def transcribe_audio(file: UploadFile = File(...), user_id: str = Depends(
             except Exception:
                 pass
 
+def project_response(project_id: str, project: dict) -> ProjectResponse:
+    return ProjectResponse(
+        project_id=project_id,
+        name=project.get("name", ""),
+        system_prompt=project.get("system_prompt"),
+        preferred_model=project.get("preferred_model"),
+        preferred_node=project.get("preferred_node"),
+        max_budget=project.get("max_budget"),
+        created_at=project.get("created_at"),
+        user_id=project.get("user_id"),
+        description=project.get("description"),
+        notepad=project.get("notepad", ""),
+        context_budget_tokens=int(project.get("context_budget_tokens") or 16_384),
+        archived=bool(project.get("archived", False)),
+    )
+
+
 @app.get("/projects")
 def list_projects(user_id: str = Depends(get_current_user)):
     """List projects owned by the current user."""
-    projects = [
-        ProjectResponse(
-            project_id=pid,
-            name=p.get("name", ""),
-            system_prompt=p.get("system_prompt"),
-            preferred_model=p.get("preferred_model"),
-            max_budget=p.get("max_budget"),
-            created_at=p.get("created_at"),
-            user_id=p.get("user_id"),
-            description=p.get("description"),
-            notepad=p.get("notepad", ""),
-        ).model_dump()
-        for pid, p in PROJECTS.items()
-        if p.get("user_id", "default") == user_id
-    ]
+    projects = []
+    for project_id, project in PROJECTS.items():
+        if project.get("user_id", "default") != user_id:
+            continue
+        project = get_project(project_id, user_id)
+        projects.append(project_response(project_id, project).model_dump())
     return {"projects": projects}
 
 
@@ -2026,62 +2306,346 @@ def create_project(req: ProjectCreate, user_id: str = Depends(get_current_user))
         "name": req.name.strip(),
         "system_prompt": req.system_prompt or "",
         "preferred_model": req.preferred_model,
+        "preferred_node": req.preferred_node,
         "max_budget": req.max_budget,
         "created_at": datetime.now().isoformat(),
         "user_id": user_id,
         "description": req.description or "",
         "notepad": "",
+        "context_budget_tokens": req.context_budget_tokens or 16_384,
+        "archived": req.archived,
     }
     PROJECTS[project_id] = project
+    try:
+        PROJECT_CONTEXT.ensure_project(
+            project_id,
+            instructions=project["system_prompt"],
+            context_budget_tokens=project["context_budget_tokens"],
+        )
+        PROJECT_CONTEXT.update_profile(
+            project_id,
+            instructions=project["system_prompt"],
+            context_budget_tokens=project["context_budget_tokens"],
+        )
+    except ProjectContextError as exc:
+        PROJECTS.pop(project_id, None)
+        PROJECT_CONTEXT.delete_project(project_id)
+        raise context_http_error(exc)
     save_projects(PROJECTS)
-    return ProjectResponse(
-        project_id=project_id,
-        name=project["name"],
-        system_prompt=project["system_prompt"],
-        preferred_model=project["preferred_model"],
-        max_budget=project["max_budget"],
-        created_at=project["created_at"],
-        user_id=user_id,
-        description=project["description"],
-        notepad=project["notepad"],
-    )
+    return project_response(project_id, project)
 
 @app.get("/projects/{project_id}", response_model=ProjectResponse)
 def get_project_endpoint(project_id: str, user_id: str = Depends(get_current_user)):
     proj = get_project(project_id, user_id)
-    return ProjectResponse(
-        project_id=project_id,
-        name=proj.get("name", ""),
-        system_prompt=proj.get("system_prompt"),
-        preferred_model=proj.get("preferred_model"),
-        max_budget=proj.get("max_budget"),
-        created_at=proj.get("created_at"),
-        user_id=proj.get("user_id"),
-        description=proj.get("description"),
-        notepad=proj.get("notepad", ""),
-    )
+    return project_response(project_id, proj)
 
 @app.put("/projects/{project_id}", response_model=ProjectResponse)
 def update_project(project_id: str, req: ProjectUpdate, user_id: str = Depends(get_current_user)):
     proj = get_project(project_id, user_id)
     updates = req.model_dump(exclude_unset=True)
+    try:
+        profile = PROJECT_CONTEXT.update_profile(
+            project_id,
+            instructions=updates.get("system_prompt"),
+            context_budget_tokens=updates.get("context_budget_tokens"),
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
     for key, val in updates.items():
         if val is not None:
             proj[key] = val
+    proj["system_prompt"] = profile["instructions"]
+    proj["context_budget_tokens"] = profile["context_budget_tokens"]
     proj["updated_at"] = datetime.now().isoformat()
     PROJECTS[project_id] = proj
     save_projects(PROJECTS)
-    return ProjectResponse(
-        project_id=project_id,
-        name=proj.get("name", ""),
-        system_prompt=proj.get("system_prompt"),
-        preferred_model=proj.get("preferred_model"),
-        max_budget=proj.get("max_budget"),
-        created_at=proj.get("created_at"),
-        user_id=proj.get("user_id"),
-        description=proj.get("description"),
-        notepad=proj.get("notepad", ""),
+    return project_response(project_id, proj)
+
+
+@app.get("/projects/{project_id}/homepage")
+def get_project_homepage(project_id: str, user_id: str = Depends(get_current_user)):
+    """Return one inspectable surface for the four project-context components."""
+    project = get_project(project_id, user_id)
+    backfill_project_artifacts(project_id, user_id)
+    try:
+        homepage = PROJECT_CONTEXT.homepage(project_id)
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+    return {
+        "project": project_response(project_id, project).model_dump(),
+        "attached_conversation_ids": [
+            conversation_id
+            for conversation_id, conversation in CONVERSATIONS.items()
+            if conversation.get("user_id", "default") == user_id
+            and conversation.get("project_id") == project_id
+        ],
+        **homepage,
+    }
+
+
+@app.post("/projects/{project_id}/context-preview")
+def preview_project_context(
+    project_id: str,
+    req: ProjectContextPreviewRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """Assemble the exact next-request messages without calling a model."""
+    project = get_project(project_id, user_id)
+    backfill_project_artifacts(project_id, user_id)
+    history: List[dict] = []
+    if req.conversation_id:
+        assert_convo_owner(req.conversation_id, user_id)
+        stored_conversation = CONVERSATIONS[req.conversation_id]
+        if stored_conversation.get("project_id") != project_id:
+            raise HTTPException(
+                409,
+                "Context preview requires a conversation explicitly attached to this project",
+            )
+        conversation = dict(stored_conversation)
+        history = [dict(message) for message in stored_conversation.get("messages", [])]
+    else:
+        conversation = {
+            "session_override": "",
+            "instruction_mode": "layered",
+            "messages": [],
+        }
+    history.append({"role": "user", "content": req.query or "[empty prompt]"})
+    prepared_history = prepare_history_for_prompt(history)
+    system_prompt = resolve_conversation_system_prompt(conversation, project)
+    model_id = req.model or project.get("preferred_model") or ""
+    try:
+        messages, budget = build_project_messages_for_node(
+            project_id=project_id,
+            project=project,
+            model_id=model_id,
+            output_reserve=req.max_tokens,
+            query=req.query,
+            system_prompt=system_prompt,
+            history=prepared_history,
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+    return {
+        "project_id": project_id,
+        "conversation_id": req.conversation_id,
+        "model": model_id or None,
+        "messages": messages,
+        "budget": budget,
+    }
+
+
+@app.post("/projects/{project_id}/files")
+async def upload_project_file(
+    project_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    """Store a project reference and index supported UTF-8 text locally."""
+    get_project(project_id, user_id)
+    content = await file.read(MAX_FILE_SIZE + 1)
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(413, f"Project file exceeds {MAX_FILE_SIZE // 1024 // 1024}MB")
+    try:
+        return PROJECT_CONTEXT.add_file(
+            project_id,
+            display_name=file.filename or "reference",
+            media_type=file.content_type,
+            content=content,
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+
+
+@app.get("/projects/{project_id}/files")
+def list_project_files(project_id: str, user_id: str = Depends(get_current_user)):
+    get_project(project_id, user_id)
+    return {"files": PROJECT_CONTEXT.list_files(project_id)}
+
+
+@app.put("/projects/{project_id}/files/{file_id}")
+def update_project_file(
+    project_id: str,
+    file_id: str,
+    req: ProjectFileUpdate,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    try:
+        return PROJECT_CONTEXT.set_file_attached(
+            project_id,
+            file_id,
+            req.attached,
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+
+
+@app.post("/projects/{project_id}/files/{file_id}/reindex")
+def reindex_project_file(
+    project_id: str,
+    file_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    try:
+        return PROJECT_CONTEXT.reindex_file(project_id, file_id)
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+
+
+@app.delete("/projects/{project_id}/files/{file_id}")
+def delete_project_file(
+    project_id: str,
+    file_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    try:
+        PROJECT_CONTEXT.delete_file(project_id, file_id)
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+    return {"status": "deleted", "project_id": project_id, "file_id": file_id}
+
+
+@app.get("/projects/{project_id}/artifacts")
+def list_project_artifacts(
+    project_id: str,
+    include_archived: bool = False,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    backfill_project_artifacts(project_id, user_id)
+    return {
+        "artifacts": PROJECT_CONTEXT.list_artifacts(
+            project_id,
+            include_archived=include_archived,
+        )
+    }
+
+
+@app.get("/projects/{project_id}/artifacts/{artifact_id}")
+def get_project_artifact(
+    project_id: str,
+    artifact_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    try:
+        return PROJECT_CONTEXT.get_artifact(project_id, artifact_id)
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+
+
+@app.put("/projects/{project_id}/artifacts/{artifact_id}")
+def update_project_artifact(
+    project_id: str,
+    artifact_id: str,
+    req: ArtifactUpdate,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    try:
+        return PROJECT_CONTEXT.update_artifact(
+            project_id,
+            artifact_id,
+            **req.model_dump(exclude_unset=True),
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+
+
+@app.delete("/projects/{project_id}/artifacts/{artifact_id}")
+def delete_project_artifact(
+    project_id: str,
+    artifact_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    try:
+        PROJECT_CONTEXT.delete_artifact(project_id, artifact_id)
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+    return {"status": "deleted", "project_id": project_id, "artifact_id": artifact_id}
+
+
+@app.get("/projects/{project_id}/brain")
+def get_project_brain(project_id: str, user_id: str = Depends(get_current_user)):
+    get_project(project_id, user_id)
+    return PROJECT_CONTEXT.get_brain(project_id)
+
+
+@app.put("/projects/{project_id}/brain")
+async def update_project_brain(
+    project_id: str,
+    req: BrainUpdate,
+    user_id: str = Depends(get_current_user),
+):
+    project = get_project(project_id, user_id)
+    current = PROJECT_CONTEXT.get_brain(project_id)
+    values = req.model_dump(exclude_unset=True)
+    pinned = values.get("pinned_text", current["pinned_text"])
+    active = values.get("active_text", current["active_text"])
+    quotas = component_quotas(project["context_budget_tokens"])
+    instruction_tokens = estimate_project_tokens(project.get("system_prompt") or "")
+    brain_allowance = quotas["brain"] + max(
+        0,
+        quotas["project_instructions"] - instruction_tokens,
     )
+    if estimate_project_tokens(f"{pinned}\n{active}") > brain_allowance:
+        raise HTTPException(422, "Pinned and active BRAIN content exceed the protected allocation")
+    if values.get("compact_threshold", current["compact_threshold"]) > brain_allowance:
+        raise HTTPException(422, "BRAIN compaction threshold exceeds its available allocation")
+    try:
+        brain = PROJECT_CONTEXT.update_brain(project_id, **values)
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+    queued = enqueue_brain_compaction(project_id) if brain["should_compact"] else False
+    return {**brain, "compaction_queued": queued}
+
+
+@app.post("/projects/{project_id}/brain/compact")
+async def compact_project_brain(
+    project_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    try:
+        return await asyncio.to_thread(
+            PROJECT_CONTEXT.compact_brain,
+            project_id,
+            force=True,
+            reason="explicit",
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+
+
+@app.get("/projects/{project_id}/brain/revisions")
+def list_project_brain_revisions(
+    project_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    return {"revisions": PROJECT_CONTEXT.list_brain_revisions(project_id)}
+
+
+@app.post("/projects/{project_id}/brain/revisions/{revision}/restore")
+def restore_project_brain(
+    project_id: str,
+    revision: int,
+    user_id: str = Depends(get_current_user),
+):
+    get_project(project_id, user_id)
+    try:
+        return PROJECT_CONTEXT.restore_brain(project_id, revision)
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+
+
+@app.delete("/projects/{project_id}/brain")
+def delete_project_brain(project_id: str, user_id: str = Depends(get_current_user)):
+    get_project(project_id, user_id)
+    return PROJECT_CONTEXT.soft_delete_brain(project_id)
 
 
 @app.get("/projects/{project_id}/notepad")
@@ -2125,6 +2689,16 @@ def delete_project(project_id: str, user_id: str = Depends(get_current_user)):
     for cid, convo in CONVERSATIONS.items():
         if convo.get("project_id") == project_id and convo.get("user_id", "default") == user_id:
             convo["project_id"] = None
+            convo.setdefault("context_events", []).append(
+                {
+                    "type": "project_detached",
+                    "project_id": project_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "reason": "project_deleted",
+                    "applies_to": "future_messages_only",
+                }
+            )
+    PROJECT_CONTEXT.delete_project(project_id)
     save_projects(PROJECTS)
     save_conversations(CONVERSATIONS)
     return {"status": "deleted", "project_id": project_id}
@@ -2374,6 +2948,7 @@ def get_conversation(conversation_id: str, user_id: str = Depends(get_current_us
         "created_at": convo.get("created_at"),
         "updated_at": convo.get("updated_at"),
         "project_id": convo.get("project_id"),
+        "context_events": convo.get("context_events", []),
         "system_prompt": convo.get("system_prompt"),
         "session_override": normalize_session_instructions(
             convo,
@@ -2424,7 +2999,16 @@ def update_conversation_instructions(
     if "project_instructions" in updates:
         if not project_id:
             raise HTTPException(400, "This conversation is not attached to a project")
-        project["system_prompt"] = str(updates["project_instructions"] or "")
+        project_instructions = str(updates["project_instructions"] or "")
+        try:
+            profile = PROJECT_CONTEXT.update_profile(
+                project_id,
+                instructions=project_instructions,
+            )
+        except ProjectContextError as exc:
+            raise context_http_error(exc)
+        project["system_prompt"] = profile["instructions"]
+        project["context_budget_tokens"] = profile["context_budget_tokens"]
         project["updated_at"] = datetime.now().isoformat()
         save_projects(PROJECTS)
 
@@ -2534,6 +3118,59 @@ def rename_conversation(conversation_id: str, req: RenameRequest, user_id: str =
         "title": new_title
     }
 
+def set_conversation_project(
+    conversation_id: str,
+    conversation: dict,
+    project_id: Optional[str],
+    user_id: str,
+    *,
+    event_type: str = "project_attachment_changed",
+) -> dict:
+    old_project_id = conversation.get("project_id")
+    old_project = get_project(old_project_id, user_id) if old_project_id else {}
+    session_override, mode = normalize_session_instructions(conversation, old_project)
+    project = get_project(project_id, user_id) if project_id else {}
+    conversation["project_id"] = project_id
+    conversation["session_override"] = session_override
+    conversation["instruction_mode"] = mode
+    conversation["system_prompt"] = resolve_conversation_system_prompt(conversation, project)
+    conversation["updated_at"] = datetime.now().isoformat()
+    if old_project_id != project_id or event_type == "project_resynced":
+        conversation.setdefault("context_events", []).append(
+            {
+                "type": event_type,
+                "from_project_id": old_project_id,
+                "project_id": project_id,
+                "timestamp": conversation["updated_at"],
+                "applies_to": "future_messages_only",
+            }
+        )
+    save_conversations(CONVERSATIONS)
+    return {
+        "conversation_id": conversation_id,
+        "project_id": project_id,
+        "project_name": project.get("name"),
+        "system_prompt": conversation["system_prompt"],
+        "context_events": conversation.get("context_events", []),
+    }
+
+
+@app.put("/conversations/{conversation_id}/project")
+def update_conversation_project(
+    conversation_id: str,
+    req: ProjectAttachmentUpdate,
+    user_id: str = Depends(get_current_user),
+):
+    """Explicitly attach or detach future chat turns without rewriting history."""
+    assert_convo_owner(conversation_id, user_id)
+    return set_conversation_project(
+        conversation_id,
+        CONVERSATIONS[conversation_id],
+        req.project_id,
+        user_id,
+    )
+
+
 @app.post("/conversations/{conversation_id}/resync_project")
 def resync_conversation_project(conversation_id: str, req: ResyncRequest, user_id: str = Depends(get_current_user)):
     """Re-apply project instructions to a conversation and persist them."""
@@ -2544,20 +3181,19 @@ def resync_conversation_project(conversation_id: str, req: ResyncRequest, user_i
     if not project_id:
         raise HTTPException(400, "No project linked to conversation")
 
-    proj = get_project(project_id, user_id)
-    convo["project_id"] = project_id
-    session_override, _mode = normalize_session_instructions(convo, proj)
-    convo["session_override"] = session_override
-    convo["instruction_mode"] = "layered"
-    convo["system_prompt"] = resolve_conversation_system_prompt(convo, proj)
-    convo["updated_at"] = datetime.now().isoformat()
-    save_conversations(CONVERSATIONS)
+    result = set_conversation_project(
+        conversation_id,
+        convo,
+        project_id,
+        user_id,
+        event_type="project_resynced",
+    )
 
     return {
         "status": "updated",
         "conversation_id": conversation_id,
         "project_id": project_id,
-        "system_prompt": convo["system_prompt"],
+        "system_prompt": result["system_prompt"],
     }
 
 @app.post("/chat", response_model=ChatResponse)
@@ -2585,7 +3221,15 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     existing_convo = CONVERSATIONS.get(req.conversation_id)
     if existing_convo:
         assert_convo_owner(req.conversation_id, user_id)
-    project_id = req.project_id or (existing_convo.get("project_id") if existing_convo else None)
+        attached_project_id = existing_convo.get("project_id")
+        if req.project_id is not None and req.project_id != attached_project_id:
+            raise HTTPException(
+                409,
+                "Project changes require the explicit conversation project endpoint",
+            )
+        project_id = attached_project_id
+    else:
+        project_id = req.project_id
     project_cfg = get_project(project_id, user_id) if project_id else {}
 
     if not req.node_id or not req.model:
@@ -2612,7 +3256,19 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     conversation["system_prompt"] = system_prompt
     # Build messages copy so we can adjust content shape for vision models without
     # mutating persisted history.
-    messages_for_node = build_messages_for_node(system_prompt, history)
+    try:
+        messages_for_node, context_budget = build_project_messages_for_node(
+            project_id=project_id,
+            project=project_cfg,
+            model_id=preferred_model,
+            output_reserve=req.max_tokens or 2048,
+            query=user_text,
+            system_prompt=system_prompt,
+            history=history,
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+    conversation["last_context_budget"] = context_budget
 
     if req.images:
         multimodal_content = []
@@ -2689,7 +3345,6 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     # Save assistant response to history using persisted raw-history indexes.
     assistant_msg_idx = len(raw_history)
     raw_history.append({"role": "assistant", "content": assistant_msg})
-
     # Log approximate cost
     try:
         actual_tokens = estimate_tokens(assistant_msg) + (estimate_tokens(user_text) if user_text else 0)
@@ -2719,6 +3374,12 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     title_text = user_text.strip()
     if title_text and is_first_exchange and convo.get("title") == DEFAULT_CONVO_TITLE:
         convo["title"] = title_text[:30] + ("..." if len(title_text) > 30 else "")
+    capture_project_artifact(
+        project_id,
+        req.conversation_id,
+        assistant_msg_idx,
+        assistant_msg,
+    )
 
     save_conversations(CONVERSATIONS)
 
@@ -2764,7 +3425,15 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     existing_convo = CONVERSATIONS.get(req.conversation_id)
     if existing_convo:
         assert_convo_owner(req.conversation_id, user_id)
-    project_id = req.project_id or (existing_convo.get("project_id") if existing_convo else None)
+        attached_project_id = existing_convo.get("project_id")
+        if req.project_id is not None and req.project_id != attached_project_id:
+            raise HTTPException(
+                409,
+                "Project changes require the explicit conversation project endpoint",
+            )
+        project_id = attached_project_id
+    else:
+        project_id = req.project_id
     project_cfg = get_project(project_id, user_id) if project_id else {}
 
     if not req.node_id or not req.model:
@@ -2789,7 +3458,19 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     conversation = CONVERSATIONS[req.conversation_id]
     system_prompt = resolve_conversation_system_prompt(conversation, project_cfg)
     conversation["system_prompt"] = system_prompt
-    messages_for_node = build_messages_for_node(system_prompt, history)
+    try:
+        messages_for_node, context_budget = build_project_messages_for_node(
+            project_id=project_id,
+            project=project_cfg,
+            model_id=preferred_model,
+            output_reserve=req.max_tokens or 2048,
+            query=user_text,
+            system_prompt=system_prompt,
+            history=history,
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+    conversation["last_context_budget"] = context_budget
 
     if req.images:
         multimodal_content = []
@@ -2887,7 +3568,6 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                 convo_history = get_history(req.conversation_id, user_id=user_id)
                 assistant_msg_idx = len(convo_history)
                 convo_history.append({"role": "assistant", "content": full_response})
-
                 if user_text:
                     store_message_embedding(req.conversation_id, user_msg_idx, "user", user_text)
                 store_message_embedding(req.conversation_id, assistant_msg_idx, "assistant", full_response)
@@ -2897,6 +3577,12 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                 title_text = user_text.strip()
                 if title_text and is_first_exchange and convo.get("title") == DEFAULT_CONVO_TITLE:
                     convo["title"] = title_text[:30] + ("..." if len(title_text) > 30 else "")
+                capture_project_artifact(
+                    project_id,
+                    req.conversation_id,
+                    assistant_msg_idx,
+                    full_response,
+                )
 
                 save_conversations(CONVERSATIONS)
 
@@ -3000,11 +3686,21 @@ async def startup_event():
     print(f"✅ DaveLLM Router v2.1 started")
     print(f"📁 Loaded {len(CONVERSATIONS)} conversations from disk")
     print(f"🖥️  Active nodes: {len(NODE_CONFIGS)}")
-    asyncio.create_task(background_summarizer())
+    BACKGROUND_TASKS.extend(
+        [
+            asyncio.create_task(background_summarizer()),
+            asyncio.create_task(brain_compaction_worker()),
+        ]
+    )
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Save conversations on shutdown."""
+    for task in BACKGROUND_TASKS:
+        task.cancel()
+    if BACKGROUND_TASKS:
+        await asyncio.gather(*BACKGROUND_TASKS, return_exceptions=True)
+        BACKGROUND_TASKS.clear()
     save_conversations(CONVERSATIONS)
     print("💾 Conversations saved to disk")
 async def background_summarizer():

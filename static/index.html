@@ -53,7 +53,7 @@
                     <option value="">All Projects</option>
                 </select>
                 <button id="resyncProject" class="icon-btn" title="Re-apply project instructions to this conversation" aria-label="Re-apply project instructions">🔄</button>
-                <button id="editProject" class="icon-btn" title="Edit project instructions" aria-label="Edit project instructions">✏️</button>
+                <button id="editProject" class="text-btn" title="Open Project Homepage">Project Home</button>
             </div>
             <div class="template-row">
                 <select id="templateSelect" aria-label="Conversation template">
@@ -129,13 +129,13 @@
                     <label class="visually-hidden" for="promptInput">Message</label>
                     <textarea id="promptInput" placeholder="Type your message..." rows="3"></textarea>
                     <div id="attachmentTools" class="tool-row">
-                        <label for="imageInput" class="image-upload-btn">📷 Image</label>
+                        <label for="imageInput" class="image-upload-btn"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#image"></use></svg>Image</label>
                         <input id="imageInput" type="file" accept="image/*" hidden />
-                        <label for="audioInput" class="image-upload-btn">🎤 Audio</label>
+                        <label for="audioInput" class="image-upload-btn"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#file-audio"></use></svg>Audio</label>
                         <input id="audioInput" type="file" accept="audio/*" hidden />
-                        <button id="transcribeBtn" class="icon-btn" title="Transcribe audio file to text" aria-label="Transcribe selected audio file">🗣️→✍️</button>
-                        <button id="dictateBtn" class="icon-btn" title="Dictate via mic" aria-label="Dictate using microphone">🎙️</button>
-                        <label for="fileInput" class="image-upload-btn">📎 File</label>
+                        <button id="transcribeBtn" class="composer-tool-btn" title="Transcribe audio file to text"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#captions"></use></svg>Transcribe</button>
+                        <button id="dictateBtn" class="icon-btn" title="Dictate via mic" aria-label="Dictate using microphone"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#mic"></use></svg></button>
+                        <label for="fileInput" class="image-upload-btn"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#paperclip"></use></svg>File</label>
                         <input id="fileInput" type="file" hidden />
                         <label class="support-flag">
                             <input type="checkbox" id="supportFlag" />
@@ -194,6 +194,121 @@
 
     </div>
 
+    <dialog id="projectHomeDialog" class="project-home-dialog" aria-labelledby="projectHomeHeading">
+        <div class="project-home-ambient" aria-hidden="true"><span></span><span></span></div>
+        <div class="project-home-header">
+            <div>
+                <span class="project-home-kicker">Project Homepage</span>
+                <h2 id="projectHomeHeading">Project context</h2>
+                <p id="projectHomeDescription">One source of truth for the context added to every attached chat.</p>
+            </div>
+            <button id="projectHomeClose" type="button" class="text-btn">Close</button>
+        </div>
+        <div class="project-home-toolbar">
+            <div id="projectAttachmentState" class="project-attachment-state" role="status">No active chat</div>
+            <div class="project-home-toolbar-actions">
+                <button id="attachProjectChat" type="button" class="secondary">Attach active chat</button>
+                <button id="startProjectChat" type="button" class="primary">Start project chat</button>
+            </div>
+        </div>
+        <section class="context-budget-panel" aria-labelledby="contextBudgetHeading">
+            <div>
+                <span class="project-home-kicker">Request allocation</span>
+                <h3 id="contextBudgetHeading">Context budget</h3>
+            </div>
+            <label for="projectContextBudget">Total tokens
+                <input id="projectContextBudget" type="number" min="1024" max="262144" step="1024" />
+            </label>
+            <div id="contextBudgetMeter" class="context-budget-meter" aria-label="Project context allocation"></div>
+        </section>
+        <div class="project-component-grid">
+            <section class="project-component project-component-instructions" aria-labelledby="projectHomeInstructionsHeading">
+                <div class="project-component-heading">
+                    <span class="component-number">01</span>
+                    <div><h3 id="projectHomeInstructionsHeading">Project Instructions</h3><p>Highest-level project direction, applied after the global default.</p></div>
+                </div>
+                <label class="visually-hidden" for="projectHomeInstructions">Project instruction text</label>
+                <textarea id="projectHomeInstructions" rows="8" placeholder="Define how DaveLLM should work inside this project."></textarea>
+                <div class="project-component-footer">
+                    <span id="projectHomeInstructionsCount">0 of 0 tokens</span>
+                    <button id="saveProjectInstructions" type="button" class="primary">Save instructions</button>
+                </div>
+            </section>
+
+            <section class="project-component project-component-files" aria-labelledby="projectFilesHeading">
+                <div class="project-component-heading">
+                    <span class="component-number">02</span>
+                    <div><h3 id="projectFilesHeading">File Context Uploads</h3><p>Project references selected into requests with source labels.</p></div>
+                </div>
+                <form id="projectFileForm" class="project-upload-form">
+                    <label for="projectFileInput" class="project-file-drop"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#paperclip"></use></svg><span>Choose a local reference</span></label>
+                    <input id="projectFileInput" type="file" hidden />
+                    <button id="uploadProjectFile" type="submit" class="secondary">Upload reference</button>
+                </form>
+                <div id="projectFilesStatus" class="component-status" role="status" aria-live="polite"></div>
+                <div id="projectFilesList" class="project-record-list"></div>
+            </section>
+
+            <section class="project-component project-component-artifacts" aria-labelledby="projectArtifactsHeading">
+                <div class="project-component-heading">
+                    <span class="component-number">03</span>
+                    <div><h3 id="projectArtifactsHeading">Artifact History</h3><p>Prior assistant outputs, retained, searchable, and available for context.</p></div>
+                </div>
+                <div id="projectArtifactsStatus" class="component-status" role="status" aria-live="polite"></div>
+                <div id="projectArtifactsList" class="project-record-list"></div>
+                <pre id="projectArtifactPreview" class="project-artifact-preview" hidden></pre>
+            </section>
+
+            <section class="project-component project-component-brain" aria-labelledby="projectBrainHeading">
+                <div class="project-component-heading">
+                    <span class="component-number">04</span>
+                    <div><h3 id="projectBrainHeading">BRAIN</h3><p>Durable tiers with threshold compaction and recoverable revisions.</p></div>
+                </div>
+                <div class="brain-tier-grid">
+                    <div class="brain-tier">
+                        <label for="brainPinned"><strong>Pinned facts and decisions</strong><span>Preserved verbatim</span></label>
+                        <textarea id="brainPinned" rows="5" placeholder="Facts and decisions that compaction must never rewrite."></textarea>
+                    </div>
+                    <div class="brain-tier">
+                        <label for="brainActive"><strong>Active goals, contracts, and risks</strong><span>Protected structured context</span></label>
+                        <textarea id="brainActive" rows="5" placeholder="Current goals, operating constraints, and unresolved risks."></textarea>
+                    </div>
+                    <div class="brain-tier">
+                        <label for="brainRecent"><strong>Recent working context</strong><span>Compacted at the threshold</span></label>
+                        <textarea id="brainRecent" rows="5" placeholder="Recent context that may be summarized during compaction."></textarea>
+                    </div>
+                </div>
+                <div class="brain-controls">
+                    <label for="brainThreshold">Compact at
+                        <input id="brainThreshold" type="number" min="128" step="128" />
+                        <span>tokens</span>
+                    </label>
+                    <span id="brainRevision">Revision 1</span>
+                </div>
+                <div class="project-component-footer brain-actions">
+                    <span id="projectBrainStatus" role="status" aria-live="polite">Ready</span>
+                    <button id="deleteProjectBrain" type="button" class="text-btn danger-text">Delete</button>
+                    <label class="visually-hidden" for="brainRevisionSelect">BRAIN revision to restore</label>
+                    <select id="brainRevisionSelect" aria-label="BRAIN revision to restore"></select>
+                    <button id="restoreProjectBrain" type="button" class="secondary">Restore revision</button>
+                    <button id="compactProjectBrain" type="button" class="secondary">Compact now</button>
+                    <button id="saveProjectBrain" type="button" class="primary">Save BRAIN</button>
+                </div>
+            </section>
+
+            <details class="project-context-preview">
+                <summary>Inspect next request context</summary>
+                <div class="project-context-preview-toolbar">
+                    <p>Assemble the current composer, attached chat history, instructions, BRAIN, ranked files, and artifacts without calling a model.</p>
+                    <button id="previewProjectContext" type="button" class="secondary">Preview context</button>
+                </div>
+                <div id="projectContextPreviewStatus" class="component-status" role="status" aria-live="polite"></div>
+                <pre id="projectContextPreviewOutput" class="project-context-preview-output" hidden></pre>
+            </details>
+        </div>
+        <div id="projectHomeStatus" class="dialog-status" role="status" aria-live="polite"></div>
+    </dialog>
+
     <dialog id="instructionsDialog" class="instructions-dialog" aria-labelledby="instructionsHeading">
         <div class="instructions-dialog-header">
             <div>
@@ -232,6 +347,7 @@
 
     <script src="prompt-contract.js"></script>
     <script src="anticipation.js"></script>
+    <script src="vendor/gsap/gsap.min.js"></script>
     <script src="app.js"></script>
 </body>
 

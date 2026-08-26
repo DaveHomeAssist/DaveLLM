@@ -31,7 +31,8 @@ const state = {
 // ---------------------------------------------
 // CONSTANTS
 // ---------------------------------------------
-const ROUTER_BASE = (typeof window !== "undefined" && window.__API_BASE__) || "http://127.0.0.1:8000";
+const ROUTER_BASE = (typeof window !== "undefined" && window.__API_BASE__)
+    || (typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000");
 const LOCAL_STORAGE_KEY = "dave_convos";
 const LAST_SESSION_KEY = "dave_last_session";
 const API_KEY_SESSION_KEY = "dave_api_key_session";
@@ -71,6 +72,9 @@ let notepadSaveTimer = null;
 let notepadLoadedProjectId = null;
 let notepadLoading = false;
 let instructionPreviewMode = "layered";
+let projectHomeData = null;
+let projectHomeProjectId = null;
+let projectHomeMotion = null;
 
 function authHeaders(extra = {}) {
     const headers = { ...extra };
@@ -276,6 +280,40 @@ const notepadInput = document.getElementById("notepadInput");
 const notepadStatus = document.getElementById("notepadStatus");
 const notepadProjectName = document.getElementById("notepadProjectName");
 const sendNotepadBtn = document.getElementById("sendNotepadBtn");
+const projectHomeDialog = document.getElementById("projectHomeDialog");
+const projectHomeClose = document.getElementById("projectHomeClose");
+const projectHomeHeading = document.getElementById("projectHomeHeading");
+const projectHomeDescription = document.getElementById("projectHomeDescription");
+const projectAttachmentState = document.getElementById("projectAttachmentState");
+const attachProjectChatBtn = document.getElementById("attachProjectChat");
+const startProjectChatBtn = document.getElementById("startProjectChat");
+const projectContextBudget = document.getElementById("projectContextBudget");
+const contextBudgetMeter = document.getElementById("contextBudgetMeter");
+const projectHomeInstructions = document.getElementById("projectHomeInstructions");
+const projectHomeInstructionsCount = document.getElementById("projectHomeInstructionsCount");
+const saveProjectInstructionsBtn = document.getElementById("saveProjectInstructions");
+const projectFileForm = document.getElementById("projectFileForm");
+const projectFileInput = document.getElementById("projectFileInput");
+const projectFilesStatus = document.getElementById("projectFilesStatus");
+const projectFilesList = document.getElementById("projectFilesList");
+const projectArtifactsStatus = document.getElementById("projectArtifactsStatus");
+const projectArtifactsList = document.getElementById("projectArtifactsList");
+const projectArtifactPreview = document.getElementById("projectArtifactPreview");
+const brainPinned = document.getElementById("brainPinned");
+const brainActive = document.getElementById("brainActive");
+const brainRecent = document.getElementById("brainRecent");
+const brainThreshold = document.getElementById("brainThreshold");
+const brainRevision = document.getElementById("brainRevision");
+const brainRevisionSelect = document.getElementById("brainRevisionSelect");
+const projectBrainStatus = document.getElementById("projectBrainStatus");
+const saveProjectBrainBtn = document.getElementById("saveProjectBrain");
+const compactProjectBrainBtn = document.getElementById("compactProjectBrain");
+const restoreProjectBrainBtn = document.getElementById("restoreProjectBrain");
+const deleteProjectBrainBtn = document.getElementById("deleteProjectBrain");
+const previewProjectContextBtn = document.getElementById("previewProjectContext");
+const projectContextPreviewStatus = document.getElementById("projectContextPreviewStatus");
+const projectContextPreviewOutput = document.getElementById("projectContextPreviewOutput");
+const projectHomeStatus = document.getElementById("projectHomeStatus");
 const mobileTabButtons = Array.from(document.querySelectorAll("[data-mobile-tab]"));
 const mobilePanels = Array.from(document.querySelectorAll("[data-mobile-panel]"));
 
@@ -284,6 +322,20 @@ const mobilePanels = Array.from(document.querySelectorAll("[data-mobile-panel]")
 // ---------------------------------------------
 function routerEndpoint(path) {
     return `${ROUTER_BASE}${path}`;
+}
+
+function setLucideIcon(button, iconId) {
+    if (!button) return;
+    let svg = button.querySelector("svg");
+    let use = svg?.querySelector("use");
+    if (!svg || !use) {
+        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("aria-hidden", "true");
+        use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+        svg.appendChild(use);
+        button.replaceChildren(svg);
+    }
+    use.setAttribute("href", `vendor/lucide/lucide.svg#${iconId}`);
 }
 
 function readAnticipationRecord() {
@@ -774,7 +826,7 @@ function initDictation() {
         isDictating = true;
         setDictationStatus("Listening…");
         if (dictateBtn) {
-            dictateBtn.textContent = "⏹️";
+            setLucideIcon(dictateBtn, "square");
             dictateBtn.setAttribute("aria-label", "Stop dictation");
         }
     };
@@ -810,7 +862,7 @@ function initDictation() {
     speechRecognition.onend = () => {
         isDictating = false;
         if (dictateBtn) {
-            dictateBtn.textContent = "🎙️";
+            setLucideIcon(dictateBtn, "mic");
             dictateBtn.setAttribute("aria-label", "Dictate using microphone");
         }
         if (!dictateStatus || !dictateStatus.textContent.includes("error")) {
@@ -950,7 +1002,7 @@ function startFallbackRecording() {
             mediaRecorder.onstart = () => {
                 isRecordingFallback = true;
                 if (dictateBtn) {
-                    dictateBtn.textContent = "⏹️";
+                    setLucideIcon(dictateBtn, "square");
                     dictateBtn.setAttribute("aria-label", "Stop recording");
                 }
                 setDictationStatus("Recording… tap again to stop");
@@ -988,7 +1040,7 @@ function startFallbackRecording() {
 function stopFallbackStream() {
     isRecordingFallback = false;
     if (dictateBtn) {
-        dictateBtn.textContent = "🎙️";
+        setLucideIcon(dictateBtn, "mic");
         dictateBtn.setAttribute("aria-label", "Dictate using microphone");
     }
     if (mediaStream) {
@@ -1516,31 +1568,710 @@ async function resyncConversationInstructions() {
     }
 }
 
-async function editProjectInstructions() {
-    const targetProject = selectedProjectId;
-    if (!targetProject) {
-        alert("Select a project to edit its instructions.");
+async function apiError(response) {
+    const text = await response.text();
+    try {
+        const parsed = JSON.parse(text);
+        return parsed.detail || text || `HTTP ${response.status}`;
+    } catch (_error) {
+        return text || `HTTP ${response.status}`;
+    }
+}
+
+function projectBudgetQuotas(totalValue) {
+    const total = Math.max(0, Number.parseInt(totalValue, 10) || 0);
+    const instructions = Math.floor(total * 0.25);
+    const brain = Math.floor(total * 0.25);
+    const files = Math.round(total * 0.30);
+    return {
+        project_instructions: instructions,
+        brain,
+        file_context: files,
+        artifact_history: total - instructions - brain - files
+    };
+}
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createProjectEmptyState(message) {
+    const empty = document.createElement("div");
+    empty.className = "project-empty-state";
+    empty.textContent = message;
+    return empty;
+}
+
+function createRecordButton(label, action, className = "text-btn") {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className;
+    button.textContent = label;
+    button.addEventListener("click", action);
+    return button;
+}
+
+function resetProjectHomeMotion() {
+    if (projectHomeMotion) {
+        projectHomeMotion.revert();
+        projectHomeMotion = null;
+    }
+}
+
+function animateProjectHomepageIn() {
+    if (!window.gsap || !projectHomeDialog?.open) return;
+    resetProjectHomeMotion();
+    projectHomeMotion = window.gsap.matchMedia();
+    const targets = projectHomeDialog.querySelectorAll(
+        ".project-home-header, .project-home-toolbar, .context-budget-panel, .project-component, .project-context-preview, .project-home-ambient span",
+    );
+    projectHomeMotion.add("(prefers-reduced-motion: no-preference)", () => {
+        const timeline = window.gsap.timeline({
+            defaults: { ease: "power3.out" },
+        });
+        timeline
+            .fromTo(
+                projectHomeDialog.querySelectorAll(".project-home-ambient span"),
+                { autoAlpha: 0, scale: 0.72 },
+                { autoAlpha: 0.28, scale: 1, duration: 0.9, stagger: 0.1 },
+                0,
+            )
+            .fromTo(
+                projectHomeDialog.querySelector(".project-home-header"),
+                { autoAlpha: 0, y: -14 },
+                { autoAlpha: 1, y: 0, duration: 0.34 },
+                0.03,
+            )
+            .fromTo(
+                projectHomeDialog.querySelectorAll(".project-home-toolbar, .context-budget-panel"),
+                { autoAlpha: 0, y: 12 },
+                { autoAlpha: 1, y: 0, duration: 0.38, stagger: 0.06 },
+                0.12,
+            )
+            .fromTo(
+                projectHomeDialog.querySelectorAll(".project-component"),
+                { autoAlpha: 0, y: 22, scale: 0.985 },
+                {
+                    autoAlpha: 1,
+                    y: 0,
+                    scale: 1,
+                    duration: 0.46,
+                    stagger: 0.065,
+                    clearProps: "transform,opacity,visibility",
+                },
+                0.2,
+            )
+            .fromTo(
+                projectHomeDialog.querySelectorAll(".component-number"),
+                { autoAlpha: 0, scale: 0.65, rotation: -16 },
+                {
+                    autoAlpha: 1,
+                    scale: 1,
+                    rotation: 0,
+                    duration: 0.3,
+                    stagger: 0.055,
+                    ease: "back.out(1.45)",
+                    clearProps: "transform,opacity,visibility",
+                },
+                0.28,
+            )
+            .fromTo(
+                projectHomeDialog.querySelectorAll(".budget-segment"),
+                { autoAlpha: 0, scaleX: 0.15, transformOrigin: "left center" },
+                {
+                    autoAlpha: 1,
+                    scaleX: 1,
+                    duration: 0.34,
+                    stagger: 0.045,
+                    clearProps: "transform,opacity,visibility",
+                },
+                0.3,
+            )
+            .fromTo(
+                projectHomeDialog.querySelector(".project-context-preview"),
+                { autoAlpha: 0, y: 10 },
+                {
+                    autoAlpha: 1,
+                    y: 0,
+                    duration: 0.3,
+                    clearProps: "transform,opacity,visibility",
+                },
+                0.46,
+            );
+        return () => timeline.kill();
+    });
+    projectHomeMotion.add("(prefers-reduced-motion: reduce)", () => {
+        window.gsap.set(targets, { clearProps: "all" });
+    });
+}
+
+function animateProjectContextPreview() {
+    if (!window.gsap || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    window.gsap.fromTo(
+        projectContextPreviewOutput,
+        { autoAlpha: 0, y: 12 },
+        {
+            autoAlpha: 1,
+            y: 0,
+            duration: 0.3,
+            ease: "power3.out",
+            clearProps: "transform,opacity,visibility",
+        },
+    );
+}
+
+function renderProjectBudget() {
+    if (!projectHomeData) return;
+    const total = Number.parseInt(projectContextBudget.value, 10)
+        || projectHomeData.context_budget.total;
+    const quotas = projectBudgetQuotas(total);
+    const usage = projectHomeData.context_budget.usage;
+    const segments = [
+        ["Instructions", "project_instructions", 25],
+        ["BRAIN", "brain", 25],
+        ["Files", "file_context", 30],
+        ["Artifacts", "artifact_history", 20]
+    ];
+    contextBudgetMeter.replaceChildren();
+    segments.forEach(([label, key, percentage]) => {
+        const segment = document.createElement("div");
+        segment.className = "budget-segment";
+        segment.style.flexBasis = `${percentage}%`;
+        segment.textContent = `${label} ${percentage}%\n${usage[key].toLocaleString()} / ${quotas[key].toLocaleString()}`;
+        segment.title = `${label}: ${usage[key].toLocaleString()} used of ${quotas[key].toLocaleString()} tokens`;
+        contextBudgetMeter.appendChild(segment);
+    });
+    const instructionTokens = estimateInstructionTokens(projectHomeInstructions.value);
+    projectHomeInstructionsCount.textContent = `${instructionTokens.toLocaleString()} of ${quotas.project_instructions.toLocaleString()} tokens`;
+    projectHomeInstructionsCount.classList.toggle("over-budget", instructionTokens > quotas.project_instructions);
+    brainThreshold.max = quotas.brain + Math.max(0, quotas.project_instructions - instructionTokens);
+}
+
+function renderProjectAttachmentState() {
+    const conversation = currentConversation();
+    if (!conversation) {
+        projectAttachmentState.textContent = "No active chat. Start one here or attach an existing chat later.";
+        attachProjectChatBtn.disabled = true;
+        attachProjectChatBtn.textContent = "Attach active chat";
         return;
     }
-    const proj = projects.find(p => p.project_id === targetProject);
-    const newPrompt = prompt("Project system instructions:", proj?.system_prompt || "");
-    if (newPrompt === null) return;
-    const newModel = prompt("Preferred model (optional):", proj?.preferred_model || "") || undefined;
+    attachProjectChatBtn.disabled = false;
+    if (conversation.project_id === projectHomeProjectId) {
+        projectAttachmentState.textContent = `“${conversation.title || "Current chat"}” is attached. Project context applies to future messages.`;
+        attachProjectChatBtn.textContent = "Detach active chat";
+    } else {
+        const attached = projects.find((item) => item.project_id === conversation.project_id);
+        projectAttachmentState.textContent = conversation.project_id
+            ? `“${conversation.title || "Current chat"}” is attached to ${attached?.name || "another project"}.`
+            : `“${conversation.title || "Current chat"}” is a General chat with no project.`;
+        attachProjectChatBtn.textContent = "Attach active chat";
+    }
+}
+
+function renderProjectFiles(files) {
+    projectFilesList.replaceChildren();
+    if (!files.length) {
+        projectFilesList.appendChild(createProjectEmptyState(
+            "No references yet. Upload UTF-8 text or code to make it eligible for request context. Other files remain stored but unindexed."
+        ));
+        return;
+    }
+    files.forEach((file) => {
+        const record = document.createElement("div");
+        record.className = "project-record";
+        const copy = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = file.display_name;
+        const meta = document.createElement("small");
+        meta.textContent = `${file.attached ? "attached" : "detached"} · ${file.status.replaceAll("_", " ")} · ${formatBytes(file.size_bytes)} · ${file.token_count.toLocaleString()} tokens`;
+        copy.appendChild(title);
+        copy.appendChild(meta);
+        const actions = document.createElement("div");
+        actions.className = "project-record-actions";
+        actions.appendChild(createRecordButton("Reindex", () => reindexProjectReference(file)));
+        actions.appendChild(createRecordButton(
+            file.attached ? "Detach" : "Attach",
+            () => setProjectReferenceAttached(file, !file.attached)
+        ));
+        actions.appendChild(createRecordButton("Delete", () => deleteProjectReference(file), "text-btn danger-text"));
+        record.appendChild(copy);
+        record.appendChild(actions);
+        projectFilesList.appendChild(record);
+    });
+}
+
+function renderProjectArtifacts(artifacts) {
+    projectArtifactsList.replaceChildren();
+    projectArtifactPreview.hidden = true;
+    if (!artifacts.length) {
+        projectArtifactsList.appendChild(createProjectEmptyState(
+            "No outputs yet. Assistant responses from attached chats appear here automatically."
+        ));
+        return;
+    }
+    artifacts.forEach((artifact) => {
+        const record = document.createElement("div");
+        record.className = "project-record";
+        const copy = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = `${artifact.pinned ? "Pinned · " : ""}${artifact.title}`;
+        const meta = document.createElement("small");
+        meta.textContent = `${artifact.kind.replaceAll("_", " ")} · ${artifact.token_count.toLocaleString()} tokens`;
+        copy.appendChild(title);
+        copy.appendChild(meta);
+        const actions = document.createElement("div");
+        actions.className = "project-record-actions";
+        actions.appendChild(createRecordButton("Open", () => openProjectArtifact(artifact.artifact_id)));
+        actions.appendChild(createRecordButton(
+            artifact.pinned ? "Unpin" : "Pin",
+            () => updateProjectArtifact(artifact.artifact_id, { pinned: !artifact.pinned })
+        ));
+        actions.appendChild(createRecordButton(
+            "Archive",
+            () => updateProjectArtifact(artifact.artifact_id, { archived: true })
+        ));
+        actions.appendChild(createRecordButton(
+            "Delete",
+            () => deleteProjectArtifact(artifact),
+            "text-btn danger-text"
+        ));
+        record.appendChild(copy);
+        record.appendChild(actions);
+        projectArtifactsList.appendChild(record);
+    });
+}
+
+async function loadBrainRevisions() {
+    if (!projectHomeProjectId) return;
     try {
-        const res = await fetch(routerEndpoint(`/projects/${targetProject}`), {
-            method: "PUT",
-            headers: authHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify({
-                system_prompt: newPrompt,
-                preferred_model: newModel && newModel.trim() ? newModel.trim() : undefined
-            })
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/brain/revisions`),
+            { headers: authHeaders() }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        const data = await response.json();
+        brainRevisionSelect.replaceChildren();
+        data.revisions.forEach((revision) => {
+            const option = document.createElement("option");
+            option.value = revision.revision;
+            option.textContent = `Revision ${revision.revision} · ${revision.reason} · ${revision.token_count} tokens`;
+            brainRevisionSelect.appendChild(option);
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const prior = data.revisions.find((item) => item.revision < projectHomeData.components.brain.revision);
+        if (prior) brainRevisionSelect.value = prior.revision;
+        restoreProjectBrainBtn.disabled = !prior;
+    } catch (error) {
+        projectBrainStatus.textContent = `Revision load failed: ${error.message}`;
+    }
+}
+
+function populateProjectHomepage(data) {
+    projectHomeData = data;
+    projectHomeProjectId = data.project_id;
+    projectHomeHeading.textContent = data.project.name;
+    projectHomeDescription.textContent = data.project.description
+        || "One source of truth for the context added to every attached chat.";
+    projectContextBudget.value = data.context_budget.total;
+    projectHomeInstructions.value = data.components.project_instructions.content || "";
+    renderProjectBudget();
+    renderProjectAttachmentState();
+    renderProjectFiles(data.components.file_context_uploads || []);
+    renderProjectArtifacts(data.components.artifact_history || []);
+    const brain = data.components.brain;
+    const brainDeleted = Boolean(brain.deleted_at);
+    brainPinned.value = brainDeleted ? "" : (brain.pinned_text || "");
+    brainActive.value = brainDeleted ? "" : (brain.active_text || "");
+    brainRecent.value = brainDeleted ? "" : (brain.recent_text || "");
+    brainThreshold.value = brain.compact_threshold;
+    [brainPinned, brainActive, brainRecent, brainThreshold].forEach((field) => {
+        field.disabled = brainDeleted;
+    });
+    saveProjectBrainBtn.disabled = brainDeleted;
+    compactProjectBrainBtn.disabled = brainDeleted;
+    deleteProjectBrainBtn.disabled = brainDeleted;
+    brainRevision.textContent = `Revision ${brain.revision} · ${brain.token_count.toLocaleString()} tokens`;
+    projectBrainStatus.textContent = brainDeleted
+        ? "Soft deleted. Restore a prior revision to reactivate it."
+        : (brain.should_compact ? "Compaction threshold reached." : "Ready");
+    loadBrainRevisions();
+}
+
+async function refreshProjectHomepage(message = "") {
+    if (!projectHomeProjectId) return;
+    if (message) projectHomeStatus.textContent = message;
+    const response = await fetch(
+        routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/homepage`),
+        { headers: authHeaders() }
+    );
+    if (!response.ok) throw new Error(await apiError(response));
+    populateProjectHomepage(await response.json());
+}
+
+async function openProjectHomepage() {
+    if (!selectedProjectId) {
+        alert("Select a project before opening its homepage.");
+        projectSelect?.focus();
+        return;
+    }
+    projectHomeProjectId = selectedProjectId;
+    projectHomeStatus.textContent = "Loading project context...";
+    if (!projectHomeDialog.open) projectHomeDialog.showModal();
+    try {
+        await refreshProjectHomepage();
+        projectHomeStatus.textContent = "All four project components are loaded.";
+        animateProjectHomepageIn();
+        requestAnimationFrame(() => projectHomeInstructions.focus());
+    } catch (error) {
+        console.error("Failed to load Project Homepage:", error);
+        projectHomeStatus.textContent = `Load failed: ${error.message}`;
+    }
+}
+
+async function saveProjectInstructions() {
+    if (!projectHomeProjectId) return;
+    saveProjectInstructionsBtn.disabled = true;
+    projectHomeStatus.textContent = "Saving project instructions and budget...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}`),
+            {
+                method: "PUT",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({
+                    system_prompt: projectHomeInstructions.value,
+                    context_budget_tokens: Number.parseInt(projectContextBudget.value, 10)
+                })
+            }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
         await loadProjects();
-        alert("Project instructions updated. Use 🔄 to resync the active conversation.");
-    } catch (e) {
-        console.error("Failed to update project:", e);
-        alert("Failed to update project");
+        await refreshProjectHomepage();
+        projectHomeStatus.textContent = "Instructions saved. Attached chats use them on the next message.";
+    } catch (error) {
+        projectHomeStatus.textContent = `Save failed: ${error.message}`;
+    } finally {
+        saveProjectInstructionsBtn.disabled = false;
+    }
+}
+
+async function uploadProjectReference(event) {
+    event.preventDefault();
+    const file = projectFileInput.files?.[0];
+    if (!file || !projectHomeProjectId) {
+        projectFilesStatus.textContent = "Choose a reference first.";
+        return;
+    }
+    projectFilesStatus.textContent = `Uploading ${file.name}...`;
+    const form = new FormData();
+    form.append("file", file);
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/files`),
+            { method: "POST", headers: authHeaders(), body: form }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        const uploaded = await response.json();
+        projectFileInput.value = "";
+        const label = projectFileForm.querySelector(".project-file-drop span");
+        if (label) label.textContent = "Choose a local reference";
+        projectFilesStatus.textContent = uploaded.status === "indexed"
+            ? `${uploaded.display_name} indexed for project context.`
+            : `${uploaded.display_name} stored with status: ${uploaded.status.replaceAll("_", " ")}.`;
+        await refreshProjectHomepage();
+    } catch (error) {
+        projectFilesStatus.textContent = `Upload failed: ${error.message}`;
+    }
+}
+
+async function deleteProjectReference(file) {
+    if (!confirm(`Delete project reference “${file.display_name}”?`)) return;
+    projectFilesStatus.textContent = `Deleting ${file.display_name}...`;
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/files/${encodeURIComponent(file.file_id)}`),
+            { method: "DELETE", headers: authHeaders() }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        await refreshProjectHomepage();
+        projectFilesStatus.textContent = `${file.display_name} deleted.`;
+    } catch (error) {
+        projectFilesStatus.textContent = `Delete failed: ${error.message}`;
+    }
+}
+
+async function reindexProjectReference(file) {
+    projectFilesStatus.textContent = `Reindexing ${file.display_name}...`;
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/files/${encodeURIComponent(file.file_id)}/reindex`),
+            { method: "POST", headers: authHeaders() }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        const updated = await response.json();
+        await refreshProjectHomepage();
+        projectFilesStatus.textContent = `${updated.display_name} reindexed with status: ${updated.status.replaceAll("_", " ")}.`;
+    } catch (error) {
+        projectFilesStatus.textContent = `Reindex failed: ${error.message}`;
+    }
+}
+
+async function setProjectReferenceAttached(file, attached) {
+    projectFilesStatus.textContent = `${attached ? "Attaching" : "Detaching"} ${file.display_name}...`;
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/files/${encodeURIComponent(file.file_id)}`),
+            {
+                method: "PUT",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({ attached })
+            }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        await refreshProjectHomepage();
+        projectFilesStatus.textContent = `${file.display_name} ${attached ? "attached" : "detached"}.`;
+    } catch (error) {
+        projectFilesStatus.textContent = `Update failed: ${error.message}`;
+    }
+}
+
+async function openProjectArtifact(artifactId) {
+    projectArtifactsStatus.textContent = "Loading artifact...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/artifacts/${encodeURIComponent(artifactId)}`),
+            { headers: authHeaders() }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        const artifact = await response.json();
+        projectArtifactPreview.textContent = artifact.body || "";
+        projectArtifactPreview.hidden = false;
+        projectArtifactsStatus.textContent = `Viewing ${artifact.title}.`;
+    } catch (error) {
+        projectArtifactsStatus.textContent = `Open failed: ${error.message}`;
+    }
+}
+
+async function updateProjectArtifact(artifactId, updates) {
+    projectArtifactsStatus.textContent = "Updating artifact...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/artifacts/${encodeURIComponent(artifactId)}`),
+            {
+                method: "PUT",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify(updates)
+            }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        await refreshProjectHomepage();
+        projectArtifactsStatus.textContent = "Artifact updated.";
+    } catch (error) {
+        projectArtifactsStatus.textContent = `Update failed: ${error.message}`;
+    }
+}
+
+async function deleteProjectArtifact(artifact) {
+    if (!confirm(`Delete artifact “${artifact.title}”?`)) return;
+    projectArtifactsStatus.textContent = "Deleting artifact...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}`),
+            { method: "DELETE", headers: authHeaders() }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        await refreshProjectHomepage();
+        projectArtifactsStatus.textContent = "Artifact deleted.";
+    } catch (error) {
+        projectArtifactsStatus.textContent = `Delete failed: ${error.message}`;
+    }
+}
+
+async function saveProjectBrain() {
+    if (!projectHomeData || !projectHomeProjectId) return;
+    saveProjectBrainBtn.disabled = true;
+    projectBrainStatus.textContent = "Saving BRAIN...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/brain`),
+            {
+                method: "PUT",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({
+                    pinned_text: brainPinned.value,
+                    active_text: brainActive.value,
+                    recent_text: brainRecent.value,
+                    compact_threshold: Number.parseInt(brainThreshold.value, 10),
+                    expected_revision: projectHomeData.components.brain.revision
+                })
+            }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        const brain = await response.json();
+        await refreshProjectHomepage();
+        projectBrainStatus.textContent = brain.compaction_queued
+            ? "Saved. Threshold compaction queued in FastAPI."
+            : "BRAIN saved.";
+    } catch (error) {
+        projectBrainStatus.textContent = `Save failed: ${error.message}`;
+    } finally {
+        saveProjectBrainBtn.disabled = false;
+    }
+}
+
+async function compactProjectBrain() {
+    compactProjectBrainBtn.disabled = true;
+    projectBrainStatus.textContent = "Creating a recoverable compaction revision...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/brain/compact`),
+            { method: "POST", headers: authHeaders() }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        await refreshProjectHomepage();
+        projectBrainStatus.textContent = "Compacted. Pinned and active tiers were preserved verbatim.";
+    } catch (error) {
+        projectBrainStatus.textContent = `Compaction failed: ${error.message}`;
+    } finally {
+        compactProjectBrainBtn.disabled = false;
+    }
+}
+
+async function restoreProjectBrain() {
+    const revision = Number.parseInt(brainRevisionSelect.value, 10);
+    if (!revision || !confirm(`Restore BRAIN revision ${revision}? The current revision remains recoverable.`)) return;
+    projectBrainStatus.textContent = `Restoring revision ${revision}...`;
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/brain/revisions/${revision}/restore`),
+            { method: "POST", headers: authHeaders() }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        await refreshProjectHomepage();
+        projectBrainStatus.textContent = `Revision ${revision} restored as a new revision.`;
+    } catch (error) {
+        projectBrainStatus.textContent = `Restore failed: ${error.message}`;
+    }
+}
+
+async function deleteProjectBrain() {
+    if (!confirm("Soft delete active BRAIN content? Every revision remains available for restore.")) return;
+    projectBrainStatus.textContent = "Soft deleting BRAIN...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/brain`),
+            { method: "DELETE", headers: authHeaders() }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        await refreshProjectHomepage();
+        projectBrainStatus.textContent = "BRAIN soft deleted. Restore a revision to reactivate it.";
+    } catch (error) {
+        projectBrainStatus.textContent = `Delete failed: ${error.message}`;
+    }
+}
+
+async function previewProjectRequestContext() {
+    if (!projectHomeProjectId) return;
+    previewProjectContextBtn.disabled = true;
+    projectContextPreviewStatus.textContent = "Assembling exact request context...";
+    projectContextPreviewOutput.hidden = true;
+    try {
+        let attachedFileText = "";
+        const inlineFile = fileInput?.files?.[0];
+        if (inlineFile) {
+            if (inlineFile.size > 1024 * 1024) {
+                throw new Error("Inline composer file exceeds the 1MB send limit");
+            }
+            attachedFileText = `\n\n[Attached file: ${inlineFile.name}]\n${await inlineFile.text()}`;
+        }
+        const displayedQuery = window.DavePrompt.buildDisplayedPrompt(
+            promptInput.value.trim(),
+            attachedFileText,
+            Boolean(supportFlag?.checked),
+        );
+        const query = displayedQuery || (state.pendingImages.length ? "[image]" : "");
+        const conversation = currentConversation();
+        const conversationId = conversation?.project_id === projectHomeProjectId
+            ? state.sessionId
+            : null;
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}/context-preview`),
+            {
+                method: "POST",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({
+                    query,
+                    conversation_id: conversationId,
+                    model: modelSelect.value || null,
+                    max_tokens: 2048,
+                }),
+            },
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        const data = await response.json();
+        const budget = data.budget || {};
+        const limits = budget.available_limits || {};
+        const usage = budget.usage || {};
+        const budgetLines = [
+            `Model context window: ${(budget.model_context_window || 0).toLocaleString()} tokens`,
+            `Project request budget: ${(budget.request_total || 0).toLocaleString()} tokens`,
+            `Sequential caps after prior unused capacity: instructions ${Number(limits.project_instructions || 0).toLocaleString()}, BRAIN ${Number(limits.brain || 0).toLocaleString()}, files ${Number(limits.file_context || 0).toLocaleString()}, artifacts ${Number(limits.artifact_history || 0).toLocaleString()}`,
+            `Included usage: instructions ${Number(usage.project_instructions || 0).toLocaleString()}, BRAIN ${Number(usage.brain || 0).toLocaleString()}, files ${Number(usage.file_context || 0).toLocaleString()}, artifacts ${Number(usage.artifact_history || 0).toLocaleString()}`,
+        ];
+        const messageLines = data.messages.map((message, index) => {
+            const content = typeof message.content === "string"
+                ? message.content
+                : JSON.stringify(message.content, null, 2);
+            return `[${index + 1}] ${String(message.role || "unknown").toUpperCase()}\n${content}`;
+        });
+        projectContextPreviewOutput.textContent = `${budgetLines.join("\n")}\n\n${messageLines.join("\n\n")}`;
+        projectContextPreviewOutput.hidden = false;
+        animateProjectContextPreview();
+        projectContextPreviewStatus.textContent = `Preview assembled ${data.messages.length} messages. No model request was sent.`;
+    } catch (error) {
+        projectContextPreviewStatus.textContent = `Preview failed: ${error.message}`;
+    } finally {
+        previewProjectContextBtn.disabled = false;
+    }
+}
+
+async function toggleActiveChatProject() {
+    const conversation = currentConversation();
+    if (!conversation || !state.sessionId) return;
+    const nextProjectId = conversation.project_id === projectHomeProjectId
+        ? null
+        : projectHomeProjectId;
+    projectAttachmentState.textContent = nextProjectId ? "Attaching active chat..." : "Detaching active chat...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/conversations/${encodeURIComponent(state.sessionId)}/project`),
+            {
+                method: "PUT",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({ project_id: nextProjectId })
+            }
+        );
+        if (!response.ok) throw new Error(await apiError(response));
+        const data = await response.json();
+        conversation.project_id = data.project_id;
+        conversation.system_prompt = data.system_prompt;
+        renderProjectAttachmentState();
+        renderConversationList();
+        updateContextStrip();
+    } catch (error) {
+        projectAttachmentState.textContent = `Attachment change failed: ${error.message}`;
+    }
+}
+
+async function startProjectChat() {
+    selectedProjectId = projectHomeProjectId;
+    projectSelect.value = selectedProjectId;
+    localStorage.setItem("dave_project_id", selectedProjectId);
+    const conversationId = await createConversationFromTemplate(templateSelect?.value || "general");
+    if (conversationId) {
+        projectHomeDialog.close();
+        updateContextStrip();
     }
 }
 
@@ -2430,7 +3161,7 @@ async function sendMessage() {
                 temperature: 0.7,
                 model: modelSelect.value || undefined,
                 node_id: state.selectedNode || undefined,
-                project_id: selectedProjectId || undefined,
+                project_id: convo.project_id ?? undefined,
                 images: state.pendingImages.map(i => i.image_url)
             })
         });
@@ -2903,7 +3634,70 @@ if (resyncBtn) {
 }
 
 if (editProjectBtn) {
-    editProjectBtn.addEventListener("click", editProjectInstructions);
+    editProjectBtn.addEventListener("click", openProjectHomepage);
+}
+
+if (projectHomeClose) {
+    projectHomeClose.addEventListener("click", () => {
+        resetProjectHomeMotion();
+        projectHomeDialog.close();
+    });
+}
+
+if (projectHomeDialog) {
+    projectHomeDialog.addEventListener("close", resetProjectHomeMotion);
+}
+
+if (projectHomeInstructions) {
+    projectHomeInstructions.addEventListener("input", renderProjectBudget);
+}
+
+if (projectContextBudget) {
+    projectContextBudget.addEventListener("input", renderProjectBudget);
+}
+
+if (saveProjectInstructionsBtn) {
+    saveProjectInstructionsBtn.addEventListener("click", saveProjectInstructions);
+}
+
+if (projectFileForm) {
+    projectFileForm.addEventListener("submit", uploadProjectReference);
+}
+
+if (projectFileInput) {
+    projectFileInput.addEventListener("change", () => {
+        const name = projectFileInput.files?.[0]?.name;
+        const label = projectFileForm.querySelector(".project-file-drop span");
+        if (label) label.textContent = name || "Choose a local reference";
+    });
+}
+
+if (saveProjectBrainBtn) {
+    saveProjectBrainBtn.addEventListener("click", saveProjectBrain);
+}
+
+if (compactProjectBrainBtn) {
+    compactProjectBrainBtn.addEventListener("click", compactProjectBrain);
+}
+
+if (restoreProjectBrainBtn) {
+    restoreProjectBrainBtn.addEventListener("click", restoreProjectBrain);
+}
+
+if (deleteProjectBrainBtn) {
+    deleteProjectBrainBtn.addEventListener("click", deleteProjectBrain);
+}
+
+if (previewProjectContextBtn) {
+    previewProjectContextBtn.addEventListener("click", previewProjectRequestContext);
+}
+
+if (attachProjectChatBtn) {
+    attachProjectChatBtn.addEventListener("click", toggleActiveChatProject);
+}
+
+if (startProjectChatBtn) {
+    startProjectChatBtn.addEventListener("click", startProjectChat);
 }
 
 if (instructionsBtn) {

@@ -116,12 +116,24 @@ Accepts a message array, inventory-backed node and model, step ceiling, error bu
 
 `GET /projects/{project_id}/notepad` returns the project-scoped plain text. `PUT` autosaves a bounded `content` string. The notepad does not create artifact history, rich text, or browser-persisted note copies.
 
+### Project Homepage and context contracts
+
+`GET /projects/{project_id}/homepage` returns the project record, attached conversation IDs, exact baseline quotas, usage, and four independently owned components: Project Instructions, File Context Uploads, Artifact History, and BRAIN.
+
+- `POST /projects/{project_id}/files`, plus file `PUT`, `reindex`, and `DELETE` routes, own local upload, status, attach/detach, reindex, and deletion. Only attached, successfully indexed UTF-8 text chunks are eligible for requests.
+- Artifact list/get/update/delete routes own retained assistant outputs. Attached-chat responses are captured automatically; pinning affects retrieval priority and archiving removes an artifact from request context.
+- BRAIN get/update/delete, compact, revisions, and restore routes own tiered durable context. Updates use optimistic revision checks; deletion is soft until the configured recovery window expires.
+- `POST /projects/{project_id}/context-preview` returns the exact assembled next-request messages and budget without calling a model or mutating the conversation.
+- `PUT /conversations/{conversation_id}/project` is the only route that reattaches an existing chat. It records a future-only context event. A `null` project creates a General chat context.
+
+The request allocator reserves model output, a five-percent safety margin, and non-project history first. Its baseline project split is 25 percent instructions, 25 percent BRAIN, 30 percent files, and 20 percent artifacts. Unused tokens roll forward to BRAIN, files, then artifacts. The payload order is one exact primary system prompt containing global, project, and session instruction layers; BRAIN; ranked file context; ranked artifact history; bounded conversation history; and the current user message.
+
 ## Persistence and static serving
 
-All persistence artifacts, including `dave_settings.json`, resolve under `DAVE_DATA_DIR`, with the current directory retained as the unset default. Runtime UI files are served only from `static/`. Requests for source, `.git`, JSON, SQLite, and log paths return `404` unless a separately declared API route owns the path.
+All persistence artifacts, including `dave_settings.json`, `dave_project_context.db`, and `project_uploads/`, resolve under `DAVE_DATA_DIR`, with the current directory retained as the unset default. Runtime UI files are served only from `static/`. Requests for source, `.git`, JSON, SQLite, and log paths return `404` unless a separately declared API route owns the path.
 
 ## Verified versus runtime-dependent
 
-Automated tests verify auth states, static isolation, Ollama-compatible inventory and chat transports, stream success and failure events, templates, export, tools default-off behavior, title generation, raw embedding indexes, exact effective-prompt construction, and data-directory containment.
+Automated tests verify auth states, static isolation, Ollama-compatible inventory and chat transports, stream success and failure events, templates, export, tools default-off behavior, title generation, raw embedding indexes, exact effective-prompt construction, Project Homepage lifecycles, request-context order and preview, BRAIN compaction/recovery, token rollover, and data-directory containment.
 
 Real cluster reachability, actual model inventory, Whisper binaries, inference performance, and end-to-end hardware behavior remain runtime-dependent and require an authorized cluster check.
