@@ -69,6 +69,6 @@ git diff --check
 ## Current limits and open decisions
 
 - Real node reachability, installed model inventory, inference quality, Whisper execution, and hardware performance require cluster access and are not proven by repository tests.
-- Electron remains at `^30.0.0` by explicit compatibility constraint. Current npm audit findings require a separately approved major upgrade.
+- Electron is pinned to `^44.0.0` (upgraded from `^30.0.0` per audit finding H-1, 2026-08-26). npm audit reports no known vulnerabilities at this line; keep the pin on a supported major.
 - FastAPI startup/shutdown event deprecation warnings are known; a lifespan migration is deferred because it is outside the P0 stabilization scope.
 - JSON conversation/project persistence is preserved. A SQLite migration is deferred.
