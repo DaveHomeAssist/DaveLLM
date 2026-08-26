@@ -116,6 +116,7 @@ def test_data_dir_contains_every_persistence_artifact(router_factory):
     paths = {
         router.DATA_FILE,
         router.PROJECTS_FILE,
+        router.SETTINGS_FILE,
         router.VECTOR_DB,
         router.FEEDBACK_DB,
         router.PERFORMANCE_DB,
@@ -124,6 +125,7 @@ def test_data_dir_contains_every_persistence_artifact(router_factory):
     assert {path.name for path in paths} == {
         "dave_conversations.json",
         "dave_projects.json",
+        "dave_settings.json",
         "dave_vectors.db",
         "feedback.db",
         "performance.db",
@@ -194,6 +196,27 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert 'id="chatPanel"' in index_source and 'tabindex="-1"' in index_source
     assert 'const nodeStatus = ["online", "offline"].includes(rawNodeStatus)' in app_source
     assert "@media (prefers-reduced-motion: reduce)" in style_source
+    assert 'id="instructionsDialog"' in index_source
+    assert 'id="globalInstructions"' in index_source
+    assert 'id="projectInstructions"' in index_source
+    assert 'id="sessionInstructions"' in index_source
+    assert 'id="effectiveInstructions"' in index_source
+    assert 'id="notepadPanel"' in index_source
+    assert 'id="notepadInput"' in index_source
+    assert 'aria-controls="notepadPanel"' in index_source
+    assert "navigator.clipboard?.writeText" in app_source
+    assert "rawMessageText(message)" in app_source
+    assert 'button.textContent = "Copied"' in app_source
+    assert "}, 2000);" in app_source
+    assert 'copyButton.textContent = "Copy"' in app_source
+    assert 'noteButton.textContent = "Add to notepad"' in app_source
+    assert "/instructions/session" in app_source
+    assert "/notepad`" in app_source
+    assert "async function flushProjectNotepadSave()" in app_source
+    assert "await flushProjectNotepadSave();" in app_source
+    assert "notepadSaveTimer = setTimeout(() =>" in app_source
+    assert "@media (hover: none), (pointer: coarse)" in style_source
+    assert ".message:hover .message-actions" in style_source
 
 
 def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_hatch():

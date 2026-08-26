@@ -43,6 +43,7 @@ def test_static_root_is_isolated(router_factory):
         "/app.py",
         "/.git/config",
         "/dave_projects.json",
+        "/dave_settings.json",
         "/dave_conversations.json",
         "/feedback.db",
         "/performance.db",
@@ -141,7 +142,10 @@ def test_template_body_and_authenticated_markdown_export(router_factory):
     )
     assert response.status_code == 200
     conversation_id = response.json()["conversation_id"]
-    expected_prompt = router.TEMPLATES["code_review"]["system_prompt"]
+    expected_prompt = (
+        f"{router.SYSTEM_PROMPT}\n\nSESSION OVERRIDE\n"
+        f"{router.TEMPLATES['code_review']['session_override']}"
+    )
     assert response.json()["system_prompt"] == expected_prompt
     assert router.CONVERSATIONS[conversation_id]["system_prompt"] == expected_prompt
     assert router.CONVERSATIONS[conversation_id]["messages"] == []
@@ -175,8 +179,11 @@ def test_project_template_sync_chat_uses_one_primary_system_prompt(router_factor
     )
     assert created.status_code == 200
     conversation_id = created.json()["conversation_id"]
-    assert created.json()["system_prompt"] == project_prompt
-    assert router.CONVERSATIONS[conversation_id]["system_prompt"] == project_prompt
+    expected_prompt = (
+        f"{router.SYSTEM_PROMPT}\n\nPROJECT INSTRUCTIONS\n{project_prompt}"
+    )
+    assert created.json()["system_prompt"] == expected_prompt
+    assert router.CONVERSATIONS[conversation_id]["system_prompt"] == expected_prompt
     assert router.CONVERSATIONS[conversation_id]["messages"] == []
 
     with respx.mock(assert_all_called=True) as mock:
@@ -202,10 +209,129 @@ def test_project_template_sync_chat_uses_one_primary_system_prompt(router_factor
         assert response.status_code == 200
 
     payload = json.loads(node_chat.calls.last.request.content)
-    assert payload["messages"][0] == {"role": "system", "content": project_prompt}
+    assert payload["messages"][0] == {"role": "system", "content": expected_prompt}
     assert sum(
-        message.get("content") == project_prompt for message in payload["messages"]
+        message.get("content") == expected_prompt for message in payload["messages"]
     ) == 1
+
+
+def test_instruction_layers_save_apply_to_next_message_and_revert(router_factory):
+    router, client, data_dir = router_factory()
+    project = client.post(
+        "/projects",
+        headers=AUTH,
+        json={"name": "Layered", "system_prompt": "Project initial"},
+    ).json()
+    conversation_id = client.post(
+        "/conversations/from_template",
+        headers=AUTH,
+        json={"template_name": "general", "project_id": project["project_id"]},
+    ).json()["conversation_id"]
+
+    initial = client.get(
+        f"/conversations/{conversation_id}/instructions",
+        headers=AUTH,
+    ).json()
+    assert initial["precedence"] == [
+        "global_default",
+        "project_instructions",
+        "session_override",
+    ]
+    assert initial["layers"]["global_default"]["content"] == router.SYSTEM_PROMPT
+    assert initial["layers"]["project_instructions"]["content"] == "Project initial"
+    assert initial["layers"]["session_override"]["content"] == ""
+
+    updated = client.put(
+        f"/conversations/{conversation_id}/instructions",
+        headers=AUTH,
+        json={
+            "global_default": "Global edited",
+            "project_instructions": "Project edited",
+            "session_override": "Session edited",
+        },
+    )
+    assert updated.status_code == 200
+    effective = (
+        "Global edited\n\n"
+        "PROJECT INSTRUCTIONS\nProject edited\n\n"
+        "SESSION OVERRIDE\nSession edited"
+    )
+    assert updated.json()["effective"] == effective
+    assert updated.json()["character_count"] == len(effective)
+    assert (data_dir / "dave_settings.json").exists()
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
+        node_chat = mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": "layered answer"}}]},
+            )
+        )
+        response = client.post(
+            "/chat",
+            headers=AUTH,
+            json={
+                "conversation_id": conversation_id,
+                "prompt": "Use current instructions",
+                "node_id": "node-test",
+                "model": MODEL_ID,
+            },
+        )
+        assert response.status_code == 200
+    assert json.loads(node_chat.calls.last.request.content)["messages"][0] == {
+        "role": "system",
+        "content": effective,
+    }
+
+    reverted = client.delete(
+        f"/conversations/{conversation_id}/instructions/session",
+        headers=AUTH,
+    ).json()
+    assert reverted["layers"]["session_override"]["content"] == ""
+    assert reverted["effective"] == (
+        "Global edited\n\nPROJECT INSTRUCTIONS\nProject edited"
+    )
+    reset_global = client.delete("/instructions/global", headers=AUTH).json()
+    assert reset_global["content"] == router.SYSTEM_PROMPT
+    assert reset_global["is_source_default"] is True
+
+
+def test_project_notepad_is_plain_project_scoped_and_persistent(router_factory):
+    _, client, _ = router_factory()
+    first = client.post(
+        "/projects",
+        headers=AUTH,
+        json={"name": "First"},
+    ).json()
+    second = client.post(
+        "/projects",
+        headers=AUTH,
+        json={"name": "Second"},
+    ).json()
+
+    saved = client.put(
+        f"/projects/{first['project_id']}/notepad",
+        headers=AUTH,
+        json={"content": "one\ntwo"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["character_count"] == 7
+    assert client.get(
+        f"/projects/{first['project_id']}/notepad",
+        headers=AUTH,
+    ).json()["content"] == "one\ntwo"
+    assert client.get(
+        f"/projects/{second['project_id']}/notepad",
+        headers=AUTH,
+    ).json()["content"] == ""
+    listed = {
+        item["project_id"]: item["notepad"]
+        for item in client.get("/projects", headers=AUTH).json()["projects"]
+    }
+    assert listed[first["project_id"]] == "one\ntwo"
+    assert listed[second["project_id"]] == ""
 
 
 def test_general_template_stream_uses_one_primary_system_prompt(router_factory):
@@ -311,6 +437,34 @@ def test_legacy_instructions_are_canonicalized_and_summary_is_preserved(
         "content": legacy_prompt,
     }
     assert router.CONVERSATIONS["legacy"]["system_prompt"] == legacy_prompt
+
+
+def test_attached_legacy_snapshot_remains_exact_until_saved_or_reverted(
+    router_factory,
+):
+    router, client, _ = router_factory()
+    project = client.post(
+        "/projects",
+        headers=AUTH,
+        json={"name": "Legacy Project", "system_prompt": "Current project layer"},
+    ).json()
+    legacy_prompt = "Legacy project-only snapshot"
+    router.CONVERSATIONS["legacy-project"] = {
+        "title": "Legacy Project Conversation",
+        "messages": [],
+        "user_id": "default",
+        "project_id": project["project_id"],
+        "system_prompt": legacy_prompt,
+    }
+
+    response = client.get(
+        "/conversations/legacy-project/instructions",
+        headers=AUTH,
+    )
+    assert response.status_code == 200
+    assert response.json()["mode"] == "replace"
+    assert response.json()["layers"]["session_override"]["content"] == legacy_prompt
+    assert response.json()["effective"] == legacy_prompt
 
 
 def test_title_and_embeddings_use_raw_history_indexes(router_factory):

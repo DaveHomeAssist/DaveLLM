@@ -7,6 +7,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 ## Source layout
 
 - `app.py`: FastAPI routes, persistence, inventory, chat, tools, monitoring
+- `tool_executor.py`: runtime tool registry, schema validation, timing, approval boundaries, and bounded executor loop
 - `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
 - `desktop/`: Electron main process and preload bridge
 - `scripts/macos/`: Keychain-backed launcher and local app installer; node addresses are resolved from live Tailscale state
@@ -23,6 +24,9 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - The macOS launcher stores only `DAVE_API_KEY` in Keychain and constructs `DAVE_NODES` in memory from live Tailscale peer records. Dominic and Walter are required; Duncan is appended only when online and Ollama-responsive, and never blocks startup.
 - Only `static/` is mounted at `/`; source, Git metadata, JSON, SQLite, and logs must remain unreachable.
 - Tools default off. File tools require explicit absolute roots. Shell execution requires a second opt-in.
+- The agent loop defaults to eight model steps, returns partial transcripts, and requires per-run approval for mutating or execution tools.
+- Global, project, and session instruction layers are visible in the UI and resolve into one exact primary system message.
+- Project notepads are plain text in project persistence. Do not add rich text, history, collaboration, or browser note storage.
 
 ## Ollama integration
 
@@ -34,6 +38,7 @@ Every runtime persistence path is based on `BASE_DIR`, which is derived from `DA
 
 - `dave_conversations.json`
 - `dave_projects.json`
+- `dave_settings.json`
 - `dave_vectors.db`
 - `feedback.db`
 - `performance.db`

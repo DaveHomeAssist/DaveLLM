@@ -67,6 +67,10 @@ const TEMPLATE_LABELS = {
 let projects = [];
 let selectedProjectId = localStorage.getItem("dave_project_id") || "";
 let anticipationRecord = window.DaveAnticipation.createRecord();
+let notepadSaveTimer = null;
+let notepadLoadedProjectId = null;
+let notepadLoading = false;
+let instructionPreviewMode = "layered";
 
 function authHeaders(extra = {}) {
     const headers = { ...extra };
@@ -249,6 +253,29 @@ const topbarModelValue = document.getElementById("topbarModelValue");
 const undoPredictionBtn = document.getElementById("undoPredictionBtn");
 const attachToolsToggle = document.getElementById("attachToolsToggle");
 const attachmentTools = document.getElementById("attachmentTools");
+const instructionsBtn = document.getElementById("instructionsBtn");
+const instructionsDialog = document.getElementById("instructionsDialog");
+const instructionsClose = document.getElementById("instructionsClose");
+const globalInstructions = document.getElementById("globalInstructions");
+const projectInstructions = document.getElementById("projectInstructions");
+const sessionInstructions = document.getElementById("sessionInstructions");
+const effectiveInstructions = document.getElementById("effectiveInstructions");
+const globalInstructionsCount = document.getElementById("globalInstructionsCount");
+const projectInstructionsCount = document.getElementById("projectInstructionsCount");
+const sessionInstructionsCount = document.getElementById("sessionInstructionsCount");
+const effectiveInstructionsCount = document.getElementById("effectiveInstructionsCount");
+const instructionProjectName = document.getElementById("instructionProjectName");
+const instructionsStatus = document.getElementById("instructionsStatus");
+const saveInstructionsBtn = document.getElementById("saveInstructions");
+const revertSessionInstructionsBtn = document.getElementById("revertSessionInstructions");
+const resetGlobalInstructionsBtn = document.getElementById("resetGlobalInstructions");
+const notepadToggle = document.getElementById("notepadToggle");
+const notepadPanel = document.getElementById("notepadPanel");
+const notepadClose = document.getElementById("notepadClose");
+const notepadInput = document.getElementById("notepadInput");
+const notepadStatus = document.getElementById("notepadStatus");
+const notepadProjectName = document.getElementById("notepadProjectName");
+const sendNotepadBtn = document.getElementById("sendNotepadBtn");
 const mobileTabButtons = Array.from(document.querySelectorAll("[data-mobile-tab]"));
 const mobilePanels = Array.from(document.querySelectorAll("[data-mobile-panel]"));
 
@@ -1066,7 +1093,8 @@ async function loadConversationsFromBackend() {
                 messages: [],  // messages loaded on-demand
                 created_at: c.created_at,
                 updated_at: c.updated_at,
-                project_id: c.project_id || null
+                project_id: c.project_id || null,
+                system_prompt: c.system_prompt || ""
             };
         });
         
@@ -1098,7 +1126,9 @@ async function loadConversationHistory(cid) {
             messages: data.messages || [],
             created_at: data.created_at,
             updated_at: data.updated_at,
-            project_id: data.project_id || null
+            project_id: data.project_id || null,
+            system_prompt: data.system_prompt || "",
+            session_override: data.session_override || ""
         };
         
         return true;
@@ -1336,6 +1366,8 @@ async function switchConversation(cid) {
         return;
     }
 
+    await flushProjectNotepadSave();
+
     state.sessionId = cid;
     state.lastSessionId = cid;
     localStorage.setItem(LAST_SESSION_KEY, cid);
@@ -1351,6 +1383,12 @@ async function switchConversation(cid) {
     renderConversationList();
     renderMessages();
     applyProjectSupportDefault();
+    if (!notepadPanel.hidden) {
+        notepadLoadedProjectId = null;
+        const projectId = activeNotepadProjectId();
+        if (projectId) await loadProjectNotepad(projectId);
+        else closeProjectNotepad();
+    }
     setMobileTab("chat");
     updateContextStrip();
 }
@@ -1410,29 +1448,8 @@ async function clearConversation(cid) {
 }
 
 async function createNewConversation() {
-    clearUndoState();
-    const id = "convo_" + Date.now();
-
-    state.conversations[id] = {
-        title: "New Conversation",
-        messages: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        project_id: selectedProjectId || null
-    };
-
-    state.sessionId = id;
-    state.lastSessionId = id;
-    localStorage.setItem(LAST_SESSION_KEY, id);
     if (templateSelect) templateSelect.value = "general";
-    
-    renderConversationList();
-    renderMessages();
-    applyProjectSupportDefault();
-    updateAnticipationPreferences();
-    setMobileTab("chat");
-    
-    console.log(`✅ Created new conversation ${id} (backend will create on first message)`);
+    return createConversationFromTemplate("general");
 }
 
 async function createConversationFromTemplate(name) {
@@ -1524,6 +1541,312 @@ async function editProjectInstructions() {
     } catch (e) {
         console.error("Failed to update project:", e);
         alert("Failed to update project");
+    }
+}
+
+function estimateInstructionTokens(value) {
+    return Math.max(0, Math.ceil(String(value || "").length / 4));
+}
+
+function formatInstructionCount(value) {
+    const text = String(value || "");
+    return `${text.length.toLocaleString()} characters, about ${estimateInstructionTokens(text).toLocaleString()} tokens`;
+}
+
+function composeInstructionPreview() {
+    if (instructionPreviewMode === "replace" && sessionInstructions.value.trim()) {
+        return sessionInstructions.value.trim();
+    }
+    const parts = [globalInstructions.value.trim()];
+    if (!projectInstructions.disabled && projectInstructions.value.trim()) {
+        parts.push(`PROJECT INSTRUCTIONS\n${projectInstructions.value.trim()}`);
+    }
+    if (sessionInstructions.value.trim()) {
+        parts.push(`SESSION OVERRIDE\n${sessionInstructions.value.trim()}`);
+    }
+    return parts.filter(Boolean).join("\n\n");
+}
+
+function updateInstructionCounts() {
+    globalInstructionsCount.textContent = formatInstructionCount(globalInstructions.value);
+    projectInstructionsCount.textContent = formatInstructionCount(projectInstructions.value);
+    sessionInstructionsCount.textContent = formatInstructionCount(sessionInstructions.value);
+    effectiveInstructions.value = composeInstructionPreview();
+    effectiveInstructionsCount.textContent = formatInstructionCount(effectiveInstructions.value);
+}
+
+function populateInstructionDialog(data) {
+    const layers = data.layers || {};
+    instructionPreviewMode = data.mode || "layered";
+    globalInstructions.value = layers.global_default?.content || "";
+    projectInstructions.value = layers.project_instructions?.content || "";
+    projectInstructions.disabled = !layers.project_instructions?.editable;
+    instructionProjectName.textContent = data.project_name || "No project attached";
+    sessionInstructions.value = layers.session_override?.content || "";
+    effectiveInstructions.value = data.effective || "";
+    if (state.conversations[data.conversation_id]) {
+        state.conversations[data.conversation_id].system_prompt = data.effective || "";
+        state.conversations[data.conversation_id].session_override = sessionInstructions.value;
+    }
+    updateInstructionCounts();
+}
+
+async function ensureActiveConversation() {
+    if (state.sessionId && state.conversations[state.sessionId]) return state.sessionId;
+    return createNewConversation();
+}
+
+async function openInstructionsDialog() {
+    const conversationId = await ensureActiveConversation();
+    if (!conversationId) {
+        alert("Could not create a conversation for instruction editing.");
+        return;
+    }
+    instructionsStatus.textContent = "Loading current instructions...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/conversations/${encodeURIComponent(conversationId)}/instructions`),
+            { headers: authHeaders() },
+        );
+        if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
+        const data = await response.json();
+        populateInstructionDialog(data);
+        instructionsStatus.textContent = data.mode === "replace"
+            ? "Legacy snapshot mode is active. Saving or reverting switches this session to visible layered precedence."
+            : "Edits apply to the next message without restarting DaveLLM.";
+        instructionsDialog.showModal();
+        requestAnimationFrame(() => sessionInstructions.focus());
+    } catch (error) {
+        console.error("Failed to load instructions:", error);
+        instructionsStatus.textContent = `Could not load instructions: ${error.message}`;
+        alert("Could not load active instructions.");
+    }
+}
+
+async function saveInstructionLayers() {
+    if (!state.sessionId) return;
+    saveInstructionsBtn.disabled = true;
+    instructionsStatus.textContent = "Saving and applying...";
+    const payload = {
+        global_default: globalInstructions.value,
+        session_override: sessionInstructions.value,
+    };
+    if (!projectInstructions.disabled) {
+        payload.project_instructions = projectInstructions.value;
+    }
+    try {
+        const response = await fetch(
+            routerEndpoint(`/conversations/${encodeURIComponent(state.sessionId)}/instructions`),
+            {
+                method: "PUT",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify(payload),
+            },
+        );
+        if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
+        const data = await response.json();
+        populateInstructionDialog(data);
+        await loadProjects();
+        instructionsStatus.textContent = "Saved. These exact instructions apply to the next message.";
+    } catch (error) {
+        console.error("Failed to save instructions:", error);
+        instructionsStatus.textContent = `Save failed: ${error.message}`;
+    } finally {
+        saveInstructionsBtn.disabled = false;
+    }
+}
+
+async function revertSessionInstructions() {
+    if (!state.sessionId) return;
+    instructionsStatus.textContent = "Reverting session override...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/conversations/${encodeURIComponent(state.sessionId)}/instructions/session`),
+            { method: "DELETE", headers: authHeaders() },
+        );
+        if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
+        populateInstructionDialog(await response.json());
+        instructionsStatus.textContent = "Session override reverted to inherited defaults.";
+    } catch (error) {
+        instructionsStatus.textContent = `Revert failed: ${error.message}`;
+    }
+}
+
+async function resetGlobalInstructions() {
+    instructionsStatus.textContent = "Restoring source-controlled global default...";
+    try {
+        const response = await fetch(routerEndpoint("/instructions/global"), {
+            method: "DELETE",
+            headers: authHeaders(),
+        });
+        if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
+        const data = await response.json();
+        globalInstructions.value = data.content || "";
+        updateInstructionCounts();
+        instructionsStatus.textContent = instructionPreviewMode === "replace"
+            ? "Global default restored. This legacy session keeps its exact snapshot until you save or revert it."
+            : "Global default restored. It applies to the next message.";
+    } catch (error) {
+        instructionsStatus.textContent = `Global reset failed: ${error.message}`;
+    }
+}
+
+function activeNotepadProjectId() {
+    return currentConversation()?.project_id || selectedProjectId || "";
+}
+
+async function loadProjectNotepad(projectId) {
+    notepadLoading = true;
+    notepadStatus.textContent = "Loading...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectId)}/notepad`),
+            { headers: authHeaders() },
+        );
+        if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
+        const data = await response.json();
+        notepadInput.value = data.content || "";
+        notepadLoadedProjectId = projectId;
+        const project = projects.find((item) => item.project_id === projectId);
+        notepadProjectName.textContent = project?.name || "Current project";
+        notepadStatus.textContent = data.updated_at ? "Saved" : "Ready. Autosaves as you type.";
+    } catch (error) {
+        console.error("Failed to load notepad:", error);
+        notepadStatus.textContent = `Load failed: ${error.message}`;
+    } finally {
+        notepadLoading = false;
+    }
+}
+
+async function openProjectNotepad() {
+    const projectId = activeNotepadProjectId();
+    if (!projectId) {
+        alert("Select a project before opening the project notepad.");
+        setMobileTab("history");
+        projectSelect?.focus();
+        return false;
+    }
+    notepadPanel.hidden = false;
+    notepadToggle.setAttribute("aria-expanded", "true");
+    if (notepadLoadedProjectId !== projectId) await loadProjectNotepad(projectId);
+    notepadInput.focus();
+    return true;
+}
+
+function closeProjectNotepad() {
+    notepadPanel.hidden = true;
+    notepadToggle.setAttribute("aria-expanded", "false");
+    notepadToggle.focus();
+}
+
+async function saveProjectNotepad() {
+    const projectId = notepadLoadedProjectId;
+    if (!projectId) return;
+    notepadStatus.textContent = "Saving...";
+    try {
+        const response = await fetch(
+            routerEndpoint(`/projects/${encodeURIComponent(projectId)}/notepad`),
+            {
+                method: "PUT",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({ content: notepadInput.value }),
+            },
+        );
+        if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
+        const data = await response.json();
+        const project = projects.find((item) => item.project_id === projectId);
+        if (project) project.notepad = data.content;
+        notepadStatus.textContent = "Saved";
+    } catch (error) {
+        console.error("Failed to save notepad:", error);
+        notepadStatus.textContent = `Save failed: ${error.message}`;
+    }
+}
+
+async function flushProjectNotepadSave() {
+    if (!notepadSaveTimer) return;
+    clearTimeout(notepadSaveTimer);
+    notepadSaveTimer = null;
+    await saveProjectNotepad();
+}
+
+function scheduleProjectNotepadSave() {
+    if (notepadLoading || !notepadLoadedProjectId) return;
+    notepadStatus.textContent = "Unsaved changes";
+    clearTimeout(notepadSaveTimer);
+    notepadSaveTimer = setTimeout(() => {
+        notepadSaveTimer = null;
+        saveProjectNotepad();
+    }, 500);
+}
+
+async function appendSelectionToNotepad(messageElement) {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim() || "";
+    const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    if (!selectedText || !range || !messageElement.contains(range.commonAncestorContainer)) {
+        alert("Select text inside this message, then choose Add to notepad.");
+        return;
+    }
+    if (!await openProjectNotepad()) return;
+    const separator = notepadInput.value && !notepadInput.value.endsWith("\n") ? "\n" : "";
+    notepadInput.value += `${separator}${selectedText}\n`;
+    scheduleProjectNotepadSave();
+    notepadInput.focus();
+    notepadInput.setSelectionRange(notepadInput.value.length, notepadInput.value.length);
+}
+
+async function sendNotepadToChat() {
+    const text = notepadInput.value.trim();
+    if (!text) {
+        alert("The project notepad is empty.");
+        return;
+    }
+    promptInput.value = text;
+    resizeComposer();
+    persistSessionDraft();
+    await sendMessage();
+}
+
+function rawMessageText(message) {
+    if (typeof message.content === "string") return message.content;
+    if (!Array.isArray(message.content)) return String(message.content || "");
+    return message.content.map((part) => {
+        if (part?.type === "text") return part.text || "";
+        if (part?.type === "image_url") return "[image]";
+        return "";
+    }).filter(Boolean).join("\n\n");
+}
+
+async function copyRawMessage(message, button, statusElement) {
+    const text = rawMessageText(message);
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const fallback = document.createElement("textarea");
+            fallback.value = text;
+            fallback.setAttribute("readonly", "");
+            fallback.style.position = "fixed";
+            fallback.style.opacity = "0";
+            document.body.appendChild(fallback);
+            fallback.select();
+            const copied = document.execCommand("copy");
+            fallback.remove();
+            if (!copied) throw new Error("Clipboard unavailable");
+        }
+        const original = button.textContent;
+        button.textContent = "Copied";
+        button.setAttribute("aria-label", `${message.role} message copied`);
+        statusElement.textContent = `${message.role} message copied`;
+        setTimeout(() => {
+            button.textContent = original;
+            button.setAttribute("aria-label", `Copy ${message.role} message raw markdown`);
+            statusElement.textContent = "";
+        }, 2000);
+    } catch (error) {
+        console.error("Copy failed:", error);
+        statusElement.textContent = "Copy failed";
     }
 }
 
@@ -2264,7 +2587,31 @@ function renderMessages() {
         roleLabel.textContent = m.role.toUpperCase() + ": ";
         header.appendChild(roleLabel);
 
-        // Feedback buttons for assistant messages
+        const messageActions = document.createElement("div");
+        messageActions.className = "message-actions";
+        const actionStatus = document.createElement("span");
+        actionStatus.className = "visually-hidden";
+        actionStatus.setAttribute("role", "status");
+        actionStatus.setAttribute("aria-live", "polite");
+
+        if (["user", "assistant"].includes(m.role) && !m.isStreaming) {
+            const copyButton = document.createElement("button");
+            copyButton.type = "button";
+            copyButton.className = "message-action";
+            copyButton.textContent = "Copy";
+            copyButton.setAttribute("aria-label", `Copy ${m.role} message raw markdown`);
+            copyButton.addEventListener("click", () => copyRawMessage(m, copyButton, actionStatus));
+            messageActions.appendChild(copyButton);
+
+            const noteButton = document.createElement("button");
+            noteButton.type = "button";
+            noteButton.className = "message-action";
+            noteButton.textContent = "Add to notepad";
+            noteButton.setAttribute("aria-label", `Append selected text from ${m.role} message to project notepad`);
+            noteButton.addEventListener("click", () => appendSelectionToNotepad(msgDiv));
+            messageActions.appendChild(noteButton);
+        }
+
         if (m.role === "assistant" && !m.isStreaming) {
             const fb = document.createElement("div");
             fb.className = "message-feedback";
@@ -2282,7 +2629,12 @@ function renderMessages() {
             down.onclick = () => sendFeedback(-1, m.content || "", m.model);
             fb.appendChild(up);
             fb.appendChild(down);
-            header.appendChild(fb);
+            messageActions.appendChild(fb);
+        }
+
+        if (messageActions.childElementCount) {
+            messageActions.appendChild(actionStatus);
+            header.appendChild(messageActions);
         }
 
         msgDiv.appendChild(header);
@@ -2492,6 +2844,7 @@ if (projectSelect) {
     projectSelect.addEventListener("change", async (e) => {
         const snapshot = captureControlSnapshot();
         clearUndoState();
+        await flushProjectNotepadSave();
         const chosen = e.target.value;
         if (chosen === "__create__") {
             await createProjectFlow();
@@ -2499,6 +2852,11 @@ if (projectSelect) {
         }
         selectedProjectId = chosen;
         localStorage.setItem("dave_project_id", selectedProjectId);
+        if (!notepadPanel.hidden) {
+            notepadLoadedProjectId = null;
+            if (selectedProjectId) await loadProjectNotepad(selectedProjectId);
+            else closeProjectNotepad();
+        }
         await loadConversationsFromBackend();
         state.sessionId = null;
         state.restoredSelection = false;
@@ -2546,6 +2904,52 @@ if (resyncBtn) {
 
 if (editProjectBtn) {
     editProjectBtn.addEventListener("click", editProjectInstructions);
+}
+
+if (instructionsBtn) {
+    instructionsBtn.addEventListener("click", openInstructionsDialog);
+}
+
+if (instructionsClose) {
+    instructionsClose.addEventListener("click", () => instructionsDialog.close());
+}
+
+[globalInstructions, projectInstructions, sessionInstructions].forEach((field) => {
+    field?.addEventListener("input", () => {
+        instructionPreviewMode = "layered";
+        updateInstructionCounts();
+    });
+});
+
+if (saveInstructionsBtn) {
+    saveInstructionsBtn.addEventListener("click", saveInstructionLayers);
+}
+
+if (revertSessionInstructionsBtn) {
+    revertSessionInstructionsBtn.addEventListener("click", revertSessionInstructions);
+}
+
+if (resetGlobalInstructionsBtn) {
+    resetGlobalInstructionsBtn.addEventListener("click", resetGlobalInstructions);
+}
+
+if (notepadToggle) {
+    notepadToggle.addEventListener("click", () => {
+        if (notepadPanel.hidden) openProjectNotepad();
+        else closeProjectNotepad();
+    });
+}
+
+if (notepadClose) {
+    notepadClose.addEventListener("click", closeProjectNotepad);
+}
+
+if (notepadInput) {
+    notepadInput.addEventListener("input", scheduleProjectNotepadSave);
+}
+
+if (sendNotepadBtn) {
+    sendNotepadBtn.addEventListener("click", sendNotepadToChat);
 }
 
 if (transcribeBtn) {

@@ -80,7 +80,27 @@
         <main id="chatPanel" class="panel prompt mobile-active" data-mobile-panel="chat" data-heading-id="chatHeading" data-tab-id="mobileTabChat" aria-labelledby="chatHeading" tabindex="-1">
             <div class="panel-header">
                 <h2 id="chatHeading">Chat</h2>
+                <div class="chat-panel-actions">
+                    <button id="instructionsBtn" type="button" class="text-btn">Instructions</button>
+                    <button id="notepadToggle" type="button" class="text-btn" aria-expanded="false" aria-controls="notepadPanel">Notepad</button>
+                </div>
             </div>
+
+            <section id="notepadPanel" class="notepad-panel" aria-labelledby="notepadHeading" hidden>
+                <div class="notepad-header">
+                    <div>
+                        <h3 id="notepadHeading">Project notepad</h3>
+                        <p id="notepadProjectName">Select a project to use the notepad.</p>
+                    </div>
+                    <button id="notepadClose" type="button" class="text-btn">Close</button>
+                </div>
+                <label class="visually-hidden" for="notepadInput">Project notepad text</label>
+                <textarea id="notepadInput" rows="7" placeholder="Capture temporary project notes. Autosaves as plain text."></textarea>
+                <div class="notepad-footer">
+                    <span id="notepadStatus" role="status" aria-live="polite">Not loaded</span>
+                    <button id="sendNotepadBtn" type="button" class="secondary">Send to chat</button>
+                </div>
+            </section>
 
             <div id="responseBox" class="response" aria-live="polite" aria-label="Conversation messages"></div>
             <button id="scrollBottomBtn" class="scroll-bottom-btn" title="Jump to latest" aria-label="Jump to latest message">⬇️</button>
@@ -173,6 +193,42 @@
         </aside>
 
     </div>
+
+    <dialog id="instructionsDialog" class="instructions-dialog" aria-labelledby="instructionsHeading">
+        <div class="instructions-dialog-header">
+            <div>
+                <h2 id="instructionsHeading">Session instructions</h2>
+                <p>Precedence runs from global to project to session. Later layers win conflicts.</p>
+            </div>
+            <button id="instructionsClose" type="button" class="text-btn">Close</button>
+        </div>
+        <div class="instruction-layer">
+            <label for="globalInstructions"><strong>1. Global default</strong></label>
+            <textarea id="globalInstructions" rows="6"></textarea>
+            <small id="globalInstructionsCount">0 characters, about 0 tokens</small>
+        </div>
+        <div class="instruction-layer">
+            <label for="projectInstructions"><strong>2. Project instructions</strong> <span id="instructionProjectName">No project attached</span></label>
+            <textarea id="projectInstructions" rows="4"></textarea>
+            <small id="projectInstructionsCount">0 characters, about 0 tokens</small>
+        </div>
+        <div class="instruction-layer">
+            <label for="sessionInstructions"><strong>3. Session override</strong></label>
+            <textarea id="sessionInstructions" rows="4" placeholder="Optional instructions for this session only"></textarea>
+            <small id="sessionInstructionsCount">0 characters, about 0 tokens</small>
+        </div>
+        <div class="instruction-layer effective-instructions">
+            <label for="effectiveInstructions"><strong>Exact instructions in effect</strong></label>
+            <textarea id="effectiveInstructions" rows="8" readonly></textarea>
+            <small id="effectiveInstructionsCount">0 characters, about 0 tokens</small>
+        </div>
+        <div id="instructionsStatus" class="dialog-status" role="status" aria-live="polite"></div>
+        <div class="instructions-dialog-actions">
+            <button id="resetGlobalInstructions" type="button" class="secondary">Reset global default</button>
+            <button id="revertSessionInstructions" type="button" class="secondary">Revert session override</button>
+            <button id="saveInstructions" type="button" class="primary">Save and apply</button>
+        </div>
+    </dialog>
 
     <script src="prompt-contract.js"></script>
     <script src="anticipation.js"></script>

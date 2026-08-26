@@ -28,9 +28,18 @@ from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, R
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 import httpx
 import uuid
+
+from tool_executor import (
+    DEFAULT_ERROR_BUDGET,
+    DEFAULT_STEP_LIMIT,
+    ToolDefinition,
+    ToolRegistry,
+    run_executor_loop,
+    run_tool,
+)
 
 # ============================================================
 # CONSTANTS
@@ -44,6 +53,7 @@ VECTOR_DB = BASE_DIR / "dave_vectors.db"
 FEEDBACK_DB = BASE_DIR / "feedback.db"
 PERFORMANCE_DB = BASE_DIR / "performance.db"
 PROJECTS_FILE = BASE_DIR / "dave_projects.json"
+SETTINGS_FILE = BASE_DIR / "dave_settings.json"
 COST_LOG = BASE_DIR / "cost_log.jsonl"
 BUDGET_DEFAULT = float(os.getenv("DAVE_BUDGET_DEFAULT", "100"))
 USER_BUDGETS = {}
@@ -253,16 +263,19 @@ TEMPLATES = {
     "general": {
         "title": "New Conversation",
         "system_prompt": SYSTEM_PROMPT,
+        "session_override": "",
         "preferred_model": DEFAULT_MODEL_ID,
     },
     "code_review": {
         "title": "Code Review Session",
         "system_prompt": SYSTEM_PROMPT + "\n\nFocus on code quality, bugs, and optimization.",
+        "session_override": "Focus on code quality, bugs, and optimization.",
         "preferred_model": "./models/llama3.2-3b-instruct-q4_k_m.gguf",
     },
     "brainstorm": {
         "title": "Brainstorm",
         "system_prompt": SYSTEM_PROMPT + "\n\nBe exploratory and propose multiple options.",
+        "session_override": "Be exploratory and propose multiple options.",
         "preferred_model": "/Users/daverobertson/Desktop/Dave-LLM/models/qwen-vl-7b/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
     },
 }
@@ -335,9 +348,32 @@ def save_projects(projects: Dict[str, dict]):
     except IOError as e:
         print(f"⚠️ Failed to save projects: {e}")
 
+
+def load_settings() -> Dict[str, str]:
+    if not SETTINGS_FILE.exists():
+        return {}
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            value = json.load(f)
+        return value if isinstance(value, dict) else {}
+    except Exception as e:
+        print(f"⚠️ Failed to load settings: {e}")
+        return {}
+
+
+def save_settings(settings: Dict[str, str]):
+    tmp = SETTINGS_FILE.with_suffix(".tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(settings, f, indent=2)
+        tmp.replace(SETTINGS_FILE)
+    except IOError as e:
+        print(f"⚠️ Failed to save settings: {e}")
+
 # Load existing conversations on startup
 CONVERSATIONS: Dict[str, dict] = load_conversations()
 PROJECTS: Dict[str, dict] = load_projects()
+SETTINGS: Dict[str, str] = load_settings()
 
 # ============================================================
 # FASTAPI SETUP
@@ -950,7 +986,7 @@ import platform
 class ToolRequest(BaseModel):
     """Tool execution request from LLM."""
     tool: str
-    params: Dict = {}
+    params: Dict = Field(default_factory=dict)
 
 class ToolResult(BaseModel):
     """Result of tool execution."""
@@ -958,16 +994,9 @@ class ToolResult(BaseModel):
     status: str  # "success" or "error"
     result: str
     error: Optional[str] = None
-
-# Define available tools
-AVAILABLE_TOOLS = {
-    "file.read": "Read file contents",
-    "file.write": "Write to file",
-    "file.append": "Append to file",
-    "web.fetch": "Fetch URL content",
-    "system.info": "Get system information",
-    "shell.exec": "Execute shell command (restricted)"
-}
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    duration_ms: Optional[float] = None
 
 
 def validate_public_url(url: str) -> None:
@@ -1010,7 +1039,7 @@ def resolve_tool_path(path: str) -> Path:
     return candidate
 
 async def execute_tool(tool_req: ToolRequest) -> ToolResult:
-    """Execute a tool with safety checks."""
+    """Run one registered tool through the shared validated dispatcher."""
     if not TOOLS_ENABLED:
         return ToolResult(
             tool=tool_req.tool,
@@ -1019,36 +1048,20 @@ async def execute_tool(tool_req: ToolRequest) -> ToolResult:
             error="Tools are disabled. Set DAVE_ENABLE_TOOLS=true to enable them.",
         )
 
-    try:
-        tool = tool_req.tool
-        params = tool_req.params
-        
-        if tool == "file.read":
-            return await tool_file_read(params)
-        elif tool == "file.write":
-            return await tool_file_write(params)
-        elif tool == "file.append":
-            return await tool_file_append(params)
-        elif tool == "web.fetch":
-            return await tool_web_fetch(params)
-        elif tool == "system.info":
-            return await tool_system_info(params)
-        elif tool == "shell.exec":
-            return await tool_shell_exec(params)
-        else:
-            return ToolResult(
-                tool=tool,
-                status="error",
-                result="",
-                error=f"Unknown tool: {tool}"
-            )
-    except Exception as e:
-        return ToolResult(
-            tool=tool_req.tool,
-            status="error",
-            result="",
-            error=str(e)
-        )
+    execution = await run_tool(
+        tool_req.tool,
+        tool_req.params,
+        registry=TOOL_REGISTRY,
+    )
+    return ToolResult(
+        tool=execution.name,
+        status="success" if execution.status == "success" else "error",
+        result=execution.result,
+        error=execution.error,
+        started_at=execution.started_at,
+        completed_at=execution.completed_at,
+        duration_ms=execution.duration_ms,
+    )
 
 async def tool_file_read(params: Dict) -> ToolResult:
     """Read file contents with size limit."""
@@ -1204,6 +1217,121 @@ async def tool_shell_exec(params: Dict) -> ToolResult:
     except Exception as e:
         return ToolResult(tool="shell.exec", status="error", result="", error=str(e))
 
+
+TOOL_REGISTRY = ToolRegistry()
+
+
+def register_builtin_tools() -> None:
+    """Load built-in schemas and handlers into the revocable runtime registry."""
+    definitions = [
+        ToolDefinition(
+            name="system.info",
+            description="Read bounded operating system and Python runtime information.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "all",
+                            "platform",
+                            "platform_version",
+                            "python_version",
+                            "processor",
+                        ],
+                    }
+                },
+                "additionalProperties": False,
+            },
+            handler=tool_system_info,
+            permission="read_system",
+        ),
+        ToolDefinition(
+            name="file.read",
+            description="Read a UTF-8 text file inside an allowed tool root.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "minLength": 1},
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+            handler=tool_file_read,
+            permission="read_files",
+        ),
+        ToolDefinition(
+            name="file.write",
+            description="Write UTF-8 text inside an allowed tool root.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "minLength": 1},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
+                "additionalProperties": False,
+            },
+            handler=tool_file_write,
+            permission="write_files",
+            approval_required=True,
+        ),
+        ToolDefinition(
+            name="file.append",
+            description="Append UTF-8 text inside an allowed tool root.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "minLength": 1},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
+                "additionalProperties": False,
+            },
+            handler=tool_file_append,
+            permission="write_files",
+            approval_required=True,
+        ),
+        ToolDefinition(
+            name="web.fetch",
+            description="Fetch a bounded public HTTP or HTTPS text response.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "minLength": 1},
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            handler=tool_web_fetch,
+            permission="public_network",
+        ),
+    ]
+    if SHELL_TOOL_ENABLED:
+        definitions.append(
+            ToolDefinition(
+                name="shell.exec",
+                description="Execute one command from the fixed safe-command allowlist.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "command": {"type": "string", "minLength": 1},
+                    },
+                    "required": ["command"],
+                    "additionalProperties": False,
+                },
+                handler=tool_shell_exec,
+                permission="execute_process",
+                approval_required=True,
+                timeout_seconds=6,
+            )
+        )
+    for definition in definitions:
+        TOOL_REGISTRY.register(definition)
+
+
+register_builtin_tools()
+
 # ============================================================
 # MEMORY STORAGE
 # ============================================================
@@ -1223,6 +1351,8 @@ def get_history(conversation_id: str, user_id: str = "default", project_id: Opti
             "user_id": user_id,
             "project_id": project_id,
             "system_prompt": None,
+            "session_override": "",
+            "instruction_mode": "layered",
         }
     )
     if convo.get("user_id") not in (None, user_id, "default"):
@@ -1261,20 +1391,122 @@ def get_leading_system_messages(messages: List[dict]) -> List[dict]:
     return leading
 
 
-def resolve_conversation_system_prompt(conversation: dict, project: dict) -> str:
-    """Resolve one canonical instruction prompt without losing legacy templates."""
-    if conversation.get("system_prompt"):
-        return conversation["system_prompt"]
+def get_global_system_prompt() -> str:
+    """Return the editable runtime default or the source-controlled fallback."""
+    configured = SETTINGS.get("global_system_prompt")
+    return configured if isinstance(configured, str) and configured.strip() else SYSTEM_PROMPT
+
+
+def normalize_session_instructions(conversation: dict, project: dict) -> tuple[str, str]:
+    """Map existing prompt snapshots into layered instructions without losing text."""
+    if "session_override" in conversation:
+        return (
+            str(conversation.get("session_override") or ""),
+            str(conversation.get("instruction_mode") or "layered"),
+        )
 
     legacy_instructions = [
         message.get("content", "").strip()
         for message in get_leading_system_messages(conversation.get("messages", []))
         if message.get("content", "").strip()
     ]
-    if legacy_instructions:
-        return "\n\n".join(legacy_instructions)
+    legacy_prompt = conversation.get("system_prompt") or (
+        "\n\n".join(legacy_instructions) if legacy_instructions else ""
+    )
+    if not legacy_prompt:
+        return "", "layered"
 
-    return project.get("system_prompt") or SYSTEM_PROMPT
+    global_default = get_global_system_prompt()
+    project_prompt = str(project.get("system_prompt") or "")
+    inherited_prompt = compose_system_instructions(
+        global_default,
+        project_prompt,
+        "",
+    )
+    if legacy_prompt == inherited_prompt:
+        return "", "layered"
+    prefix = f"{inherited_prompt}\n\n"
+    if legacy_prompt.startswith(prefix):
+        candidate = legacy_prompt[len(prefix):]
+        if compose_system_instructions(
+            global_default,
+            project_prompt,
+            candidate,
+        ) == legacy_prompt:
+            return candidate, "layered"
+    return str(legacy_prompt), "replace"
+
+
+def compose_system_instructions(
+    global_default: str,
+    project_instructions: str,
+    session_override: str,
+    *,
+    mode: str = "layered",
+) -> str:
+    """Compose one exact system message with visible lowest-to-highest precedence."""
+    if mode == "replace" and session_override.strip():
+        return session_override.strip()
+
+    parts = [global_default.strip()]
+    if project_instructions.strip():
+        parts.append(f"PROJECT INSTRUCTIONS\n{project_instructions.strip()}")
+    if session_override.strip():
+        parts.append(f"SESSION OVERRIDE\n{session_override.strip()}")
+    return "\n\n".join(part for part in parts if part)
+
+
+def get_instruction_layers(conversation: dict, project: dict) -> dict:
+    """Return editable layers and the exact effective system instruction text."""
+    global_default = get_global_system_prompt()
+    project_instructions = str(project.get("system_prompt") or "")
+    session_override, mode = normalize_session_instructions(conversation, project)
+    effective = compose_system_instructions(
+        global_default,
+        project_instructions,
+        session_override,
+        mode=mode,
+    )
+    return {
+        "precedence": ["global_default", "project_instructions", "session_override"],
+        "merge_rule": (
+            "Later non-empty layers have higher precedence. Legacy replace mode keeps "
+            "the prior session snapshot exact until it is saved or reverted."
+        ),
+        "mode": mode,
+        "layers": {
+            "global_default": {
+                "label": "Global default",
+                "content": global_default,
+                "editable": True,
+                "priority": 1,
+            },
+            "project_instructions": {
+                "label": "Project instructions",
+                "content": project_instructions,
+                "editable": bool(project),
+                "priority": 2,
+            },
+            "session_override": {
+                "label": "Session override",
+                "content": session_override,
+                "editable": True,
+                "priority": 3,
+            },
+        },
+        "effective": effective,
+        "character_count": len(effective),
+        "token_estimate": estimate_tokens(effective),
+    }
+
+
+def resolve_conversation_system_prompt(conversation: dict, project: dict) -> str:
+    """Resolve the exact active instruction text from the three visible layers."""
+    if "session_override" not in conversation:
+        session_override, mode = normalize_session_instructions(conversation, project)
+        conversation["session_override"] = session_override
+        conversation["instruction_mode"] = mode
+    return get_instruction_layers(conversation, project)["effective"]
 
 
 def prepare_history_for_prompt(messages: List[dict]) -> List[dict]:
@@ -1432,6 +1664,7 @@ class ProjectResponse(BaseModel):
     created_at: Optional[str] = None
     user_id: Optional[str] = None
     description: Optional[str] = None
+    notepad: str = ""
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
@@ -1442,6 +1675,74 @@ class ProjectUpdate(BaseModel):
 
 class ResyncRequest(BaseModel):
     project_id: Optional[str] = None
+
+
+class InstructionUpdate(BaseModel):
+    global_default: Optional[str] = None
+    project_instructions: Optional[str] = None
+    session_override: Optional[str] = None
+
+    @field_validator("global_default", "project_instructions", "session_override")
+    @classmethod
+    def validate_instruction_size(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and len(value) > 100_000:
+            raise ValueError("Instruction layer exceeds 100,000 characters")
+        return value
+
+
+class NotepadUpdate(BaseModel):
+    content: str
+
+    @field_validator("content")
+    @classmethod
+    def validate_notepad_size(cls, value: str) -> str:
+        if len(value) > 200_000:
+            raise ValueError("Notepad exceeds 200,000 characters")
+        return value
+
+
+class AgentRunRequest(BaseModel):
+    messages: List[Dict]
+    node_id: str
+    model: str
+    max_tokens: int = 2048
+    temperature: float = 0.7
+    step_limit: int = DEFAULT_STEP_LIMIT
+    error_budget: int = DEFAULT_ERROR_BUDGET
+    approved_tools: List[str] = Field(default_factory=list)
+
+    @field_validator("messages")
+    @classmethod
+    def validate_messages(cls, value: List[Dict]) -> List[Dict]:
+        if not value:
+            raise ValueError("At least one message is required")
+        if len(value) > 200:
+            raise ValueError("Message array exceeds 200 entries")
+        if len(json.dumps(value, ensure_ascii=False)) > 1_000_000:
+            raise ValueError("Message payload exceeds 1,000,000 characters")
+        allowed_roles = {"system", "user", "assistant", "tool"}
+        for index, message in enumerate(value):
+            if message.get("role") not in allowed_roles:
+                raise ValueError(f"messages[{index}] has an unsupported role")
+            if "content" not in message and "tool_calls" not in message:
+                raise ValueError(
+                    f"messages[{index}] requires content or tool_calls"
+                )
+        return value
+
+    @field_validator("step_limit")
+    @classmethod
+    def validate_step_limit(cls, value: int) -> int:
+        if not 1 <= value <= 32:
+            raise ValueError("step_limit must be between 1 and 32")
+        return value
+
+    @field_validator("error_budget")
+    @classmethod
+    def validate_error_budget(cls, value: int) -> int:
+        if not 1 <= value <= 8:
+            raise ValueError("error_budget must be between 1 and 8")
+        return value
 
 # ============================================================
 # ROUTES
@@ -1685,11 +1986,37 @@ def list_projects(user_id: str = Depends(get_current_user)):
             created_at=p.get("created_at"),
             user_id=p.get("user_id"),
             description=p.get("description"),
+            notepad=p.get("notepad", ""),
         ).model_dump()
         for pid, p in PROJECTS.items()
         if p.get("user_id", "default") == user_id
     ]
     return {"projects": projects}
+
+
+@app.get("/instructions/global")
+def get_global_instructions(_auth=Depends(require_api_key)):
+    content = get_global_system_prompt()
+    return {
+        "content": content,
+        "is_source_default": "global_system_prompt" not in SETTINGS,
+        "character_count": len(content),
+        "token_estimate": estimate_tokens(content),
+    }
+
+
+@app.delete("/instructions/global")
+def reset_global_instructions(_auth=Depends(require_api_key)):
+    """Remove the runtime override and restore the source-controlled default."""
+    SETTINGS.pop("global_system_prompt", None)
+    save_settings(SETTINGS)
+    content = get_global_system_prompt()
+    return {
+        "content": content,
+        "is_source_default": True,
+        "character_count": len(content),
+        "token_estimate": estimate_tokens(content),
+    }
 
 @app.post("/projects", response_model=ProjectResponse)
 def create_project(req: ProjectCreate, user_id: str = Depends(get_current_user)):
@@ -1703,6 +2030,7 @@ def create_project(req: ProjectCreate, user_id: str = Depends(get_current_user))
         "created_at": datetime.now().isoformat(),
         "user_id": user_id,
         "description": req.description or "",
+        "notepad": "",
     }
     PROJECTS[project_id] = project
     save_projects(PROJECTS)
@@ -1715,6 +2043,7 @@ def create_project(req: ProjectCreate, user_id: str = Depends(get_current_user))
         created_at=project["created_at"],
         user_id=user_id,
         description=project["description"],
+        notepad=project["notepad"],
     )
 
 @app.get("/projects/{project_id}", response_model=ProjectResponse)
@@ -1729,6 +2058,7 @@ def get_project_endpoint(project_id: str, user_id: str = Depends(get_current_use
         created_at=proj.get("created_at"),
         user_id=proj.get("user_id"),
         description=proj.get("description"),
+        notepad=proj.get("notepad", ""),
     )
 
 @app.put("/projects/{project_id}", response_model=ProjectResponse)
@@ -1750,7 +2080,41 @@ def update_project(project_id: str, req: ProjectUpdate, user_id: str = Depends(g
         created_at=proj.get("created_at"),
         user_id=proj.get("user_id"),
         description=proj.get("description"),
+        notepad=proj.get("notepad", ""),
     )
+
+
+@app.get("/projects/{project_id}/notepad")
+def get_project_notepad(project_id: str, user_id: str = Depends(get_current_user)):
+    """Return the project-scoped plain-text notepad."""
+    project = get_project(project_id, user_id)
+    content = str(project.get("notepad") or "")
+    return {
+        "project_id": project_id,
+        "content": content,
+        "character_count": len(content),
+        "updated_at": project.get("notepad_updated_at"),
+    }
+
+
+@app.put("/projects/{project_id}/notepad")
+def update_project_notepad(
+    project_id: str,
+    req: NotepadUpdate,
+    user_id: str = Depends(get_current_user),
+):
+    """Autosave project-scoped plain text without creating a second document model."""
+    project = get_project(project_id, user_id)
+    project["notepad"] = req.content
+    project["notepad_updated_at"] = datetime.now().isoformat()
+    project["updated_at"] = project["notepad_updated_at"]
+    save_projects(PROJECTS)
+    return {
+        "project_id": project_id,
+        "content": project["notepad"],
+        "character_count": len(project["notepad"]),
+        "updated_at": project["notepad_updated_at"],
+    }
 
 @app.delete("/projects/{project_id}")
 def delete_project(project_id: str, user_id: str = Depends(get_current_user)):
@@ -1770,12 +2134,13 @@ def list_available_tools(_auth=Depends(require_api_key)):
     """List available tools for the LLM to use."""
     if not TOOLS_ENABLED:
         raise HTTPException(403, "Tools are disabled")
-    tools = dict(AVAILABLE_TOOLS)
-    if not SHELL_TOOL_ENABLED:
-        tools.pop("shell.exec", None)
     return {
-        "tools": tools,
-        "instructions": "LLM can request tools by outputting JSON: {\"tool\": \"tool.name\", \"params\": {...}}"
+        "tools": TOOL_REGISTRY.public_catalog(),
+        "instructions": (
+            "The executor sends these JSON schemas to Ollama on every model step. "
+            "Tools marked approval_required pause before execution unless approved "
+            "for the current run."
+        ),
     }
 
 @app.post("/tools/execute")
@@ -1785,6 +2150,54 @@ async def execute_tool_endpoint(tool_req: ToolRequest, _auth=Depends(require_api
         raise HTTPException(403, "Tools are disabled")
     result = await execute_tool(tool_req)
     return result.model_dump()
+
+
+@app.post("/tools/agent/run")
+async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key)):
+    """Run the bounded Ollama executor loop and return its complete transcript."""
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    node = get_node_by_id(req.node_id)
+    inventory = MODEL_INVENTORY.get(node.id)
+    if inventory is None:
+        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
+    if req.model not in inventory:
+        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+
+    unknown_approvals = sorted(set(req.approved_tools) - set(TOOL_REGISTRY.public_catalog()))
+    if unknown_approvals:
+        raise HTTPException(
+            400,
+            f"Cannot approve unregistered tool(s): {', '.join(unknown_approvals)}",
+        )
+
+    async def invoke_model(messages: List[Dict], schemas: List[Dict]):
+        payload = {
+            "model": req.model,
+            "messages": messages,
+            "tools": schemas,
+            "tool_choice": "auto",
+            "max_tokens": req.max_tokens,
+            "temperature": req.temperature,
+            "stream": False,
+        }
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                f"{node.url}/v1/chat/completions",
+                json=payload,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    outcome = await run_executor_loop(
+        req.messages,
+        invoke_model,
+        registry=TOOL_REGISTRY,
+        step_limit=req.step_limit,
+        error_budget=req.error_budget,
+        approved_tools=set(req.approved_tools),
+    )
+    return outcome.to_dict()
 
 @app.post("/route/decision", response_model=RouteDecisionResponse)
 def route_decision(req: RouteDecisionRequest, user_id: str = Depends(get_current_user)):
@@ -1962,6 +2375,96 @@ def get_conversation(conversation_id: str, user_id: str = Depends(get_current_us
         "updated_at": convo.get("updated_at"),
         "project_id": convo.get("project_id"),
         "system_prompt": convo.get("system_prompt"),
+        "session_override": normalize_session_instructions(
+            convo,
+            get_project(convo.get("project_id"), user_id)
+            if convo.get("project_id")
+            else {},
+        )[0],
+    }
+
+
+@app.get("/conversations/{conversation_id}/instructions")
+def get_conversation_instructions(
+    conversation_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    assert_convo_owner(conversation_id, user_id)
+    conversation = CONVERSATIONS[conversation_id]
+    project_id = conversation.get("project_id")
+    project = get_project(project_id, user_id) if project_id else {}
+    return {
+        "conversation_id": conversation_id,
+        "project_id": project_id,
+        "project_name": project.get("name"),
+        **get_instruction_layers(conversation, project),
+    }
+
+
+@app.put("/conversations/{conversation_id}/instructions")
+def update_conversation_instructions(
+    conversation_id: str,
+    req: InstructionUpdate,
+    user_id: str = Depends(get_current_user),
+):
+    """Save visible instruction layers and apply them to the next message."""
+    assert_convo_owner(conversation_id, user_id)
+    conversation = CONVERSATIONS[conversation_id]
+    project_id = conversation.get("project_id")
+    project = get_project(project_id, user_id) if project_id else {}
+    updates = req.model_dump(exclude_unset=True)
+
+    if "global_default" in updates:
+        global_default = str(updates["global_default"] or "")
+        if not global_default.strip():
+            raise HTTPException(400, "Global default instructions cannot be empty")
+        SETTINGS["global_system_prompt"] = global_default
+        save_settings(SETTINGS)
+
+    if "project_instructions" in updates:
+        if not project_id:
+            raise HTTPException(400, "This conversation is not attached to a project")
+        project["system_prompt"] = str(updates["project_instructions"] or "")
+        project["updated_at"] = datetime.now().isoformat()
+        save_projects(PROJECTS)
+
+    if "session_override" in updates:
+        conversation["session_override"] = str(updates["session_override"] or "")
+        conversation["instruction_mode"] = "layered"
+
+    layers = get_instruction_layers(conversation, project)
+    conversation["system_prompt"] = layers["effective"]
+    conversation["updated_at"] = datetime.now().isoformat()
+    save_conversations(CONVERSATIONS)
+    return {
+        "conversation_id": conversation_id,
+        "project_id": project_id,
+        "project_name": project.get("name"),
+        **layers,
+    }
+
+
+@app.delete("/conversations/{conversation_id}/instructions/session")
+def reset_session_instructions(
+    conversation_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Revert the session to its inherited global and project instructions."""
+    assert_convo_owner(conversation_id, user_id)
+    conversation = CONVERSATIONS[conversation_id]
+    project_id = conversation.get("project_id")
+    project = get_project(project_id, user_id) if project_id else {}
+    conversation["session_override"] = ""
+    conversation["instruction_mode"] = "layered"
+    layers = get_instruction_layers(conversation, project)
+    conversation["system_prompt"] = layers["effective"]
+    conversation["updated_at"] = datetime.now().isoformat()
+    save_conversations(CONVERSATIONS)
+    return {
+        "conversation_id": conversation_id,
+        "project_id": project_id,
+        "project_name": project.get("name"),
+        **layers,
     }
 
 @app.post("/conversations/from_template")
@@ -1973,9 +2476,18 @@ def create_from_template(req: TemplateConversationRequest, user_id: str = Depend
         raise HTTPException(404, "Template not found")
     template = TEMPLATES[template_name]
     project_cfg = get_project(project_id, user_id) if project_id else {}
-    system_prompt = project_cfg.get("system_prompt") or template.get("system_prompt", SYSTEM_PROMPT)
+    session_override = template.get("session_override", "")
+    provisional_conversation = {
+        "session_override": session_override,
+        "instruction_mode": "layered",
+        "messages": [],
+    }
+    system_prompt = resolve_conversation_system_prompt(
+        provisional_conversation,
+        project_cfg,
+    )
     preferred_model = template.get("preferred_model") or project_cfg.get("preferred_model")
-    cid = f"convo_{int(time.time())}"
+    cid = f"convo_{uuid.uuid4().hex}"
     CONVERSATIONS[cid] = {
         "title": template.get("title", DEFAULT_CONVO_TITLE),
         "messages": [],
@@ -1985,6 +2497,8 @@ def create_from_template(req: TemplateConversationRequest, user_id: str = Depend
         "user_id": user_id,
         "project_id": project_id,
         "system_prompt": system_prompt,
+        "session_override": session_override,
+        "instruction_mode": "layered",
     }
     save_conversations(CONVERSATIONS)
     return {
@@ -1993,6 +2507,7 @@ def create_from_template(req: TemplateConversationRequest, user_id: str = Depend
         "preferred_model": preferred_model,
         "project_id": project_id,
         "system_prompt": system_prompt,
+        "session_override": session_override,
     }
 
 @app.delete("/conversations/{conversation_id}")
@@ -2031,7 +2546,10 @@ def resync_conversation_project(conversation_id: str, req: ResyncRequest, user_i
 
     proj = get_project(project_id, user_id)
     convo["project_id"] = project_id
-    convo["system_prompt"] = proj.get("system_prompt") or SYSTEM_PROMPT
+    session_override, _mode = normalize_session_instructions(convo, proj)
+    convo["session_override"] = session_override
+    convo["instruction_mode"] = "layered"
+    convo["system_prompt"] = resolve_conversation_system_prompt(convo, proj)
     convo["updated_at"] = datetime.now().isoformat()
     save_conversations(CONVERSATIONS)
 

@@ -11,6 +11,7 @@ DaveLLM is an Electron desktop client backed by a FastAPI router. The router dis
 | [CLAUDE.md](CLAUDE.md) | Maintainer architecture, trust boundaries, and repository constraints. |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Placeholder-only launch, health, inventory, persistence, and troubleshooting runbook. |
 | [dave-llm-feature-analysis-2026-03-25.md](dave-llm-feature-analysis-2026-03-25.md) | Dated feature-status analysis with explicit verification boundaries. |
+| [docs/EXECUTABLE_PROMPT_SERIES.md](docs/EXECUTABLE_PROMPT_SERIES.md) | P0 through P8 decision, plan, implementation, and review contracts. |
 | [Public landing page](https://davehomeassist.github.io/DaveLLM/) | Published product overview and quickstart; not the desktop runtime static root. |
 
 ## Requirements
@@ -83,16 +84,25 @@ The repository intentionally contains no real node addresses or verified model i
 
 ## Data and tools
 
-`DAVE_DATA_DIR` relocates all six persistence artifacts. When unset, the current working directory remains the default.
+`DAVE_DATA_DIR` relocates all seven persistence artifacts. When unset, the current working directory remains the default.
 
 - `dave_conversations.json`
 - `dave_projects.json`
+- `dave_settings.json`
 - `dave_vectors.db`
 - `feedback.db`
 - `performance.db`
 - `cost_log.jsonl`
 
 Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and provide `DAVE_TOOL_ROOTS` as a JSON array of absolute paths. File read, write, and append operations share the same containment check. `shell.exec` remains disabled unless `DAVE_ENABLE_SHELL_TOOL=true` is also set. `web.fetch` accepts only bounded public HTTP/HTTPS responses and validates DNS plus each redirect target.
+
+The tool registry publishes one JSON schema per active tool. `POST /tools/agent/run` sends the current schemas to Ollama on every bounded model step, validates arguments, logs call and result timing, returns the complete transcript, stops after eight steps by default, and pauses before tools marked as requiring approval.
+
+## Instructions, copy, and project notes
+
+The Chat header opens a layered instruction editor. It shows the global default, attached project instructions, session override, precedence, live character and token estimates, and the exact effective system text. Saves apply to the next message without restarting the application. Session overrides and the editable runtime global default each have a one-action reset.
+
+Completed user and assistant messages expose keyboard-reachable Copy and Add to notepad actions. Copy preserves raw message source. The plain-text notepad persists per project, autosaves, stays inside Chat, can accept a selection from either message role, and can send its full contents as one user message.
 
 ## Local suggestions and mobile navigation
 
@@ -105,6 +115,7 @@ Suggestion preferences use the versioned `davellm_anticipation_v1` local-storage
 ```bash
 source venv/bin/activate
 python -m py_compile app.py
+python -m py_compile tool_executor.py
 python -m pytest -q
 node --check static/app.js
 node --check static/anticipation.js
@@ -120,4 +131,4 @@ Runtime UI files are under `static/`; only that directory is mounted at `/`. The
 
 ## Dependency note
 
-`package.json` intentionally retains Electron `^30.0.0`. The generated lockfile currently resolves Electron 30.5.1. Current `npm audit` data reports a high-severity advisory set that requires a major Electron upgrade to clear; that upgrade is a separate compatibility decision.
+`package.json` pins Electron `^44.0.0`, upgraded on 2026-08-26 to resolve the prior high-severity advisory set. Keep Electron on a supported major and rerun `npm audit` after dependency changes.

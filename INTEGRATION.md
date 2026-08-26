@@ -104,9 +104,21 @@ The renderer performs authenticated fetch, converts the response to a Markdown B
 
 Both return `403` unless `DAVE_ENABLE_TOOLS=true`. `DAVE_TOOL_ROOTS` must be a JSON array of absolute paths. File read, write, and append use the same resolved-path containment rule. `shell.exec` also requires `DAVE_ENABLE_SHELL_TOOL=true`.
 
+### `POST /tools/agent/run`
+
+Accepts a message array, inventory-backed node and model, step ceiling, error budget, and per-run approved tool names. FastAPI sends the current registered JSON schemas on every Ollama request. The response contains `status`, `transcript`, `final_answer`, `steps`, `errors`, `status_message`, and any `pending_tool_call`. The default ceiling is eight. Mutating and execution tools stop at `approval_required` unless named in `approved_tools` for that run.
+
+### Instruction endpoints
+
+`GET /conversations/{conversation_id}/instructions` returns the global, project, and session layers plus their precedence and exact effective text. `PUT` on the same route saves supplied layers and applies them to the next message. `DELETE /conversations/{conversation_id}/instructions/session` reverts the session override. `GET` and `DELETE /instructions/global` inspect or restore the source-controlled global default.
+
+### Project notepad endpoints
+
+`GET /projects/{project_id}/notepad` returns the project-scoped plain text. `PUT` autosaves a bounded `content` string. The notepad does not create artifact history, rich text, or browser-persisted note copies.
+
 ## Persistence and static serving
 
-All persistence artifacts resolve under `DAVE_DATA_DIR`, with the current directory retained as the unset default. Runtime UI files are served only from `static/`. Requests for source, `.git`, JSON, SQLite, and log paths return `404` unless a separately declared API route owns the path.
+All persistence artifacts, including `dave_settings.json`, resolve under `DAVE_DATA_DIR`, with the current directory retained as the unset default. Runtime UI files are served only from `static/`. Requests for source, `.git`, JSON, SQLite, and log paths return `404` unless a separately declared API route owns the path.
 
 ## Verified versus runtime-dependent
 

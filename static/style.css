@@ -520,6 +520,142 @@ textarea {
   letter-spacing: 0.01em;
 }
 
+.chat-panel-actions,
+.notepad-footer,
+.instructions-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notepad-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px;
+  margin: 4px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(14, 42, 66, 0.92);
+}
+
+.notepad-panel[hidden] {
+  display: none;
+}
+
+.notepad-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notepad-header h3,
+.notepad-header p {
+  margin: 0;
+}
+
+.notepad-header h3 {
+  font-size: 14px;
+}
+
+.notepad-header p,
+.notepad-footer,
+.instruction-layer small,
+.instructions-dialog-header p,
+.dialog-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notepad-panel textarea {
+  min-height: 128px;
+  max-height: 32vh;
+  resize: vertical;
+}
+
+.notepad-footer {
+  justify-content: space-between;
+}
+
+.instructions-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(88vh, 900px);
+  overflow-y: auto;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+}
+
+.instructions-dialog::backdrop {
+  background: rgba(2, 10, 18, 0.76);
+  backdrop-filter: blur(4px);
+}
+
+.instructions-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.instructions-dialog-header h2,
+.instructions-dialog-header p {
+  margin: 0;
+}
+
+.instructions-dialog-header h2 {
+  font-size: 19px;
+  margin-bottom: 4px;
+}
+
+.instruction-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.instruction-layer label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.instruction-layer textarea {
+  min-height: 92px;
+  max-height: 220px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.45;
+}
+
+.instruction-layer textarea:disabled,
+.instruction-layer textarea[readonly] {
+  opacity: 0.78;
+}
+
+.effective-instructions textarea {
+  min-height: 150px;
+}
+
+.dialog-status {
+  min-height: 18px;
+  padding: 4px 0;
+}
+
+.instructions-dialog-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .template-row {
   display: flex;
   gap: 6px;
@@ -914,10 +1050,45 @@ textarea {
 
 .message-header {
   margin-bottom: 5px;
+  flex-wrap: wrap;
   color: #d6f8ff;
   font-family: "Inter", system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.04em;
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.message:hover .message-actions,
+.message:focus-within .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.message-action {
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.message-action:hover {
+  border-color: var(--border);
+  background: rgba(88, 166, 255, 0.14);
 }
 
 .message-feedback {
@@ -1543,10 +1714,37 @@ textarea {
     height: 44px;
   }
 
+  .instructions-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+    padding: 14px;
+  }
+
+  .instructions-dialog-actions > button {
+    min-height: 44px;
+  }
+
+  .notepad-panel textarea {
+    min-height: 110px;
+    max-height: 24dvh;
+  }
+
   textarea {
     min-height: 72px;
     max-height: 35vh;
     max-height: 35dvh;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .message-action {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -1855,6 +2053,11 @@ textarea {
   background: linear-gradient(135deg, #edf3fb, #e6f0fa);
 }
 
+:root[data-theme="light"] .notepad-panel,
+:root[data-theme="light"] .instructions-dialog {
+  background: #f7fbff;
+}
+
 :root[data-theme="light"] .message-header,
 :root[data-theme="light"] .message-content {
   color: var(--text);
@@ -1879,4 +2082,9 @@ textarea {
 :root[data-theme="forest"] .message-assistant,
 :root[data-theme="forest"] .message-system {
   background: linear-gradient(135deg, rgba(25, 65, 46, 0.96), rgba(31, 78, 56, 0.84));
+}
+
+:root[data-theme="forest"] .notepad-panel,
+:root[data-theme="forest"] .instructions-dialog {
+  background: #153d2c;
 }
