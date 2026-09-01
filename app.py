@@ -85,8 +85,15 @@ try:
     BRAIN_RECOVERY_DAYS = int(os.getenv("DAVE_BRAIN_RECOVERY_DAYS", "30"))
 except ValueError as exc:
     raise RuntimeError("DaveLLM token and recovery settings must be integers") from exc
-WHISPER_BIN = Path(os.getenv("DAVE_WHISPER_BIN", "./whisper.cpp/build/bin/whisper-cli"))
-WHISPER_MODEL = Path(os.getenv("DAVE_WHISPER_MODEL", "./whisper.cpp/models/ggml-tiny.en.bin"))
+WHISPER_BIN = Path(
+    os.getenv("DAVE_WHISPER_BIN")
+    or shutil.which("whisper-cli")
+    or "./whisper.cpp/build/bin/whisper-cli"
+).expanduser()
+WHISPER_MODEL = Path(
+    os.getenv("DAVE_WHISPER_MODEL")
+    or BASE_DIR / "models" / "ggml-tiny.en.bin"
+).expanduser()
 FFMPEG_BIN = os.getenv("FFMPEG_BIN") or shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 
 DEFAULT_MODEL_ID = (
@@ -2191,15 +2198,16 @@ async def transcribe_audio(file: UploadFile = File(...), user_id: str = Depends(
         raise HTTPException(400, f"Audio too large (max {MAX_AUDIO_SIZE // 1024 // 1024}MB)")
 
     # Ensure whisper binary and model exist
-    if not WHISPER_BIN.exists():
+    if not WHISPER_BIN.is_file() or not os.access(WHISPER_BIN, os.X_OK):
         raise HTTPException(500, f"Whisper binary not found at {WHISPER_BIN}")
-    if not WHISPER_MODEL.exists():
+    if not WHISPER_MODEL.is_file():
         raise HTTPException(500, f"Whisper model not found at {WHISPER_MODEL}")
 
     tmp_id = uuid.uuid4().hex
-    tmp_input = Path(f"tmp_audio_{tmp_id}.bin")
-    tmp_wav = Path(f"tmp_audio_{tmp_id}.wav")
-    tmp_out = Path(f"tmp_audio_{tmp_id}.txt")
+    tmp_prefix = BASE_DIR / f"tmp_audio_{tmp_id}"
+    tmp_input = Path(f"{tmp_prefix}.bin")
+    tmp_wav = Path(f"{tmp_prefix}.wav")
+    tmp_out = Path(f"{tmp_prefix}.txt")
 
     try:
         tmp_input.write_bytes(data)
@@ -2221,7 +2229,7 @@ async def transcribe_audio(file: UploadFile = File(...), user_id: str = Depends(
             str(tmp_wav),
             "-otxt",
             "-of",
-            f"tmp_audio_{tmp_id}",
+            str(tmp_prefix),
         ]
         subprocess.run(run_cmd, check=True, capture_output=True)
 

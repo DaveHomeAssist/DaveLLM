@@ -21,7 +21,13 @@ DaveLLM is an Electron desktop client backed by a FastAPI router. The router dis
 - One or more reachable Ollama nodes
 - `DAVE_API_KEY` set to a non-empty local secret
 
-The repository does not include models, Whisper assets, credentials, or runtime data.
+The repository does not include models, Whisper assets, credentials, or runtime data. On macOS, install the optional local dictation runtime after the normal setup:
+
+```bash
+npm run install:whisper:macos
+```
+
+This installs Homebrew `whisper-cpp` when needed and downloads the checksum-verified `tiny.en` model to `~/Library/Application Support/DaveLLM/models/`. The model remains app-managed runtime data and is never committed.
 
 ## Setup
 
@@ -53,6 +59,8 @@ npm run install:macos
 The installer creates a strong `DAVE_API_KEY` in macOS Keychain when the `com.davellm.api-key` item does not already exist, preserves an existing item, and installs `~/Applications/DaveLLM Launcher.app`. The launcher requires the Tailscale peers named `dominic` and `walter`, then adds `duncan` only when that peer is online and its Ollama `/api/tags` endpoint responds within four seconds. An unavailable Duncan is logged and skipped without blocking startup. The launcher constructs `DAVE_NODES` in memory, uses `~/Library/Application Support/DaveLLM` for persistence, and starts the existing Electron application. It does not write the key, live node addresses, or generated node JSON to the repository.
 
 Double-click **DaveLLM Launcher** in `~/Applications` for subsequent launches. Startup failures are written to `~/Library/Logs/DaveLLM/launcher.log`. Stop any browser-mode process already using TCP port `8000` before launching the desktop app.
+
+The launcher automatically discovers Homebrew `whisper-cli`. Local dictation uses the model under `DAVE_DATA_DIR/models/ggml-tiny.en.bin`; override either path with `DAVE_WHISPER_BIN` or `DAVE_WHISPER_MODEL`.
 
 ## Browser mode
 

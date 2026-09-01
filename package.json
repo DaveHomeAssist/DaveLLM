@@ -5,6 +5,7 @@
   "main": "desktop/main.js",
   "scripts": {
     "install:macos": "zsh scripts/macos/install-launcher.sh",
+    "install:whisper:macos": "zsh scripts/macos/install-whisper-runtime.sh",
     "start": "electron ."
   },
   "devDependencies": {

@@ -1051,16 +1051,17 @@ function stopFallbackStream() {
 
 async function uploadDictationBlob(blob) {
     try {
+        const audioBytes = new Uint8Array(await blob.arrayBuffer());
+        const uploadBlob = new Blob([audioBytes], { type: blob.type || "audio/webm" });
         const form = new FormData();
-        form.append("file", blob, "dictation.webm");
+        form.append("file", uploadBlob, "dictation.webm");
         const res = await fetch(routerEndpoint("/audio/transcribe"), {
             method: "POST",
             headers: authHeaders(),
             body: form
         });
         if (!res.ok) {
-            const msg = await res.text();
-            throw new Error(msg || `HTTP ${res.status}`);
+            throw new Error(await apiError(res));
         }
         const data = await res.json();
         const transcript = data.text || "";
@@ -2598,8 +2599,7 @@ async function transcribeAudio() {
             body: form
         });
         if (!res.ok) {
-            const msg = await res.text();
-            throw new Error(`HTTP ${res.status}: ${msg || "Transcription failed"}`);
+            throw new Error(await apiError(res));
         }
         const data = await res.json();
         const transcript = data.text || "";

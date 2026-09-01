@@ -49,6 +49,16 @@ The installer creates or preserves the `com.davellm.api-key` generic-password it
 
 Double-click **DaveLLM Launcher** for normal operation. Review `~/Library/Logs/DaveLLM/launcher.log` if startup fails. The launcher stops before starting a second backend when TCP port `8000` is already occupied.
 
+### Install local dictation on macOS
+
+Run the dedicated runtime installer once:
+
+```bash
+npm run install:whisper:macos
+```
+
+It installs Homebrew `whisper-cpp` when needed, verifies the official `tiny.en` model checksum, and stores the model under `~/Library/Application Support/DaveLLM/models/`. DaveLLM discovers `whisper-cli` on `PATH` and reads the model from `DAVE_DATA_DIR/models/ggml-tiny.en.bin`. Use `DAVE_WHISPER_BIN` and `DAVE_WHISPER_MODEL` only for explicit alternate installations.
+
 ## Launch browser mode
 
 From the repository root with the virtual environment and required variables configured:

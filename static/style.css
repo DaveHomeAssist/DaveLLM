@@ -633,6 +633,7 @@ textarea {
   min-height: 92px;
   max-height: 220px;
   resize: vertical;
+  overflow-y: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   line-height: 1.45;
 }

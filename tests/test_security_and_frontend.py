@@ -137,6 +137,45 @@ def test_data_dir_contains_every_persistence_artifact(router_factory):
     assert all(path.parent == data_dir.resolve() for path in paths)
 
 
+def test_audio_transcription_uses_configured_runtime_and_cleans_temporary_files(
+    router_factory,
+    monkeypatch,
+    tmp_path,
+):
+    router, client, data_dir = router_factory()
+    whisper_bin = tmp_path / "whisper-cli"
+    whisper_model = tmp_path / "ggml-tiny.en.bin"
+    ffmpeg_bin = tmp_path / "ffmpeg"
+    for runtime_file in (whisper_bin, whisper_model, ffmpeg_bin):
+        runtime_file.write_bytes(b"test runtime")
+    whisper_bin.chmod(0o755)
+    ffmpeg_bin.chmod(0o755)
+    router.WHISPER_BIN = whisper_bin
+    router.WHISPER_MODEL = whisper_model
+    router.FFMPEG_BIN = str(ffmpeg_bin)
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        if command[0] == str(ffmpeg_bin):
+            Path(command[-1]).write_bytes(b"wav")
+        else:
+            output_prefix = command[command.index("-of") + 1]
+            Path(f"{output_prefix}.txt").write_text("Dictation verified.")
+
+    monkeypatch.setattr(router.subprocess, "run", fake_run)
+    response = client.post(
+        "/audio/transcribe",
+        headers=AUTH,
+        files={"file": ("dictation.webm", b"recorded audio", "audio/webm")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Dictation verified."
+    assert [command[0] for command in commands] == [str(ffmpeg_bin), str(whisper_bin)]
+    assert not list(data_dir.glob("tmp_audio_*"))
+
+
 def _repo_python(repo):
     if os.name == "nt":
         venv_python = repo / "venv" / "Scripts" / "python.exe"
@@ -213,6 +252,8 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert 'id="projectInstructions"' in index_source
     assert 'id="sessionInstructions"' in index_source
     assert 'id="effectiveInstructions"' in index_source
+    assert "new Uint8Array(await blob.arrayBuffer())" in app_source
+    assert 'form.append("file", uploadBlob, "dictation.webm")' in app_source
     assert 'id="notepadPanel"' in index_source
     assert 'id="notepadInput"' in index_source
     assert 'id="projectHomeDialog"' in index_source
@@ -281,6 +322,7 @@ def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_h
     assert "min-height: 0;\n  overflow: hidden;" in rule(desktop_source, ".layout")
     assert "min-height: 0;\n  overflow-y: auto;" in rule(desktop_source, ".panel")
     assert "overflow-y: auto;" in rule(desktop_source, ".response")
+    assert "overflow-y: auto;" in rule(desktop_source, ".instruction-layer textarea")
 
     assert "max-height: calc(100dvh - 118px);" in portrait_mobile_source
     assert "height: calc(100dvh - 118px);" in portrait_mobile_source

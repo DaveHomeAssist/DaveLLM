@@ -5,6 +5,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO / "scripts" / "macos" / "launch-davellm.sh"
 INSTALLER = REPO / "scripts" / "macos" / "install-launcher.sh"
+WHISPER_INSTALLER = REPO / "scripts" / "macos" / "install-whisper-runtime.sh"
 
 
 def test_macos_launcher_uses_keychain_and_live_tailscale_inventory():
@@ -66,3 +67,19 @@ def test_macos_installer_generates_a_key_and_one_click_app_without_printing_it()
 
     assert 'print -- "$generated_key"' not in installer
     assert not re.search(r"http://(?:\d{1,3}\.){3}\d{1,3}:11434", installer)
+
+
+def test_macos_whisper_installer_keeps_the_verified_model_out_of_source():
+    installer = WHISPER_INSTALLER.read_text()
+
+    for required in (
+        "brew",
+        "install whisper-cpp",
+        "ggml-tiny.en.bin",
+        "c78c86eb1a8faa21b369bcd33207cc90d64ae9df",
+        "Library/Application Support/DaveLLM",
+        "shasum -a 1",
+    ):
+        assert required in installer
+
+    assert "MODEL_PATH=\"${DAVE_WHISPER_MODEL:-${MODEL_DIR}/ggml-tiny.en.bin}\"" in installer
