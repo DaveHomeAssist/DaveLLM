@@ -43,7 +43,13 @@ DaveHarness must not read DaveLLM persistence, environment variables, node confi
 
 The generic implementation is extracted into `daveharness/executor.py` and exposed by `daveharness/__init__.py`. Root `tool_executor.py` is a compatibility re-export for legacy imports. DaveLLM imports the package API directly, while concrete tools and the model adapter remain in `app.py`.
 
-The package starts at `0.1.0`. Its registry rejects duplicate names and snapshots tool definitions so mutation of caller-owned schema data cannot change a registered tool's permission, approval requirement, handler selection, or validation schema.
+The package started at `0.1.0`. Its registry rejects duplicate names and snapshots tool definitions so mutation of caller-owned schema data cannot change a registered tool's permission, approval requirement, handler selection, or validation schema.
+
+DaveHarness `0.2.0` adds an enforced sync-first execution contract. Coroutine handlers require both an explicit `async_handler` opt-in and membership in a registry-supplied name allowlist; DaveLLM currently allowlists only `web.fetch`. Every definition declares `cancellation` as `bounded` or `abandon`, defaulting to `abandon`. Approval-required and write-permission tools must declare `bounded`. This is a handler contract, not a hard-kill guarantee.
+
+Every tool execution adds `termination` without changing the established `status`: `completed`, `deadline_abandoned`, `denied`, or `error`. `deadline_abandoned` explicitly means the harness stopped waiting and an underlying synchronous worker may still run.
+
+Exact-call approval is also implemented in `0.2.0`. A pending record holds the run-scoped call ID, tool name, harness-validated canonical arguments, their SHA-256 digest, transcript revision, a single-use nonce, creation time, and a 300-second expiry. The host supplies a pending-call store; DaveLLM uses the in-memory default. `POST /tools/agent/resume` consumes a matching decision atomically. Approval executes the exact stored arguments without replaying the paused model step. Denial appends an operator-denied tool result and continues the bounded loop. Digest mismatch, stale transcript, replay, expiry, call mismatch, and missing run remain distinct non-executing outcomes.
 
 ### Consequences
 
@@ -83,7 +89,7 @@ The package starts at `0.1.0`. Its registry rejects duplicate names and snapshot
 - Increment **MINOR** for backward-compatible capabilities.
 - Increment **PATCH** for backward-compatible fixes. Documentation-only commits do not require a version increment.
 - Pre-release identifiers follow SemVer, for example `2.2.0-beta.1`.
-- The in-repository DaveHarness package starts at `0.1.0` and follows independent SemVer. It remains an internal package until a separately approved distribution phase defines publishable metadata and a compatible DaveLLM adapter range.
+- The in-repository DaveHarness package started at `0.1.0`, is currently `0.2.0`, and follows independent SemVer. It remains an internal package until a separately approved distribution phase defines publishable metadata and a compatible DaveLLM adapter range.
 
 ### Consequences
 

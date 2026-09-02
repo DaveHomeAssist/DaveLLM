@@ -23,19 +23,26 @@ def _definition(*, schema=None, handler=None, approval_required=True):
         handler=handler or (lambda args: args["value"]),
         permission="write",
         approval_required=approval_required,
+        cancellation="bounded",
     )
 
 
 def test_public_api_and_legacy_compatibility_exports_are_stable():
-    assert daveharness.__version__ == "0.1.0"
+    assert daveharness.__version__ == "0.2.0"
     expected = {
         "DEFAULT_ERROR_BUDGET",
         "DEFAULT_MODEL_TIMEOUT_SECONDS",
+        "DEFAULT_PENDING_CALL_STORE",
         "DEFAULT_STEP_LIMIT",
         "DEFAULT_TOOL_REGISTRY",
         "DEFAULT_TOOL_TIMEOUT_SECONDS",
         "ExecutorOutcome",
+        "InMemoryPendingCallStore",
         "ModelInvoker",
+        "PENDING_CALL_TTL_SECONDS",
+        "PendingCall",
+        "PendingCallClaim",
+        "PendingCallStore",
         "ParsedToolCall",
         "SchemaValidationError",
         "ToolDefinition",
@@ -44,6 +51,7 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "ToolRegistry",
         "__version__",
         "parse_tool_calls",
+        "resume_executor_loop",
         "run_executor_loop",
         "run_tool",
         "utc_timestamp",
@@ -107,6 +115,94 @@ def test_registry_snapshots_schema_and_returns_defensive_definitions():
     assert second_read is not None
     assert second_read.parameters["required"] == ["value"]
     assert second_read.parameters["properties"]["value"]["minLength"] == 1
+
+
+def test_registry_enforces_cancellation_and_explicit_async_contracts():
+    registry = daveharness.ToolRegistry()
+    registry.register(
+        daveharness.ToolDefinition(
+            name="read",
+            description="Read a value.",
+            parameters={"type": "object"},
+            handler=lambda _args: "ok",
+        )
+    )
+    assert registry.get("read").cancellation == "abandon"
+    registry.register(
+        daveharness.ToolDefinition(
+            name="write",
+            description="Write a value.",
+            parameters={"type": "object"},
+            handler=lambda _args: "ok",
+            permission="write",
+            cancellation="bounded",
+        )
+    )
+    registry.register(
+        daveharness.ToolDefinition(
+            name="approval-bounded",
+            description="Needs bounded approval.",
+            parameters={"type": "object"},
+            handler=lambda _args: "ok",
+            approval_required=True,
+            cancellation="bounded",
+        )
+    )
+
+    for definition in (
+        daveharness.ToolDefinition(
+            name="approval",
+            description="Needs approval.",
+            parameters={"type": "object"},
+            handler=lambda _args: "blocked",
+            approval_required=True,
+        ),
+        daveharness.ToolDefinition(
+            name="unsafe-write",
+            description="Writes without a bound.",
+            parameters={"type": "object"},
+            handler=lambda _args: "blocked",
+            permission="write",
+        ),
+    ):
+        with pytest.raises(ValueError, match="bounded cancellation"):
+            registry.register(definition)
+
+    async def async_read(_args):
+        return "ok"
+
+    with pytest.raises(ValueError, match="async_handler=True"):
+        registry.register(
+            daveharness.ToolDefinition(
+                name="async-without-opt-in",
+                description="Invalid async declaration.",
+                parameters={"type": "object"},
+                handler=async_read,
+            )
+        )
+    with pytest.raises(ValueError, match="async handler allowlist"):
+        registry.register(
+            daveharness.ToolDefinition(
+                name="async-not-allowlisted",
+                description="Invalid async allowlist entry.",
+                parameters={"type": "object"},
+                handler=async_read,
+                async_handler=True,
+            )
+        )
+
+    async_registry = daveharness.ToolRegistry(
+        async_handler_allowlist={"async-opted-in"}
+    )
+    async_registry.register(
+        daveharness.ToolDefinition(
+            name="async-opted-in",
+            description="Valid async declaration.",
+            parameters={"type": "object"},
+            handler=async_read,
+            async_handler=True,
+        )
+    )
 
 
 def test_executor_package_has_no_davellm_runtime_dependencies():

@@ -3,7 +3,7 @@
 | Field | Current value |
 |---|---|
 | Product | DaveLLM |
-| Status | Implemented local application with in-process DaveHarness `0.1.0` boundary |
+| Status | Implemented local application with in-process DaveHarness `0.2.0` boundary |
 | Owner and primary operator | Dave Robertson |
 | Canonical repository | `DaveHomeAssist/DaveLLM` |
 | Application version | DaveLLM `2.1.0`, sourced from root `VERSION` |
@@ -45,11 +45,11 @@ The product is intended for one high-bandwidth technical operator moving between
 
 DaveLLM owns the Electron/browser experience, FastAPI HTTP and authentication boundary, Ollama node/model integration, projects and BRAIN, persistence, dictation, and product-specific tool implementations. DaveHarness owns the tool registry, schemas, validation, permissions, approvals, bounded execution loop, timing, terminal states, and transcripts. It receives model and tool implementations through interfaces and must not read DaveLLM persistence, environment, HTTP, or UI state directly.
 
-The generic implementation lives in `daveharness/executor.py` and is exposed through an explicit package API. Root `tool_executor.py` remains a compatibility re-export for legacy callers. Duplicate tool registration is rejected, and the registry snapshots security-relevant definition data so caller-owned schema mutation cannot alter registered behavior.
+The generic implementation lives in `daveharness/executor.py` and is exposed through an explicit package API. Root `tool_executor.py` remains a compatibility re-export for legacy callers. Duplicate tool registration is rejected, and the registry snapshots security-relevant definition data so caller-owned schema mutation cannot alter registered behavior. First-party handlers are synchronous except for explicitly opted-in, allowlisted `web.fetch`; every definition declares whether a missed deadline is bounded by its handler or must be treated as abandoned.
 
 The complete options, tradeoffs, version policy, consequences, and revisit triggers are recorded in [`docs/decisions/0001-daveharness-boundary-and-versioning.md`](docs/decisions/0001-daveharness-boundary-and-versioning.md).
 
-The authoritative path from the shipped `0.1.0` extraction to an in-process, qualified `1.0.0` contract is recorded in [`docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md`](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md). It defines the component boundaries, proposed interfaces, sixty implementation actions, compatibility and security invariants, version milestones, failure modes, and release gates.
+The authoritative path from the original `0.1.0` extraction through the shipped `0.2.0` execution-semantics milestone to an in-process, qualified `1.0.0` contract is recorded in [`docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md`](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md). It defines the component boundaries, proposed interfaces, sixty implementation actions, compatibility and security invariants, version milestones, failure modes, and release gates.
 
 The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 
@@ -92,7 +92,8 @@ The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 2. The agent receives only schemas for the current runtime registry.
 3. FastAPI validates every tool name and argument set.
 4. File mutations and shell execution pause unless approved for that run.
-5. The loop ends with an answer, approval request, model/tool failure, error budget, or step ceiling and always returns its partial transcript.
+5. A pending exact call may be approved or denied for five minutes through the authenticated resume route; approval executes the stored canonical arguments once, while denial records an operator-denied tool result and continues the bounded loop.
+6. The loop ends with an answer, approval request, model/tool failure, error budget, or step ceiling and always returns its partial transcript.
 
 ## 4. Functional requirements
 
@@ -121,7 +122,8 @@ The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 | FR-21 | Suggestions | The client shows no more than three deterministic next actions. Prediction performs no network, DOM, or storage work. |
 | FR-22 | Monitoring | The app exposes authenticated health, cost analytics, feedback, and recent operational error data. |
 | FR-23 | Tool catalog | Tools default off. When enabled, active schemas and permission metadata come from the runtime registry. |
-| FR-24 | Agent execution | Model-selected tools run through schema validation, per-tool timeouts, an error budget, an eight-step default ceiling, approval boundaries, and a complete partial transcript. |
+| FR-24 | Agent execution | Model-selected tools run through schema validation, per-tool deadlines, an error budget, an eight-step default ceiling, approval boundaries, and a complete partial transcript. Tool results add an honest `termination` classification without changing existing status values. |
+| FR-25 | Exact-call approval | An approval-required call is stored in process with canonical arguments, SHA-256 digest, transcript revision, single-use nonce, and a 300-second expiry. Resume accepts only the matching run, call, digest, and unmodified transcript; approval executes those exact arguments without replaying the paused model step, and denial appends an operator-denied tool result before continuing. |
 | FR-25 | Responsive access | Chat, History, and Runtime navigation remains usable at mobile widths; motion respects `prefers-reduced-motion`. |
 
 ## 5. Context and prompt contract
@@ -216,7 +218,7 @@ There is no `/api` prefix.
 - Conversations and instructions: `/conversations/...`, `/instructions/global`
 - Projects and context: `/projects/...`, including homepage, preview, files, artifacts, BRAIN, and notepad
 - Local transcription: `/audio/transcribe`
-- Tools and agent loop: `/tools`, `/tools/execute`, `/tools/agent/run`
+- Tools and agent loop: `/tools`, `/tools/execute`, `/tools/agent/run`, `/tools/agent/resume`
 - Operations: `/feedback`, `/analytics/costs`, `/monitoring/health`, `/search`
 
 Routing-decision endpoints remain available for explicit advisory use. The normal chat send path does not call them and does not replace a manual model selection.
@@ -302,6 +304,7 @@ Conversation JSON and core project metadata remain compatibility stores. A full 
 | Agent loop | 8 steps and 2 errors by default; configurable request bounds are 1-32 steps and 1-8 errors |
 | Tool timeout | 10 seconds by default |
 | Model turn timeout in agent loop | 120 seconds |
+| Pending exact-call approval | 300 seconds, stored only in the current process |
 
 ## 12. Installation and launch
 
@@ -337,7 +340,7 @@ The optional dictation installer adds `whisper-cpp` and a checksum-verified Engl
 
 Root `VERSION` is the canonical DaveLLM Semantic Version. FastAPI metadata, startup output, `GET /health`, `package.json`, and the root `package-lock.json` entry must match it. Release tags use `vMAJOR.MINOR.PATCH`. Documentation-only changes do not require a version increment.
 
-The in-repository `daveharness` package is versioned independently at `0.1.0`. It is an internal importable package, not a published distribution, service, repository, CLI, or remote protocol. Future package changes follow independent SemVer while DaveLLM retains its own root `VERSION`.
+The in-repository `daveharness` package is versioned independently at `0.2.0`. It is an internal importable package, not a published distribution, service, repository, CLI, or remote protocol. Future package changes follow independent SemVer while DaveLLM retains its own root `VERSION`.
 
 ## 13. Quality and acceptance criteria
 
@@ -358,10 +361,11 @@ Repository verification commands:
 python -m py_compile app.py project_context.py scripts/project_context_cli.py tool_executor.py
 python -m compileall -q daveharness
 python -m pytest -q
-node --check static/app.js static/anticipation.js static/prompt-contract.js desktop/main.js desktop/preload.js
-bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
+node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
+bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh
 npm ci
 npm ls --depth=0
+npm audit --audit-level=high
 git diff --check
 ```
 
@@ -369,24 +373,24 @@ git diff --check
 
 As of 2026-09-02:
 
-- `main` and `origin/main` matched at implementation commit `845e7db` before this document was added.
-- That implementation includes the Instructions exact-effective scroll repair and authenticated local microphone dictation repair.
-- CI and GitHub Pages passed for that implementation commit.
+- The prior `2.1.0` stabilization at commit `845e7db` included the Instructions exact-effective scroll repair and authenticated local microphone dictation repair; CI and GitHub Pages passed for that commit.
 - The public documentation artifact is `https://davehomeassist.github.io/DaveLLM/`.
 - The local DaveLLM process was stopped during this specification review; no claim of live node, inventory, model, or dictation availability is made by this snapshot.
 - The product version is unified at `2.1.0` through root `VERSION`; runtime and package mirrors are regression-tested.
-- The DaveHarness library boundary is implemented in-process at `0.1.0`, with the legacy root import preserved as a compatibility shim.
+- The DaveHarness library boundary is implemented in-process at `0.2.0`, with the legacy root import preserved as a compatibility shim.
+- DaveHarness `0.2.0` adds enforced sync-first handler registration, explicit cancellation declarations, honest termination metadata, and single-use exact-call approval/resume while DaveLLM remains `2.1.0`.
 
 ## 15. Known limits and open decisions
 
 1. **Runtime proof:** repository tests cannot prove current node reachability, installed model inventory, inference quality, Whisper accuracy, or hardware performance.
 2. **Harness distribution:** `daveharness` is intentionally importable only inside this repository; no publishable distribution, separate service, repository, CLI, or remote protocol exists.
-3. **Timeout semantics:** the existing executor timeout remains a response deadline and does not guarantee termination of an underlying synchronous worker thread.
+3. **Timeout semantics:** `termination: "deadline_abandoned"` means the harness stopped waiting; it does not guarantee that an underlying synchronous worker thread stopped. The `bounded` declaration means the handler owns an independent operation bound, not that DaveHarness can hard-kill it.
 4. **Lifecycle API:** FastAPI startup/shutdown event handlers emit deprecation warnings; migration to lifespan handlers remains deferred.
 5. **Persistence evolution:** conversations and core project metadata remain JSON while normalized project context is SQLite; full migration is deferred.
 6. **Dictation quality:** the installed default `tiny.en` model is English-only and favors a small local footprint over maximum accuracy.
-7. **Tools UI:** the backend returns a complete bounded run result; a full streaming agent-run ledger and exact-call resume flow remain future work.
-8. **Placeholder inventory:** source fallback nodes are deliberately non-working. Normal macOS operation depends on launcher-resolved Tailscale peers or an explicitly supplied `DAVE_NODES` value.
+7. **Tools UI:** the backend exposes exact-call resume, but the Electron interface does not yet provide a full streaming run ledger or approval control surface.
+8. **Approval persistence:** the default pending-call store is intentionally in-memory and single-process. Pending approvals do not survive an application restart and are not migrated into DaveLLM persistence.
+9. **Placeholder inventory:** source fallback nodes are deliberately non-working. Normal macOS operation depends on launcher-resolved Tailscale peers or an explicitly supplied `DAVE_NODES` value.
 
 ## 16. Change control
 

@@ -1,7 +1,8 @@
-import asyncio
+import inspect
 import json
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -9,8 +10,11 @@ import respx
 
 from conftest import TEST_API_KEY, TEST_NODE_URL
 from daveharness import (
+    InMemoryPendingCallStore,
+    PENDING_CALL_TTL_SECONDS,
     ToolDefinition,
     ToolRegistry,
+    resume_executor_loop,
     run_executor_loop,
     run_tool,
 )
@@ -34,7 +38,7 @@ async def test_registry_is_runtime_loadable_revocable_and_schema_validated():
     registry = ToolRegistry()
     received = []
 
-    async def remember(args):
+    def remember(args):
         received.append(args["value"])
         return {"remembered": args["value"]}
 
@@ -98,8 +102,8 @@ async def test_tool_call_and_result_logs_include_timing(caplog):
 async def test_run_tool_returns_timeout_instead_of_raising():
     registry = ToolRegistry()
 
-    async def stall(_args):
-        await asyncio.sleep(0.05)
+    def stall(_args):
+        time.sleep(0.05)
         return "late"
 
     registry.register(
@@ -114,6 +118,7 @@ async def test_run_tool_returns_timeout_instead_of_raising():
     result = await run_tool("stall", {}, registry=registry)
     assert result.status == "timeout"
     assert "timeout" in result.error
+    assert result.termination == "deadline_abandoned"
 
 
 @pytest.mark.asyncio
@@ -269,7 +274,7 @@ async def test_executor_pauses_before_unapproved_mutation():
     registry = ToolRegistry()
     executed = False
 
-    async def mutate(_args):
+    def mutate(_args):
         nonlocal executed
         executed = True
         return "changed"
@@ -282,6 +287,7 @@ async def test_executor_pauses_before_unapproved_mutation():
             handler=mutate,
             permission="write",
             approval_required=True,
+            cancellation="bounded",
         )
     )
 
@@ -306,6 +312,307 @@ async def test_executor_pauses_before_unapproved_mutation():
     assert outcome.status == "approval_required"
     assert outcome.pending_tool_call["name"] == "mutate"
     assert executed is False
+
+
+def test_first_party_handlers_require_named_async_opt_in(router_factory):
+    router, _client, _ = router_factory(tools=True)
+    async_names = set()
+
+    for name in router.TOOL_REGISTRY.public_catalog():
+        definition = router.TOOL_REGISTRY.get(name)
+        assert definition is not None
+        handler_is_async = inspect.iscoroutinefunction(definition.handler)
+        assert handler_is_async is definition.async_handler
+        if handler_is_async:
+            async_names.add(name)
+            assert name in router.ASYNC_TOOL_HANDLER_ALLOWLIST
+
+    assert async_names == router.ASYNC_TOOL_HANDLER_ALLOWLIST
+    assert inspect.iscoroutinefunction(router.tool_web_fetch)
+    for handler in (
+        router.tool_system_info,
+        router.tool_file_read,
+        router.tool_file_write,
+        router.tool_file_append,
+        router.tool_shell_exec,
+    ):
+        assert not inspect.iscoroutinefunction(handler)
+
+
+@pytest.mark.asyncio
+async def test_tool_execution_termination_values_are_additive():
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="echo",
+            description="Echo a value.",
+            parameters=simple_schema(),
+            handler=lambda args: args["value"],
+        )
+    )
+
+    completed = await run_tool("echo", {"value": "ok"}, registry=registry)
+    denied = await run_tool("echo", {}, registry=registry)
+    revoked = await run_tool("missing", {}, registry=registry)
+
+    def fail(_args):
+        raise RuntimeError("failed safely")
+
+    registry.register(
+        ToolDefinition(
+            name="fail",
+            description="Fail predictably.",
+            parameters={"type": "object"},
+            handler=fail,
+        )
+    )
+    failed = await run_tool("fail", {}, registry=registry)
+
+    assert completed.termination == "completed"
+    assert denied.termination == "denied"
+    assert revoked.termination == "denied"
+    assert failed.termination == "error"
+    assert json.loads(completed.tool_message()["content"])["termination"] == "completed"
+
+
+class MutableClock:
+    def __init__(self):
+        self.current = datetime(2026, 9, 2, tzinfo=timezone.utc)
+
+    def __call__(self):
+        return self.current
+
+    def advance(self, *, seconds):
+        self.current += timedelta(seconds=seconds)
+
+
+async def start_pending_run(*, store, executed, model_messages=None):
+    registry = ToolRegistry()
+
+    def mutate(args):
+        executed.append(args["value"])
+        return f"changed:{args['value']}"
+
+    registry.register(
+        ToolDefinition(
+            name="mutate",
+            description="Mutate one test value.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string", "minLength": 1},
+                    "count": {"type": "integer", "minimum": 1},
+                },
+                "required": ["value", "count"],
+                "additionalProperties": False,
+            },
+            handler=mutate,
+            permission="write",
+            approval_required=True,
+            cancellation="bounded",
+        )
+    )
+    requests = []
+    responses = list(
+        model_messages
+        or [
+            {
+                "role": "assistant",
+                "content": "Preparing exact change.",
+                "tool_calls": [
+                    {
+                        "id": "call_exact",
+                        "type": "function",
+                        "function": {
+                            "name": "mutate",
+                            "arguments": '{"value":"approved","count":1}',
+                        },
+                    }
+                ],
+            },
+            {"role": "assistant", "content": "Continuation complete."},
+        ]
+    )
+
+    async def invoke(messages, _schemas):
+        requests.append(messages)
+        return responses.pop(0)
+
+    outcome = await run_executor_loop(
+        [{"role": "user", "content": "Change it exactly once"}],
+        invoke,
+        registry=registry,
+        pending_store=store,
+    )
+    return outcome, requests
+
+
+@pytest.mark.asyncio
+async def test_exact_call_approval_resumes_without_replaying_model_step():
+    store = InMemoryPendingCallStore()
+    executed = []
+    pending, requests = await start_pending_run(store=store, executed=executed)
+
+    assert pending.status == "approval_required"
+    assert pending.run_id
+    assert pending.pending_tool_call["id"] == "call_exact"
+    assert list(pending.pending_tool_call["arguments"]) == ["count", "value"]
+    assert len(pending.pending_tool_call["digest"]) == 64
+    assert executed == []
+    assert len(requests) == 1
+    nonce = store._entries[(pending.run_id, "call_exact")].pending_call.nonce
+    assert nonce not in store._consumed_nonces
+    pending.pending_tool_call["arguments"]["value"] = "tampered"
+
+    resumed = await resume_executor_loop(
+        run_id=pending.run_id,
+        call_id="call_exact",
+        digest=pending.pending_tool_call["digest"],
+        decision="approve",
+        pending_store=store,
+    )
+
+    assert resumed.status == "completed"
+    assert resumed.run_id == pending.run_id
+    assert resumed.steps == 2
+    assert executed == ["approved"]
+    assert len(requests) == 2
+    assert requests[1][-1]["role"] == "tool"
+    tool_payload = json.loads(requests[1][-1]["content"])
+    assert tool_payload["status"] == "success"
+    assert tool_payload["termination"] == "completed"
+    assert nonce in store._consumed_nonces
+
+    replay = await resume_executor_loop(
+        run_id=pending.run_id,
+        call_id="call_exact",
+        digest=pending.pending_tool_call["digest"],
+        decision="approve",
+        pending_store=store,
+    )
+    assert replay.status == "approval_replayed"
+    assert executed == ["approved"]
+
+
+@pytest.mark.asyncio
+async def test_exact_call_distinguishes_missing_run_and_call_mismatch():
+    store = InMemoryPendingCallStore()
+    executed = []
+    pending, requests = await start_pending_run(store=store, executed=executed)
+
+    missing = await resume_executor_loop(
+        run_id="run_missing",
+        call_id="call_exact",
+        digest=pending.pending_tool_call["digest"],
+        decision="approve",
+        pending_store=store,
+    )
+    mismatch = await resume_executor_loop(
+        run_id=pending.run_id,
+        call_id="call_other",
+        digest=pending.pending_tool_call["digest"],
+        decision="approve",
+        pending_store=store,
+    )
+
+    assert missing.status == "approval_not_found"
+    assert mismatch.status == "approval_call_mismatch"
+    assert executed == []
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_exact_call_rejects_digest_mismatch_without_consuming_approval():
+    store = InMemoryPendingCallStore()
+    executed = []
+    pending, requests = await start_pending_run(store=store, executed=executed)
+
+    mismatch = await resume_executor_loop(
+        run_id=pending.run_id,
+        call_id="call_exact",
+        digest="0" * 64,
+        decision="approve",
+        pending_store=store,
+    )
+    assert mismatch.status == "approval_digest_mismatch"
+    assert executed == []
+    assert len(requests) == 1
+
+    resumed = await resume_executor_loop(
+        run_id=pending.run_id,
+        call_id="call_exact",
+        digest=pending.pending_tool_call["digest"],
+        decision="approve",
+        pending_store=store,
+    )
+    assert resumed.status == "completed"
+    assert executed == ["approved"]
+
+
+@pytest.mark.asyncio
+async def test_exact_call_rejects_changed_transcript_revision():
+    store = InMemoryPendingCallStore()
+    executed = []
+    pending, _requests = await start_pending_run(store=store, executed=executed)
+    entry = store._entries[(pending.run_id, "call_exact")]
+    entry.continuation.state.transcript.append(
+        {"role": "system", "content": "unexpected mutation"}
+    )
+
+    stale = await resume_executor_loop(
+        run_id=pending.run_id,
+        call_id="call_exact",
+        digest=pending.pending_tool_call["digest"],
+        decision="approve",
+        pending_store=store,
+    )
+    assert stale.status == "approval_stale"
+    assert executed == []
+
+
+@pytest.mark.asyncio
+async def test_exact_call_rejects_expired_ttl():
+    clock = MutableClock()
+    store = InMemoryPendingCallStore(clock=clock)
+    executed = []
+    pending, requests = await start_pending_run(store=store, executed=executed)
+    assert PENDING_CALL_TTL_SECONDS == 300
+    clock.advance(seconds=PENDING_CALL_TTL_SECONDS + 1)
+
+    expired = await resume_executor_loop(
+        run_id=pending.run_id,
+        call_id="call_exact",
+        digest=pending.pending_tool_call["digest"],
+        decision="approve",
+        pending_store=store,
+    )
+    assert expired.status == "approval_expired"
+    assert executed == []
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_denial_appends_tool_result_and_continues_without_error():
+    store = InMemoryPendingCallStore()
+    executed = []
+    pending, requests = await start_pending_run(store=store, executed=executed)
+
+    resumed = await resume_executor_loop(
+        run_id=pending.run_id,
+        call_id="call_exact",
+        digest=pending.pending_tool_call["digest"],
+        decision="deny",
+        pending_store=store,
+    )
+
+    assert resumed.status == "completed"
+    assert resumed.final_answer == "Continuation complete."
+    assert resumed.errors == 0
+    assert executed == []
+    assert len(requests) == 2
+    denial = json.loads(requests[1][-1]["content"])
+    assert denial["status"] == "denied"
+    assert denial["termination"] == "denied"
 
 
 def test_agent_endpoint_sends_schemas_on_every_model_step(router_factory):
@@ -386,3 +693,116 @@ def test_agent_endpoint_rejects_unsupported_message_roles(router_factory):
         },
     )
     assert response.status_code == 422
+
+
+def test_resume_endpoint_denies_exact_call_and_continues(router_factory, tmp_path):
+    _, client, _ = router_factory(tools=True, tool_roots=[str(tmp_path)])
+    target = tmp_path / "must-not-exist.txt"
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(f"{TEST_NODE_URL}/api/tags").mock(
+            return_value=httpx.Response(
+                200,
+                json={"models": [{"name": MODEL_ID, "model": MODEL_ID}]},
+            )
+        )
+        assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
+        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions")
+        route.side_effect = [
+            httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "Requesting a write.",
+                                "tool_calls": [
+                                    {
+                                        "id": "call_write",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "file.write",
+                                            "arguments": json.dumps(
+                                                {
+                                                    "path": str(target),
+                                                    "content": "blocked",
+                                                }
+                                            ),
+                                        },
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                },
+            ),
+            httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "The operator denied the write.",
+                            }
+                        }
+                    ]
+                },
+            ),
+        ]
+        pending_response = client.post(
+            "/tools/agent/run",
+            headers=AUTH,
+            json={
+                "messages": [{"role": "user", "content": "Write a file"}],
+                "node_id": "node-test",
+                "model": MODEL_ID,
+            },
+        )
+        pending = pending_response.json()
+        resumed_response = client.post(
+            "/tools/agent/resume",
+            headers=AUTH,
+            json={
+                "run_id": pending["run_id"],
+                "call_id": pending["pending_tool_call"]["id"],
+                "digest": pending["pending_tool_call"]["digest"],
+                "decision": "deny",
+            },
+        )
+
+    assert pending_response.status_code == 200
+    assert pending["status"] == "approval_required"
+    assert resumed_response.status_code == 200
+    resumed = resumed_response.json()
+    assert resumed["status"] == "completed"
+    assert resumed["final_answer"] == "The operator denied the write."
+    assert not target.exists()
+    denial_message = next(
+        item for item in resumed["transcript"] if item["role"] == "tool"
+    )
+    denial = json.loads(denial_message["content"])
+    assert denial["status"] == "denied"
+    assert denial["termination"] == "denied"
+    assert len(route.calls) == 2
+
+
+def test_resume_endpoint_preserves_auth_and_tools_default_off(router_factory):
+    request = {
+        "run_id": "run_missing",
+        "call_id": "call_missing",
+        "digest": "0" * 64,
+        "decision": "approve",
+    }
+    _, disabled_client, _ = router_factory()
+    assert (
+        disabled_client.post(
+            "/tools/agent/resume",
+            headers=AUTH,
+            json=request,
+        ).status_code
+        == 403
+    )
+
+    _, enabled_client, _ = router_factory(tools=True)
+    assert enabled_client.post("/tools/agent/resume", json=request).status_code == 401

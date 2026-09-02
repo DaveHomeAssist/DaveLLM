@@ -17,7 +17,7 @@ import threading
 import shutil
 import numpy as np
 from itertools import cycle
-from typing import List, Dict, Optional
+from typing import Dict, List, Literal, Optional
 from urllib.parse import urljoin, urlparse
 from pathlib import Path
 from datetime import datetime
@@ -35,8 +35,10 @@ import uuid
 from daveharness import (
     DEFAULT_ERROR_BUDGET,
     DEFAULT_STEP_LIMIT,
+    InMemoryPendingCallStore,
     ToolDefinition,
     ToolRegistry,
+    resume_executor_loop,
     run_executor_loop,
     run_tool,
 )
@@ -1079,6 +1081,7 @@ class ToolResult(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     duration_ms: Optional[float] = None
+    termination: Optional[str] = None
 
 
 def validate_public_url(url: str) -> None:
@@ -1143,9 +1146,10 @@ async def execute_tool(tool_req: ToolRequest) -> ToolResult:
         started_at=execution.started_at,
         completed_at=execution.completed_at,
         duration_ms=execution.duration_ms,
+        termination=execution.termination,
     )
 
-async def tool_file_read(params: Dict) -> ToolResult:
+def tool_file_read(params: Dict) -> ToolResult:
     """Read file contents with size limit."""
     try:
         safe_path = resolve_tool_path(params.get("path", ""))
@@ -1161,7 +1165,7 @@ async def tool_file_read(params: Dict) -> ToolResult:
     except Exception as e:
         return ToolResult(tool="file.read", status="error", result="", error=str(e))
 
-async def tool_file_write(params: Dict) -> ToolResult:
+def tool_file_write(params: Dict) -> ToolResult:
     """Write to file with size limit and subdirectory allowlist."""
     try:
         path = params.get("path", "")
@@ -1181,7 +1185,7 @@ async def tool_file_write(params: Dict) -> ToolResult:
     except Exception as e:
         return ToolResult(tool="file.write", status="error", result="", error=str(e))
 
-async def tool_file_append(params: Dict) -> ToolResult:
+def tool_file_append(params: Dict) -> ToolResult:
     """Append to file."""
     try:
         path = params.get("path", "")
@@ -1238,7 +1242,7 @@ async def tool_web_fetch(params: Dict) -> ToolResult:
     except Exception as e:
         return ToolResult(tool="web.fetch", status="error", result="", error=str(e))
 
-async def tool_system_info(params: Dict) -> ToolResult:
+def tool_system_info(params: Dict) -> ToolResult:
     """Get system information."""
     try:
         info_type = params.get("type", "all")
@@ -1259,7 +1263,7 @@ async def tool_system_info(params: Dict) -> ToolResult:
     except Exception as e:
         return ToolResult(tool="system.info", status="error", result="", error=str(e))
 
-async def tool_shell_exec(params: Dict) -> ToolResult:
+def tool_shell_exec(params: Dict) -> ToolResult:
     """Execute shell command (restricted whitelist only)."""
     try:
         if not SHELL_TOOL_ENABLED:
@@ -1300,7 +1304,11 @@ async def tool_shell_exec(params: Dict) -> ToolResult:
         return ToolResult(tool="shell.exec", status="error", result="", error=str(e))
 
 
-TOOL_REGISTRY = ToolRegistry()
+ASYNC_TOOL_HANDLER_ALLOWLIST = frozenset({"web.fetch"})
+TOOL_REGISTRY = ToolRegistry(
+    async_handler_allowlist=ASYNC_TOOL_HANDLER_ALLOWLIST,
+)
+PENDING_CALL_STORE = InMemoryPendingCallStore()
 
 
 def register_builtin_tools() -> None:
@@ -1327,6 +1335,7 @@ def register_builtin_tools() -> None:
             },
             handler=tool_system_info,
             permission="read_system",
+            cancellation="bounded",
         ),
         ToolDefinition(
             name="file.read",
@@ -1341,6 +1350,7 @@ def register_builtin_tools() -> None:
             },
             handler=tool_file_read,
             permission="read_files",
+            cancellation="bounded",
         ),
         ToolDefinition(
             name="file.write",
@@ -1357,6 +1367,7 @@ def register_builtin_tools() -> None:
             handler=tool_file_write,
             permission="write_files",
             approval_required=True,
+            cancellation="bounded",
         ),
         ToolDefinition(
             name="file.append",
@@ -1373,6 +1384,7 @@ def register_builtin_tools() -> None:
             handler=tool_file_append,
             permission="write_files",
             approval_required=True,
+            cancellation="bounded",
         ),
         ToolDefinition(
             name="web.fetch",
@@ -1387,6 +1399,8 @@ def register_builtin_tools() -> None:
             },
             handler=tool_web_fetch,
             permission="public_network",
+            cancellation="bounded",
+            async_handler=True,
         ),
     ]
     if SHELL_TOOL_ENABLED:
@@ -1406,6 +1420,7 @@ def register_builtin_tools() -> None:
                 permission="execute_process",
                 approval_required=True,
                 timeout_seconds=6,
+                cancellation="bounded",
             )
         )
     for definition in definitions:
@@ -1917,6 +1932,13 @@ class AgentRunRequest(BaseModel):
         if not 1 <= value <= 8:
             raise ValueError("error_budget must be between 1 and 8")
         return value
+
+
+class AgentResumeRequest(BaseModel):
+    run_id: str = Field(min_length=1, max_length=128)
+    call_id: str = Field(min_length=1, max_length=256)
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision: Literal["approve", "deny"]
 
 
 BRAIN_COMPACTION_QUEUE: asyncio.Queue[str] = asyncio.Queue()
@@ -2782,6 +2804,25 @@ async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key
         step_limit=req.step_limit,
         error_budget=req.error_budget,
         approved_tools=set(req.approved_tools),
+        pending_store=PENDING_CALL_STORE,
+    )
+    return outcome.to_dict()
+
+
+@app.post("/tools/agent/resume")
+async def resume_agent_endpoint(
+    req: AgentResumeRequest,
+    _auth=Depends(require_api_key),
+):
+    """Apply one exact pending decision and continue the bounded loop."""
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    outcome = await resume_executor_loop(
+        run_id=req.run_id,
+        call_id=req.call_id,
+        digest=req.digest,
+        decision=req.decision,
+        pending_store=PENDING_CALL_STORE,
     )
     return outcome.to_dict()
 

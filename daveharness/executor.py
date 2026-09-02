@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
+import hmac
 import inspect
 import json
 import logging
+import secrets
+import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Mapping, Sequence
+from datetime import datetime, timedelta, timezone
+from typing import Any, Awaitable, Callable, Collection, Mapping, Protocol, Sequence
 
 
 LOGGER = logging.getLogger("dave_llm.tools")
@@ -19,6 +23,8 @@ DEFAULT_STEP_LIMIT = 8
 DEFAULT_ERROR_BUDGET = 2
 DEFAULT_TOOL_TIMEOUT_SECONDS = 10.0
 DEFAULT_MODEL_TIMEOUT_SECONDS = 120.0
+PENDING_CALL_TTL_SECONDS = 300
+VALID_CANCELLATION_MODES = frozenset({"bounded", "abandon"})
 
 ToolHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 ModelInvoker = Callable[
@@ -27,9 +33,13 @@ ModelInvoker = Callable[
 ]
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def utc_timestamp() -> str:
     """Return an ISO 8601 UTC timestamp suitable for transcripts and logs."""
-    return datetime.now(timezone.utc).isoformat()
+    return _utc_now().isoformat()
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +53,8 @@ class ToolDefinition:
     permission: str = "read"
     approval_required: bool = False
     timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS
+    cancellation: str = "abandon"
+    async_handler: bool = False
 
     def model_schema(self) -> dict[str, Any]:
         return {
@@ -61,20 +73,53 @@ class ToolDefinition:
             "permission": self.permission,
             "approval_required": self.approval_required,
             "timeout_seconds": self.timeout_seconds,
+            "cancellation": self.cancellation,
+            "async_handler": self.async_handler,
         }
 
 
 class ToolRegistry:
     """Own enabled tool definitions and support registration or revocation at runtime."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        async_handler_allowlist: Collection[str] = (),
+    ) -> None:
         self._definitions: dict[str, ToolDefinition] = {}
+        self._async_handler_allowlist = frozenset(async_handler_allowlist)
 
     def register(self, definition: ToolDefinition) -> None:
         if not definition.name or not definition.name.strip():
             raise ValueError("Tool name is required")
         if definition.timeout_seconds <= 0:
             raise ValueError("Tool timeout must be greater than zero")
+        if (
+            not isinstance(definition.cancellation, str)
+            or definition.cancellation not in VALID_CANCELLATION_MODES
+        ):
+            raise ValueError(
+                "Tool cancellation must be either 'bounded' or 'abandon'"
+            )
+        write_permission = (
+            definition.permission == "write"
+            or definition.permission.startswith("write_")
+        )
+        if (
+            definition.approval_required or write_permission
+        ) and definition.cancellation == "abandon":
+            raise ValueError(
+                "Approval-required and write tools must declare bounded cancellation"
+            )
+        handler_is_async = inspect.iscoroutinefunction(definition.handler)
+        if handler_is_async and not definition.async_handler:
+            raise ValueError("Coroutine tool handlers require async_handler=True")
+        if definition.async_handler and not handler_is_async:
+            raise ValueError("async_handler=True requires a coroutine function")
+        if handler_is_async and definition.name not in self._async_handler_allowlist:
+            raise ValueError(
+                f"Coroutine tool '{definition.name}' is not in the async handler allowlist"
+            )
         if definition.name in self._definitions:
             raise ValueError(f"Tool '{definition.name}' is already registered")
         self._definitions[definition.name] = self._snapshot(definition)
@@ -90,6 +135,8 @@ class ToolRegistry:
             permission=definition.permission,
             approval_required=definition.approval_required,
             timeout_seconds=definition.timeout_seconds,
+            cancellation=definition.cancellation,
+            async_handler=definition.async_handler,
         )
 
     def revoke(self, name: str) -> bool:
@@ -200,6 +247,7 @@ class ToolExecution:
     started_at: str
     completed_at: str
     duration_ms: float
+    termination: str = "completed"
 
     def tool_message(self) -> dict[str, Any]:
         payload = {
@@ -209,6 +257,7 @@ class ToolExecution:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "duration_ms": self.duration_ms,
+            "termination": self.termination,
         }
         return {
             "role": "tool",
@@ -226,6 +275,7 @@ def _execution_error(
     error: str,
     started_at: str,
     started_monotonic: float,
+    termination: str = "error",
 ) -> ToolExecution:
     return ToolExecution(
         call_id=call_id,
@@ -236,13 +286,17 @@ def _execution_error(
         started_at=started_at,
         completed_at=utc_timestamp(),
         duration_ms=round((time.monotonic() - started_monotonic) * 1000, 3),
+        termination=termination,
     )
 
 
-async def _invoke_handler(handler: ToolHandler, args: dict[str, Any]) -> Any:
-    if inspect.iscoroutinefunction(handler):
-        return await handler(args)
-    return await asyncio.to_thread(handler, args)
+async def _invoke_handler(
+    definition: ToolDefinition,
+    args: dict[str, Any],
+) -> Any:
+    if definition.async_handler:
+        return await definition.handler(args)
+    return await asyncio.to_thread(definition.handler, args)
 
 
 async def run_tool(
@@ -278,6 +332,7 @@ async def run_tool(
             error=f"Tool '{name}' is disabled, not registered, or has been revoked",
             started_at=started_at,
             started_monotonic=started_monotonic,
+            termination="denied",
         )
     elif not isinstance(args, dict):
         execution = _execution_error(
@@ -287,13 +342,14 @@ async def run_tool(
             error="Tool arguments must be a JSON object",
             started_at=started_at,
             started_monotonic=started_monotonic,
+            termination="denied",
         )
     else:
         try:
             validate_json_schema(args, definition.parameters)
             timeout = timeout_seconds or definition.timeout_seconds
             raw_result = await asyncio.wait_for(
-                _invoke_handler(definition.handler, args),
+                _invoke_handler(definition, args),
                 timeout=timeout,
             )
             if hasattr(raw_result, "model_dump"):
@@ -327,6 +383,7 @@ async def run_tool(
                         (time.monotonic() - started_monotonic) * 1000,
                         3,
                     ),
+                    termination="completed",
                 )
         except SchemaValidationError as exc:
             execution = _execution_error(
@@ -336,6 +393,7 @@ async def run_tool(
                 error=str(exc),
                 started_at=started_at,
                 started_monotonic=started_monotonic,
+                termination="denied",
             )
         except asyncio.TimeoutError:
             execution = _execution_error(
@@ -345,6 +403,7 @@ async def run_tool(
                 error=f"Tool exceeded {timeout_seconds or definition.timeout_seconds:g} second timeout",
                 started_at=started_at,
                 started_monotonic=started_monotonic,
+                termination="deadline_abandoned",
             )
         except Exception as exc:
             execution = _execution_error(
@@ -363,6 +422,7 @@ async def run_tool(
                 "call_id": execution.call_id,
                 "tool": execution.name,
                 "status": execution.status,
+                "termination": execution.termination,
                 "timestamp": execution.completed_at,
                 "duration_ms": execution.duration_ms,
             }
@@ -468,6 +528,229 @@ def parse_tool_calls(message: Mapping[str, Any]) -> tuple[list[ParsedToolCall], 
     ], None
 
 
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _canonical_arguments(
+    definition: ToolDefinition,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(arguments, dict):
+        raise SchemaValidationError("Tool arguments must be a JSON object")
+    validate_json_schema(arguments, definition.parameters)
+    return json.loads(_canonical_json(arguments))
+
+
+def _arguments_digest(arguments: Mapping[str, Any]) -> str:
+    return hashlib.sha256(_canonical_json(arguments).encode("utf-8")).hexdigest()
+
+
+def _transcript_revision(transcript: Sequence[Mapping[str, Any]]) -> str:
+    return hashlib.sha256(_canonical_json(transcript).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class PendingCall:
+    """One harness-validated call waiting for an exact operator decision."""
+
+    call_id: str
+    tool_name: str
+    arguments: dict[str, Any]
+    digest: str
+    transcript_revision: str
+    nonce: str
+    created_at: str
+    expires_at: str
+
+    def public_metadata(self, *, permission: str) -> dict[str, Any]:
+        return {
+            "id": self.call_id,
+            "name": self.tool_name,
+            "arguments": copy.deepcopy(self.arguments),
+            "permission": permission,
+            "digest": self.digest,
+            "transcript_revision": self.transcript_revision,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PendingCallClaim:
+    """Result of looking up or atomically consuming one pending call."""
+
+    status: str
+    pending_call: PendingCall | None = None
+    continuation: object | None = None
+
+
+class PendingCallStore(Protocol):
+    """Store pending in-process continuations without choosing host persistence."""
+
+    def now(self) -> datetime: ...
+
+    def save(
+        self,
+        run_id: str,
+        pending_call: PendingCall,
+        continuation: object,
+    ) -> None: ...
+
+    def lookup(self, run_id: str, call_id: str) -> PendingCallClaim: ...
+
+    def claim(
+        self,
+        run_id: str,
+        call_id: str,
+        digest: str,
+        transcript_revision: str,
+    ) -> PendingCallClaim: ...
+
+
+@dataclass(slots=True)
+class _PendingEntry:
+    pending_call: PendingCall
+    continuation: object
+    consumed: bool = False
+
+
+class InMemoryPendingCallStore:
+    """Thread-safe single-process pending-call store with replay tombstones."""
+
+    def __init__(self, *, clock: Callable[[], datetime] | None = None) -> None:
+        self._clock = clock or _utc_now
+        self._entries: dict[tuple[str, str], _PendingEntry] = {}
+        self._consumed_nonces: set[str] = set()
+        self._lock = threading.Lock()
+
+    def now(self) -> datetime:
+        current = self._clock()
+        if current.tzinfo is None:
+            raise ValueError("Pending-call store clock must return a timezone-aware value")
+        return current.astimezone(timezone.utc)
+
+    @staticmethod
+    def _snapshot(pending_call: PendingCall) -> PendingCall:
+        return PendingCall(
+            call_id=pending_call.call_id,
+            tool_name=pending_call.tool_name,
+            arguments=copy.deepcopy(pending_call.arguments),
+            digest=pending_call.digest,
+            transcript_revision=pending_call.transcript_revision,
+            nonce=pending_call.nonce,
+            created_at=pending_call.created_at,
+            expires_at=pending_call.expires_at,
+        )
+
+    def save(
+        self,
+        run_id: str,
+        pending_call: PendingCall,
+        continuation: object,
+    ) -> None:
+        key = (run_id, pending_call.call_id)
+        with self._lock:
+            if key in self._entries:
+                raise ValueError("Pending call already exists")
+            if pending_call.nonce in self._consumed_nonces or any(
+                entry.pending_call.nonce == pending_call.nonce
+                for entry in self._entries.values()
+            ):
+                raise ValueError("Pending call nonce already exists")
+            self._entries[key] = _PendingEntry(
+                pending_call=self._snapshot(pending_call),
+                continuation=continuation,
+            )
+
+    def _missing_status(self, run_id: str) -> str:
+        if any(key_run_id == run_id for key_run_id, _call_id in self._entries):
+            return "approval_call_mismatch"
+        return "approval_not_found"
+
+    def lookup(self, run_id: str, call_id: str) -> PendingCallClaim:
+        with self._lock:
+            entry = self._entries.get((run_id, call_id))
+            if entry is None:
+                return PendingCallClaim(status=self._missing_status(run_id))
+            if (
+                entry.consumed
+                or entry.pending_call.nonce in self._consumed_nonces
+            ):
+                return PendingCallClaim(
+                    status="approval_replayed",
+                    pending_call=self._snapshot(entry.pending_call),
+                    continuation=entry.continuation,
+                )
+            return PendingCallClaim(
+                status="pending",
+                pending_call=self._snapshot(entry.pending_call),
+                continuation=entry.continuation,
+            )
+
+    def claim(
+        self,
+        run_id: str,
+        call_id: str,
+        digest: str,
+        transcript_revision: str,
+    ) -> PendingCallClaim:
+        with self._lock:
+            entry = self._entries.get((run_id, call_id))
+            if entry is None:
+                return PendingCallClaim(status=self._missing_status(run_id))
+            pending_call = entry.pending_call
+            snapshot = self._snapshot(pending_call)
+            if entry.consumed or pending_call.nonce in self._consumed_nonces:
+                return PendingCallClaim(
+                    status="approval_replayed",
+                    pending_call=snapshot,
+                    continuation=entry.continuation,
+                )
+            expires_at = datetime.fromisoformat(pending_call.expires_at)
+            if self.now() >= expires_at:
+                entry.consumed = True
+                self._consumed_nonces.add(pending_call.nonce)
+                return PendingCallClaim(
+                    status="approval_expired",
+                    pending_call=snapshot,
+                    continuation=entry.continuation,
+                )
+            if not hmac.compare_digest(digest, pending_call.digest):
+                return PendingCallClaim(
+                    status="approval_digest_mismatch",
+                    pending_call=snapshot,
+                    continuation=entry.continuation,
+                )
+            if not hmac.compare_digest(
+                transcript_revision,
+                pending_call.transcript_revision,
+            ):
+                entry.consumed = True
+                self._consumed_nonces.add(pending_call.nonce)
+                return PendingCallClaim(
+                    status="approval_stale",
+                    pending_call=snapshot,
+                    continuation=entry.continuation,
+                )
+            entry.consumed = True
+            self._consumed_nonces.add(pending_call.nonce)
+            return PendingCallClaim(
+                status="claimed",
+                pending_call=snapshot,
+                continuation=entry.continuation,
+            )
+
+
+DEFAULT_PENDING_CALL_STORE = InMemoryPendingCallStore()
+
+
 @dataclass(frozen=True, slots=True)
 class ExecutorOutcome:
     status: str
@@ -477,6 +760,7 @@ class ExecutorOutcome:
     errors: int
     status_message: str
     pending_tool_call: dict[str, Any] | None = None
+    run_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -516,63 +800,209 @@ async def _invoke_model(
     return result
 
 
-async def run_executor_loop(
-    messages: list[dict[str, Any]],
-    invoke_model: ModelInvoker,
-    *,
-    registry: ToolRegistry = DEFAULT_TOOL_REGISTRY,
-    step_limit: int = DEFAULT_STEP_LIMIT,
-    error_budget: int = DEFAULT_ERROR_BUDGET,
-    approved_tools: set[str] | None = None,
-    model_timeout_seconds: float = DEFAULT_MODEL_TIMEOUT_SECONDS,
-) -> ExecutorOutcome:
-    """Run model and tools until a final answer, ceiling, approval gate, or error budget."""
-    if step_limit < 1:
-        raise ValueError("step_limit must be at least 1")
-    if error_budget < 1:
-        raise ValueError("error_budget must be at least 1")
-
-    transcript = copy.deepcopy(messages)
-    approvals = approved_tools or set()
-    errors = 0
+@dataclass(slots=True)
+class _ExecutorState:
+    run_id: str
+    transcript: list[dict[str, Any]]
+    invoke_model: ModelInvoker
+    registry: ToolRegistry
+    step_limit: int
+    error_budget: int
+    approved_tools: set[str]
+    model_timeout_seconds: float
+    step: int = 0
+    errors: int = 0
     last_content: str | None = None
 
-    for step in range(1, step_limit + 1):
+
+@dataclass(slots=True)
+class _PendingContinuation:
+    state: _ExecutorState
+    remaining_calls: list[ParsedToolCall]
+
+
+def _state_outcome(
+    state: _ExecutorState,
+    *,
+    status: str,
+    status_message: str,
+    pending_tool_call: dict[str, Any] | None = None,
+    final_answer: str | None = None,
+) -> ExecutorOutcome:
+    return ExecutorOutcome(
+        status=status,
+        transcript=copy.deepcopy(state.transcript),
+        final_answer=state.last_content if final_answer is None else final_answer,
+        steps=state.step,
+        errors=state.errors,
+        status_message=status_message,
+        pending_tool_call=pending_tool_call,
+        run_id=state.run_id,
+    )
+
+
+def _approval_failure_outcome(
+    *,
+    status: str,
+    run_id: str,
+    continuation: object | None,
+) -> ExecutorOutcome:
+    messages = {
+        "approval_not_found": "The pending run was not found.",
+        "approval_call_mismatch": "The call ID does not match this pending run.",
+        "approval_digest_mismatch": "The approval digest does not match the pending call.",
+        "approval_stale": "The pending transcript revision has changed.",
+        "approval_replayed": "The pending call decision has already been consumed.",
+        "approval_expired": "The pending call approval window has expired.",
+        "approval_invalid_decision": "Decision must be either approve or deny.",
+    }
+    if isinstance(continuation, _PendingContinuation):
+        return _state_outcome(
+            continuation.state,
+            status=status,
+            status_message=messages[status],
+        )
+    return ExecutorOutcome(
+        status=status,
+        transcript=[],
+        final_answer=None,
+        steps=0,
+        errors=0,
+        status_message=messages[status],
+        run_id=run_id,
+    )
+
+
+def _operator_denied_execution(call: PendingCall) -> ToolExecution:
+    timestamp = utc_timestamp()
+    return ToolExecution(
+        call_id=call.call_id,
+        name=call.tool_name,
+        status="denied",
+        result="",
+        error="Operator denied this tool call",
+        started_at=timestamp,
+        completed_at=timestamp,
+        duration_ms=0.0,
+        termination="denied",
+    )
+
+
+async def _process_calls(
+    state: _ExecutorState,
+    calls: list[ParsedToolCall],
+    pending_store: PendingCallStore,
+) -> ExecutorOutcome | None:
+    for index, call in enumerate(calls):
+        definition = state.registry.get(call.name)
+        if (
+            definition
+            and definition.approval_required
+            and call.name not in state.approved_tools
+        ):
+            try:
+                canonical_arguments = _canonical_arguments(
+                    definition,
+                    call.arguments,
+                )
+            except (SchemaValidationError, TypeError, ValueError):
+                execution = await run_tool(
+                    call.name,
+                    call.arguments,
+                    call_id=call.call_id,
+                    registry=state.registry,
+                )
+            else:
+                created_at = pending_store.now()
+                pending_call = PendingCall(
+                    call_id=call.call_id,
+                    tool_name=call.name,
+                    arguments=canonical_arguments,
+                    digest=_arguments_digest(canonical_arguments),
+                    transcript_revision=_transcript_revision(state.transcript),
+                    nonce=secrets.token_urlsafe(32),
+                    created_at=created_at.isoformat(),
+                    expires_at=(
+                        created_at + timedelta(seconds=PENDING_CALL_TTL_SECONDS)
+                    ).isoformat(),
+                )
+                pending_store.save(
+                    state.run_id,
+                    pending_call,
+                    _PendingContinuation(
+                        state=state,
+                        remaining_calls=copy.deepcopy(calls[index + 1 :]),
+                    ),
+                )
+                return _state_outcome(
+                    state,
+                    status="approval_required",
+                    status_message=(
+                        f"Approval is required before running {call.name}."
+                    ),
+                    pending_tool_call=pending_call.public_metadata(
+                        permission=definition.permission
+                    ),
+                )
+        else:
+            execution = await run_tool(
+                call.name,
+                call.arguments,
+                call_id=call.call_id,
+                registry=state.registry,
+            )
+
+        state.transcript.append(execution.tool_message())
+        if execution.status != "success":
+            state.errors += 1
+            if state.errors >= state.error_budget:
+                return _state_outcome(
+                    state,
+                    status="error_budget",
+                    status_message="Tool failures exhausted the error budget.",
+                )
+    return None
+
+
+async def _continue_executor_loop(
+    state: _ExecutorState,
+    pending_store: PendingCallStore,
+) -> ExecutorOutcome:
+    while state.step < state.step_limit:
+        state.step += 1
         try:
             model_message = await _invoke_model(
-                invoke_model,
-                transcript,
-                registry.model_schemas(),
-                model_timeout_seconds,
+                state.invoke_model,
+                state.transcript,
+                state.registry.model_schemas(),
+                state.model_timeout_seconds,
             )
         except asyncio.TimeoutError:
-            return ExecutorOutcome(
+            state.errors += 1
+            return _state_outcome(
+                state,
                 status="model_timeout",
-                transcript=transcript,
-                final_answer=last_content,
-                steps=step,
-                errors=errors + 1,
-                status_message=f"Model exceeded {model_timeout_seconds:g} second timeout.",
+                status_message=(
+                    f"Model exceeded {state.model_timeout_seconds:g} second timeout."
+                ),
             )
         except Exception as exc:
-            return ExecutorOutcome(
+            state.errors += 1
+            return _state_outcome(
+                state,
                 status="model_error",
-                transcript=transcript,
-                final_answer=last_content,
-                steps=step,
-                errors=errors + 1,
                 status_message=f"Model invocation failed: {exc}",
             )
 
         content = model_message.get("content")
         if isinstance(content, str) and content.strip():
-            last_content = content
+            state.last_content = content
         calls, parse_error = parse_tool_calls(model_message)
 
         if parse_error:
-            transcript.append(dict(model_message))
-            errors += 1
-            transcript.append(
+            state.transcript.append(dict(model_message))
+            state.errors += 1
+            state.transcript.append(
                 {
                     "role": "system",
                     "content": (
@@ -582,79 +1012,152 @@ async def run_executor_loop(
                     ),
                 }
             )
-            if errors >= error_budget:
-                return ExecutorOutcome(
+            if state.errors >= state.error_budget:
+                return _state_outcome(
+                    state,
                     status="error_budget",
-                    transcript=transcript,
-                    final_answer=last_content,
-                    steps=step,
-                    errors=errors,
-                    status_message="Malformed tool calls exhausted the error budget.",
+                    status_message=(
+                        "Malformed tool calls exhausted the error budget."
+                    ),
                 )
             continue
 
         if not calls:
-            transcript.append(dict(model_message))
-            return ExecutorOutcome(
+            state.transcript.append(dict(model_message))
+            return _state_outcome(
+                state,
                 status="completed",
-                transcript=transcript,
-                final_answer=content if isinstance(content, str) else "",
-                steps=step,
-                errors=errors,
                 status_message="Model returned a final answer.",
+                final_answer=content if isinstance(content, str) else "",
             )
 
         assistant_message = dict(model_message)
         assistant_message["role"] = "assistant"
         assistant_message["content"] = content if isinstance(content, str) else ""
         assistant_message["tool_calls"] = [call.as_openai_call() for call in calls]
-        transcript.append(assistant_message)
+        state.transcript.append(assistant_message)
+        outcome = await _process_calls(state, calls, pending_store)
+        if outcome is not None:
+            return outcome
 
-        for call in calls:
-            definition = registry.get(call.name)
-            if definition and definition.approval_required and call.name not in approvals:
-                return ExecutorOutcome(
-                    status="approval_required",
-                    transcript=transcript,
-                    final_answer=last_content,
-                    steps=step,
-                    errors=errors,
-                    status_message=f"Approval is required before running {call.name}.",
-                    pending_tool_call={
-                        "id": call.call_id,
-                        "name": call.name,
-                        "arguments": call.arguments,
-                        "permission": definition.permission,
-                    },
-                )
-
-            execution = await run_tool(
-                call.name,
-                call.arguments,
-                call_id=call.call_id,
-                registry=registry,
-            )
-            transcript.append(execution.tool_message())
-            if execution.status != "success":
-                errors += 1
-                if errors >= error_budget:
-                    return ExecutorOutcome(
-                        status="error_budget",
-                        transcript=transcript,
-                        final_answer=last_content,
-                        steps=step,
-                        errors=errors,
-                        status_message="Tool failures exhausted the error budget.",
-                    )
-
-    return ExecutorOutcome(
+    return _state_outcome(
+        state,
         status="step_limit",
-        transcript=transcript,
-        final_answer=last_content,
-        steps=step_limit,
-        errors=errors,
         status_message=(
-            f"Stopped after the configured {step_limit} model steps. "
+            f"Stopped after the configured {state.step_limit} model steps. "
             "The full partial transcript is available."
         ),
     )
+
+
+async def run_executor_loop(
+    messages: list[dict[str, Any]],
+    invoke_model: ModelInvoker,
+    *,
+    registry: ToolRegistry = DEFAULT_TOOL_REGISTRY,
+    step_limit: int = DEFAULT_STEP_LIMIT,
+    error_budget: int = DEFAULT_ERROR_BUDGET,
+    approved_tools: set[str] | None = None,
+    model_timeout_seconds: float = DEFAULT_MODEL_TIMEOUT_SECONDS,
+    pending_store: PendingCallStore = DEFAULT_PENDING_CALL_STORE,
+    run_id: str | None = None,
+) -> ExecutorOutcome:
+    """Run model and tools until a final answer, ceiling, approval gate, or error budget."""
+    if step_limit < 1:
+        raise ValueError("step_limit must be at least 1")
+    if error_budget < 1:
+        raise ValueError("error_budget must be at least 1")
+
+    state = _ExecutorState(
+        run_id=run_id or f"run_{uuid.uuid4().hex}",
+        transcript=copy.deepcopy(messages),
+        invoke_model=invoke_model,
+        registry=registry,
+        step_limit=step_limit,
+        error_budget=error_budget,
+        approved_tools=set(approved_tools or set()),
+        model_timeout_seconds=model_timeout_seconds,
+    )
+    return await _continue_executor_loop(state, pending_store)
+
+
+async def resume_executor_loop(
+    *,
+    run_id: str,
+    call_id: str,
+    digest: str,
+    decision: str,
+    pending_store: PendingCallStore = DEFAULT_PENDING_CALL_STORE,
+) -> ExecutorOutcome:
+    """Consume one exact pending decision and resume without replaying its model step."""
+    lookup = pending_store.lookup(run_id, call_id)
+    if lookup.status != "pending":
+        return _approval_failure_outcome(
+            status=lookup.status,
+            run_id=run_id,
+            continuation=lookup.continuation,
+        )
+    if decision not in {"approve", "deny"}:
+        return _approval_failure_outcome(
+            status="approval_invalid_decision",
+            run_id=run_id,
+            continuation=lookup.continuation,
+        )
+    if not isinstance(lookup.continuation, _PendingContinuation):
+        return _approval_failure_outcome(
+            status="approval_stale",
+            run_id=run_id,
+            continuation=lookup.continuation,
+        )
+
+    continuation = lookup.continuation
+    current_revision = _transcript_revision(continuation.state.transcript)
+    claim = pending_store.claim(
+        run_id,
+        call_id,
+        digest,
+        current_revision,
+    )
+    if claim.status != "claimed":
+        return _approval_failure_outcome(
+            status=claim.status,
+            run_id=run_id,
+            continuation=claim.continuation,
+        )
+    if claim.pending_call is None:
+        return _approval_failure_outcome(
+            status="approval_stale",
+            run_id=run_id,
+            continuation=claim.continuation,
+        )
+
+    pending_call = claim.pending_call
+    state = continuation.state
+    if decision == "approve":
+        execution = await run_tool(
+            pending_call.tool_name,
+            copy.deepcopy(pending_call.arguments),
+            call_id=pending_call.call_id,
+            registry=state.registry,
+        )
+    else:
+        execution = _operator_denied_execution(pending_call)
+    state.transcript.append(execution.tool_message())
+
+    if decision == "approve" and execution.status != "success":
+        state.errors += 1
+        if state.errors >= state.error_budget:
+            return _state_outcome(
+                state,
+                status="error_budget",
+                status_message="Tool failures exhausted the error budget.",
+            )
+
+    outcome = await _process_calls(
+        state,
+        continuation.remaining_calls,
+        pending_store,
+    )
+    if outcome is not None:
+        return outcome
+    return await _continue_executor_loop(state, pending_store)

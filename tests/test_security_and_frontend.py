@@ -39,6 +39,7 @@ def test_tool_roots_apply_to_read_write_append_and_shell_stays_off(router_factor
         json={"tool": "file.write", "params": {"path": str(target), "content": "one"}},
     ).json()
     assert write["status"] == "success"
+    assert write["termination"] == "completed"
     append = client.post(
         "/tools/execute",
         headers=AUTH,
@@ -58,6 +59,7 @@ def test_tool_roots_apply_to_read_write_append_and_shell_stays_off(router_factor
         json={"tool": "file.write", "params": {"path": str(outside), "content": "no"}},
     ).json()
     assert denied["status"] == "error"
+    assert denied["termination"] == "error"
     assert "outside DAVE_TOOL_ROOTS" in denied["error"]
 
     shell = client.post(
@@ -66,6 +68,7 @@ def test_tool_roots_apply_to_read_write_append_and_shell_stays_off(router_factor
         json={"tool": "shell.exec", "params": {"command": "pwd"}},
     ).json()
     assert shell["status"] == "error"
+    assert shell["termination"] == "denied"
     assert "disabled" in shell["error"]
 
 

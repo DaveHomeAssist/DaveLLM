@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from pathlib import Path
 
 import httpx
 import respx
@@ -9,6 +10,7 @@ from conftest import TEST_API_KEY, TEST_NODE_URL
 
 AUTH = {"X-API-Key": TEST_API_KEY}
 MODEL_ID = "inventory-model:latest"
+PRODUCT_VERSION = (Path(__file__).resolve().parents[1] / "VERSION").read_text().strip()
 
 
 def mock_inventory(mock):
@@ -24,7 +26,7 @@ def test_health_and_authentication(router_factory):
     router, client, _ = router_factory()
     health = client.get("/health")
     assert health.status_code == 200
-    assert health.json()["version"] == router.PRODUCT_VERSION == "2.1.0"
+    assert health.json()["version"] == router.PRODUCT_VERSION == PRODUCT_VERSION
     assert router.app.version == router.PRODUCT_VERSION
     assert client.get("/nodes").status_code == 401
     assert client.get("/nodes", headers={"X-API-Key": "wrong"}).status_code == 401

@@ -8,7 +8,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 
 - `app.py`: FastAPI routes, persistence, inventory, chat, tools, monitoring
 - `project_context.py`: normalized Project Homepage storage, BRAIN revisions, file/artifact retrieval, and bounded request assembly
-- `daveharness/`: headless in-process library for the registry, schema validation, timing, approval boundaries, and bounded executor loop
+- `daveharness/`: headless in-process `0.2.0` library for the registry, schema validation, timing, exact-call approval/resume, and bounded executor loop
 - `tool_executor.py`: compatibility re-export for legacy imports; do not add implementation here
 - `VERSION`: canonical DaveLLM Semantic Version mirrored into package metadata and runtime output
 - `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
@@ -28,12 +28,16 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - The macOS launcher stores only `DAVE_API_KEY` in Keychain and constructs `DAVE_NODES` in memory from live Tailscale peer records. Dominic and Walter are required; Duncan is appended only when online and Ollama-responsive, and never blocks startup.
 - Only `static/` is mounted at `/`; source, Git metadata, JSON, SQLite, and logs must remain unreachable.
 - Tools default off. File tools require explicit absolute roots. Shell execution requires a second opt-in.
-- The agent loop defaults to eight model steps, returns partial transcripts, and requires per-run approval for mutating or execution tools.
+- The agent loop defaults to eight model steps, returns partial transcripts, and requires exact-call approval for mutating or execution tools. Pending calls use canonical arguments, a SHA-256 digest, transcript revision, single-use nonce, and a 300-second in-memory expiry.
+- First-party tool handlers are synchronous except for explicitly opted-in, registry-allowlisted `web.fetch`. Every tool definition declares `cancellation` as `bounded` or `abandon`; approval-required and write tools must be `bounded`.
+- Preserve existing tool status strings. The additive result `termination` is `completed`, `deadline_abandoned`, `denied`, or `error`. `deadline_abandoned` means DaveHarness stopped waiting and does not prove an underlying synchronous worker stopped.
+- `POST /tools/agent/resume` must execute only stored canonical arguments for the matching run, call, digest, transcript revision, unexpired nonce, and current registry definition. It must not replay the paused model step or reuse a consumed decision.
 - Global, project, and session instruction layers are visible in the UI and resolve into one exact primary system message.
 - Project notepads are plain text in project persistence. Do not add rich text, history, collaboration, or browser note storage.
 - Existing-chat project changes must use the explicit attachment endpoint and apply only to future messages.
 - DaveLLM and DaveHarness are separate product concepts with one dependency direction: DaveLLM consumes DaveHarness through the in-process `daveharness` package. DaveHarness owns generic registry, validation, permission, approval, budget, terminal-state, and transcript contracts; it must not directly own DaveLLM HTTP, Ollama inventory, persistence, project context, UI, environment, or product-specific tool implementations. Preserve `tool_executor.py` only as the legacy compatibility import.
 - Do not create a DaveHarness network service or separate repository without a second production consumer, independent deployment cadence, incompatible dependency requirement, or required remote execution boundary.
+- Keep the default pending-call store in-process. Do not move approval state into DaveLLM persistence or claim process-restart durability without a separately approved lifecycle design.
 - Root `VERSION` is the DaveLLM release-version authority. FastAPI metadata, startup output, `GET /health`, `package.json`, and root lockfile metadata must match it.
 
 ## Ollama integration
@@ -77,10 +81,11 @@ Required checks after relevant changes:
 python -m py_compile app.py project_context.py scripts/project_context_cli.py tool_executor.py
 python -m compileall -q daveharness
 python -m pytest -q
-node --check static/app.js static/prompt-contract.js desktop/main.js desktop/preload.js
-bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
+node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
+bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh
 npm ci
 npm ls --depth=0
+npm audit --audit-level=high
 git diff --check
 ```
 

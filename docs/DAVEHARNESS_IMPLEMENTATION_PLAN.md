@@ -6,6 +6,8 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
+**Current:** DaveLLM `2.1.0`, DaveHarness `0.2.0`
+
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
 **Release posture:** internal package only; no separate service, repository, remote protocol, CLI, published distribution, Git tag, or GitHub release is authorized by this plan
@@ -29,18 +31,21 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.1.0` owns the generic registry, schema validation, tool-call parsing, execution result, and bounded loop.
+- `daveharness 0.2.0` owns the generic registry, schema validation, tool-call parsing, execution result, exact-call pending store, and bounded loop.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
+- Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.
+- Tool definitions classify deadline handling as `bounded` or `abandon`; approval-required and write tools cannot declare `abandon`.
 - Root `tool_executor.py` is a compatibility re-export.
-- The current loop returns one complete outcome. It can pause at `approval_required`, but it does not resume an exact pending call.
-- Synchronous handlers run through `asyncio.to_thread`; a timeout stops waiting but cannot terminate the worker thread.
+- The current loop can pause at `approval_required` and resume the exact harness-validated call from a single-use, 300-second in-memory record without replaying the paused model step.
+- Tool results preserve existing status values and add `termination`: `completed`, `deadline_abandoned`, `denied`, or `error`.
+- Synchronous handlers run through `asyncio.to_thread`; `deadline_abandoned` stops waiting but cannot terminate the worker thread.
 - DaveLLM already has an authenticated SSE reader for chat, but the agent-run endpoint does not stream a run ledger.
-- Repository validation currently covers compilation, 58 Python tests, JavaScript and shell syntax, npm dependency checks, version consistency, documentation contracts, and whitespace.
+- Repository validation currently covers compilation, 71 Python tests, JavaScript and shell syntax, npm dependency checks, version consistency, documentation contracts, and whitespace.
 
 ### Evidence-supported inferences
 
-- Exact-call resumption needs a versioned run state, a pending-call fingerprint, and an idempotency ledger before API or UI work begins.
+- Generalizing the shipped in-process exact-call continuation into a serializable lifecycle needs a versioned run state, tool-definition fingerprint, compare-and-swap store, and executed-call ledger before UI work begins.
 - Reliable cancellation needs an execution-context contract and cancellable handler or runner support; it cannot be honestly implemented by wrapping arbitrary synchronous work in another timeout.
 - Streaming should reuse DaveLLM's existing authenticated `fetch` plus SSE framing rather than introduce WebSockets or a second transport.
 - A host-supplied run store and event sink preserve the package boundary better than direct SQLite, FastAPI, or environment access inside DaveHarness.
@@ -50,7 +55,7 @@ The `1.0.0` contract requires all of the following:
 - DaveLLM remains a single-operator local application.
 - The first `1.0.0` consumer remains DaveLLM.
 - In-memory run retention with a bounded time to live is sufficient for the first integration. Process-restart recovery is a later host-adapter decision, not a `1.0.0` requirement.
-- Existing `/tools`, `/tools/execute`, and `/tools/agent/run` contracts remain available. Resumable behavior uses additive endpoints.
+- Existing `/tools`, `/tools/execute`, and `/tools/agent/run` contracts remain available. Exact-call decisions use additive `POST /tools/agent/resume`; the future lifecycle API remains additive.
 - DaveHarness supports the Python versions exercised by repository CI, beginning with Python 3.12.
 
 ### Unknown or separately authorized work
@@ -108,7 +113,7 @@ DaveHarness owns decisions about how a run advances. DaveLLM owns whether a requ
 
 ## 5. Proposed interface contracts
 
-These are target interfaces. They do not exist until their numbered work packages are implemented.
+These are target `1.0.0` interfaces. DaveHarness `0.2.0` provides a deliberately smaller `PendingCall`, `PendingCallStore`, and `resume_executor_loop` compatibility milestone; the richer serializable contracts below do not exist until their numbered work packages are implemented.
 
 | Interface | Required contract | Failure contract |
 |---|---|---|
@@ -127,7 +132,9 @@ These are target interfaces. They do not exist until their numbered work package
 
 Existing terminal statuses remain unchanged: `completed`, `approval_required`, `model_timeout`, `model_error`, `error_budget`, and `step_limit`. Existing tool statuses remain unchanged: `success`, `error`, `timeout`, `validation_error`, and `revoked`.
 
-Additive run statuses are `running`, `cancelling`, `cancelled`, `cancellation_failed`, `approval_rejected`, `run_conflict`, and `run_expired`. Additive tool statuses are `cancelled` and `output_limit`. New statuses must never change the meaning or serialized fields of an existing status.
+DaveHarness `0.2.0` adds non-executing approval outcomes `approval_not_found`, `approval_call_mismatch`, `approval_digest_mismatch`, `approval_stale`, `approval_replayed`, and `approval_expired`; operator denial adds tool status `denied`. Tool results add `termination` values `completed`, `deadline_abandoned`, `denied`, and `error`.
+
+Future lifecycle run statuses are `running`, `cancelling`, `cancelled`, `cancellation_failed`, `approval_rejected`, `run_conflict`, and `run_expired`. Future tool statuses are `cancelled` and `output_limit`. New statuses must never change the meaning or serialized fields of an existing status.
 
 ### Run-state transitions
 
@@ -166,14 +173,15 @@ Only `approval_required` may resume. Only `running` may enter `cancelling`. Ever
 | Phase | DaveHarness version | DaveLLM version effect | Delivery rule |
 |---|---:|---|---|
 | H0 | `0.1.0` | Remains `2.1.0` | Completed extraction baseline |
-| H1 | `0.2.0` | None | Internal contract decomposition |
-| H2 | `0.3.0` | None | Additive policy and budget contracts |
-| H3 | `0.4.0` | None | Additive state and exact-call approval API |
-| H4 | `0.5.0` | None | Additive cancellation and deadline API |
-| H5 | `0.6.0` | None | Additive event and observability API |
-| H6 | `0.7.0` | None | Instance-owned facade and host protocols |
-| H7 | `0.8.0` | Prepare DaveLLM `2.2.0` capability | Additive DaveLLM endpoints and UI integration |
-| H8 | `0.9.0` | Release candidate validation | Security, compatibility, load, and model evaluation |
+| Execution semantics | `0.2.0` | Remains `2.1.0` | Completed sync-first, honest termination, and exact-call compatibility milestone |
+| H1 | `0.3.0` | None | Internal contract decomposition |
+| H2 | `0.4.0` | None | Additive policy and budget contracts |
+| H3 | `0.5.0` | None | Generalized serializable state and exact-call approval API |
+| H4 | `0.6.0` | None | Additive cancellation and deadline API |
+| H5 | `0.7.0` | None | Additive event and observability API |
+| H6 | `0.8.0` | None | Instance-owned facade and host protocols |
+| H7 | `0.9.0` | Prepare DaveLLM `2.2.0` capability | Additive DaveLLM lifecycle endpoints and UI integration |
+| H8 | `1.0.0-rc.1` | Release candidate validation | Security, compatibility, load, and model evaluation |
 | H9 | `1.0.0` | Ship DaveLLM `2.2.0` when approved | Stable in-process contract and coordinated evidence |
 
 `daveharness/_version.py` remains the DaveHarness authority. Root `VERSION` remains the DaveLLM authority and must continue to match FastAPI, package, lockfile, and health surfaces. A commit may change one or both versions according to the table; they must never be forced to match each other.
@@ -210,7 +218,11 @@ Every phase is one coherent, reviewable change that keeps `main` green. Each pha
 | 5 | Prove the dependency boundary and public export list. | Static import/source boundary and `__all__` tests pass. | Low | Test and export revert | Completed |
 | 6 | Update CI and public documentation, then verify the exact commit and Pages artifact. | Commit `b680e69`, CI, Pages, and byte-for-byte readback passed. | Low | Documentation revert | Completed |
 
-### H1: make contracts explicit and serializable, `0.2.0`
+### Delivered execution-semantics milestone, `0.2.0`
+
+This compatibility milestone was intentionally narrower than the future lifecycle architecture and does not change the sixty-action ledger. It enforces sync-first first-party handlers and a registry-level async-name allowlist; adds `bounded` versus `abandon` declarations and honest `termination` metadata; and implements a 300-second, single-use, in-memory exact-call continuation through `POST /tools/agent/resume`. It does not add durable run serialization, process-restart recovery, hard cancellation, a full run facade, events, or UI controls.
+
+### H1: make contracts explicit and serializable, `0.3.0`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
@@ -221,7 +233,7 @@ Every phase is one coherent, reviewable change that keeps `main` green. Each pha
 | 11 | Add and pin the currently supported `mypy` release as a development-only dependency, enable strict checking for `daveharness/`, and add the CI gate. | Python 3.12 CI reports no package type errors; runtime dependencies remain unchanged. | Low | Remove development gate | Ready |
 | 12 | Expand public-API, import-boundary, constructor-validation, round-trip, and golden-shape tests. | Targeted contract suite and full repository suite pass. | Low | Test-only revert | Ready |
 
-### H2: centralize policy and budgets, `0.3.0`
+### H2: centralize policy and budgets, `0.4.0`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
@@ -232,29 +244,29 @@ Every phase is one coherent, reviewable change that keeps `main` green. Each pha
 | 17 | Recheck registry presence, fingerprint, permission, and approval immediately before every effect. | Revocation and mutation race tests prove fail-closed behavior. | High | Policy path is feature-contained | Ready |
 | 18 | Add the complete policy and budget matrix to unit tests and documentation. | Every permission and terminal reason has at least one positive and negative test. | Low | Test and docs revert | Ready |
 
-### H3: add resumable run state and exact-call approval, `0.4.0`
+### H3: generalize resumable run state and exact-call approval, `0.5.0`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
 | 19 | Implement `RunSnapshot` with run ID, contract version, optimistic version, status, transcript, counters, deadlines, pending call, executed-call ledger, and event cursor. | Snapshot fixtures cover every legal status and reject incomplete state. | High | New API is additive | Ready |
 | 20 | Implement one transition function for all legal run-state changes. | Exhaustive transition tests reject illegal resume, double terminal, and backwards transitions. | High | Existing loop remains adapter | Ready |
-| 21 | Store pending calls with exact call ID, canonical argument digest, definition fingerprint, permission, and timestamps. | A changed argument, tool, permission, or schema invalidates the pending call. | High | Pending metadata is additive | Ready |
+| 21 | Extend the current pending-call record with contract version, definition fingerprint, permission, and serializable state. | A changed argument, tool, permission, or schema invalidates the pending call across a store round trip. | High | Current in-memory continuation remains | Ready |
 | 22 | Add an exact `ApprovalDecision` contract with approve, reject, expiry, and single-use identity. | Broad, expired, mismatched, and replayed decisions never execute. | High | Existing per-run approvals remain on legacy API | Ready |
-| 23 | Add `resume` and `decide` engine operations that continue from the stored pending call without another model request. | Model invocation count remains unchanged during approval; the exact tool executes once. | High | New operations are additive | Ready |
+| 23 | Generalize the current `resume_executor_loop` path into serializable `resume` and `decide` engine operations. | Model invocation count remains unchanged during approval; the exact tool executes once after a store round trip. | High | Current in-memory continuation remains | Ready |
 | 24 | Add serialization, process-boundary simulation, optimistic-conflict, approval, rejection, expiry, replay, revocation, and definition-change tests. | Targeted state suite passes under repeated and concurrent decision attempts. | High | Test-only revert | Ready |
 
-### H4: make deadlines and cancellation truthful, `0.5.0`
+### H4: add cooperative cancellation and absolute deadlines, `0.6.0`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
 | 25 | Add `CancellationToken` and `ExecutionContext` with run, call, deadline, output-budget, and event access. | Cooperative fake handlers observe cancellation and stop before returning. | High | Optional context path | Ready |
 | 26 | Compute absolute run, model, and tool deadlines from one injected monotonic clock. | Fake-clock tests prove deterministic boundary behavior without sleeps. | Medium | Clock defaults to current behavior | Ready |
-| 27 | Classify legacy synchronous handlers as response-deadline-only and preserve their current `asyncio.to_thread` behavior and timeout status. | Compatibility tests show unchanged timing and result shapes; documentation does not claim hard cancellation. | Medium | Existing path retained | Ready |
+| 27 | Carry the current `bounded` or `abandon` declaration and `deadline_abandoned` termination through the new runner without changing existing status strings. | Compatibility tests show unchanged timing and result shapes; documentation does not claim hard cancellation. | Medium | Existing path retained | Ready |
 | 28 | Add an injected cancellable runner path for async, cooperative, and process-backed handlers. | Runner contract proves stop acknowledgement before emitting `cancelled`. | High | Per-tool opt-in | Ready |
 | 29 | Enforce one total run deadline in addition to existing per-model and per-tool timeouts. | A run cannot extend indefinitely through individually successful calls. | High | Budget can default to compatibility mode | Ready |
 | 30 | Test timeout/cancel races, cancel-before-start, cancel-during-model, cancel-during-tool, late result, and exactly-one-terminal-event behavior. | Repeated seeded concurrency tests pass without duplicate effects. | High | Test and new runner revert | Ready |
 
-### H5: add ordered events and observability, `0.6.0`
+### H5: add ordered events and observability, `0.7.0`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
@@ -265,7 +277,7 @@ Every phase is one coherent, reviewable change that keeps `main` green. Each pha
 | 35 | Bound retained events by count and byte budget while preserving the first event, latest events, and terminal event. | Overflow tests produce one explicit truncation event and bounded memory use. | Medium | Limits can be raised | Ready |
 | 36 | Make sink failure observable but non-authorizing and non-repeating. | A failing sink cannot execute a call twice or conceal the final outcome. | Medium | No-op sink fallback | Ready |
 
-### H6: provide an instance-owned host facade, `0.7.0`
+### H6: provide an instance-owned host facade, `0.8.0`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
@@ -276,18 +288,18 @@ Every phase is one coherent, reviewable change that keeps `main` green. Each pha
 | 41 | Remove engine reliance on mutable module globals while keeping compatibility globals at the outermost adapter only. | Parallel tests prove no cross-run registry or approval leakage. | High | Adapter can restore legacy internals | Ready |
 | 42 | Publish an API support table and deprecation rule: no removal from DaveHarness `1.x`, and no root-shim removal before a separately approved DaveLLM major version. | Documentation contract test locks the table and policy. | Low | Documentation revert | Ready |
 
-### H7: integrate resumable runs into DaveLLM, `0.8.0`
+### H7: integrate the full run lifecycle into DaveLLM, `0.9.0`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
 | 43 | Instantiate one DaveHarness facade in `app.py` with DaveLLM's registry, Ollama model adapter, bounded memory store, runner, and safe event sink. | App import and dependency-boundary tests pass; no runtime state moves into the package. | High | Legacy route remains available | Ready |
-| 44 | Preserve `/tools`, `/tools/execute`, and `/tools/agent/run` unchanged and route their implementation through compatibility adapters. | Existing endpoint snapshots and security tests pass byte-for-byte for stable fields. | High | Direct legacy implementation can be restored | Ready |
-| 45 | Add authenticated, tools-default-off endpoints: `POST /tools/agent/runs`, `GET /tools/agent/runs/{run_id}`, `GET /tools/agent/runs/{run_id}/events`, `POST /tools/agent/runs/{run_id}/decisions`, and `POST /tools/agent/runs/{run_id}/cancel`. | Auth, disabled-tools, invalid-node/model, unknown-run, conflict, expiry, and happy-path tests pass. | High | Entire additive route family can be removed | Ready |
+| 44 | Preserve `/tools`, `/tools/execute`, `/tools/agent/run`, and `/tools/agent/resume` and route their implementation through compatibility adapters. | Existing endpoint snapshots and security tests pass byte-for-byte for stable fields. | High | Direct legacy implementation can be restored | Ready |
+| 45 | Add authenticated, tools-default-off lifecycle endpoints: `POST /tools/agent/runs`, `GET /tools/agent/runs/{run_id}`, `GET /tools/agent/runs/{run_id}/events`, `POST /tools/agent/runs/{run_id}/decisions`, and `POST /tools/agent/runs/{run_id}/cancel`. | Auth, disabled-tools, invalid-node/model, unknown-run, conflict, expiry, and happy-path tests pass. | High | Entire additive route family can be removed | Ready |
 | 46 | Stream ledger events with the existing authenticated `fetch` and SSE framing; support cursor-based replay within the retained event window. | Reconnect resumes after the last sequence without duplicates and ends with one terminal event. | High | Complete-result polling remains fallback | Ready |
 | 47 | Add an accessible run ledger with ordered states, exact call and permission summary, Approve once, Reject, Stop, partial transcript, and terminal reason. | Keyboard, focus, screen-reader labels, responsive widths, and reduced-motion behavior are verified on the actual surface. | High | UI entry point can remain hidden while API stays | Ready |
 | 48 | Refactor DaveLLM's process-backed shell handler to use the cancellable runner contract while preserving shell opt-in, root containment, command controls, timeout defaults, and output shape. | Controlled temporary-root tests prove process-group termination and no post-cancel file effect. | High | Tool remains disabled unless both flags are set | Ready |
 
-### H8: complete security, compatibility, and deterministic evaluation, `0.9.0`
+### H8: complete security, compatibility, and deterministic evaluation, `1.0.0-rc.1`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
@@ -316,7 +328,7 @@ Every phase is one coherent, reviewable change that keeps `main` green. Each pha
 | Malformed model tool call | Append one bounded repair instruction; consume error budget; execute nothing | Return `error_budget` with the complete partial transcript |
 | Unknown or revoked tool | Fail closed immediately before execution | Record `revoked`; model may recover within budget |
 | Definition changes while approval is pending | Fingerprint mismatch invalidates the pending approval | Return to a non-executing conflict state and require a new model decision |
-| Approval is replayed or arrives twice | Compare-and-swap plus decision ID rejects the duplicate | Return current snapshot without another effect |
+| Approval is replayed or arrives twice | The current atomic nonce claim rejects the duplicate; the future serializable store adds compare-and-swap | Return a non-executing replay/conflict outcome without another effect |
 | Model is slow or unavailable | Apply model deadline and emit terminal evidence | Return `model_timeout` or `model_error` |
 | Legacy synchronous handler exceeds timeout | Stop waiting and report `timeout`; never claim the thread stopped | Surface response-deadline-only limitation and suppress late result |
 | Cancellable handler exceeds deadline | Request cancellation and wait for runner acknowledgement within its bounded shutdown allowance | Return `cancelled` only after acknowledgement; otherwise report explicit cancellation failure |
@@ -336,8 +348,8 @@ Every phase is one coherent, reviewable change that keeps `main` green. Each pha
 python -m py_compile app.py project_context.py tool_executor.py scripts/project_context_cli.py
 python -m compileall -q daveharness
 python -m pytest -q
-node --check static/app.js static/anticipation.js static/prompt-contract.js desktop/main.js desktop/preload.js
-bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
+node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
+bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh
 npm ci
 npm ls --depth=0
 npm audit
@@ -398,6 +410,7 @@ When H1 introduces the approved development checks, strict typing, supported-Pyt
 
 ```text
 H0 complete
+   -> 0.2.0 execution semantics complete
    -> H1 contracts
    -> H2 policy and budgets
    -> H3 state and exact approval
@@ -411,4 +424,4 @@ H0 complete
 
 Do not implement H7 before H3 through H6 are stable: an HTTP or UI layer built on an unsettled state machine would create duplicate lifecycle logic. Do not claim `1.0.0` before H9 live qualification; deterministic tests prove engineering behavior, not model-specific reliability. Do not combine all remaining phases into one change. Each phase must finish its own test, commit, push, CI, and documentation gates before the next phase begins.
 
-The next executable package is **H1: make contracts explicit and serializable**. It is bounded to internal module decomposition, typed immutable values, contract versioning, strict package typing, and regression tests; it must not add endpoints, UI, persistence, live runtime actions, or new tool behavior.
+The next executable package is **H1: make contracts explicit and serializable at `0.3.0`**. It is bounded to internal module decomposition, typed immutable values, contract versioning, strict package typing, and regression tests; it must not add endpoints, UI, persistence, live runtime actions, or new tool behavior.

@@ -168,6 +168,7 @@ def test_daveharness_implementation_plan_is_complete_and_linked():
         assert f"### H{phase}:" in plan
     for required in (
         "**Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`",
+        "**Current:** DaveLLM `2.1.0`, DaveHarness `0.2.0`",
         "**Target:** DaveHarness `1.0.0`",
         "RunSnapshot",
         "ApprovalDecision",
@@ -180,3 +181,29 @@ def test_daveharness_implementation_plan_is_complete_and_linked():
     ):
         assert required in plan
     assert "(docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md)" in project_spec
+
+
+def test_daveharness_execution_semantics_are_documented_consistently():
+    documents = {
+        name: (REPO / path).read_text()
+        for name, path in {
+            "project_spec": Path("PROJECT_SPEC.md"),
+            "maintainer": Path("CLAUDE.md"),
+            "readme": Path("README.md"),
+            "integration": Path("INTEGRATION.md"),
+            "decision": Path(
+                "docs/decisions/0001-daveharness-boundary-and-versioning.md"
+            ),
+            "plan": Path("docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md"),
+        }.items()
+    }
+
+    assert (REPO / "VERSION").read_text().strip() == "2.1.0"
+    harness_version = (REPO / "daveharness" / "_version.py").read_text()
+    assert re.search(r'^__version__ = "0\.2\.0"$', harness_version, re.MULTILINE)
+    for content in documents.values():
+        assert "0.2.0" in content
+    for name in ("project_spec", "maintainer", "readme", "integration", "decision"):
+        assert "/tools/agent/resume" in documents[name]
+        assert "deadline_abandoned" in documents[name]
+        assert "300" in documents[name]

@@ -107,11 +107,19 @@ The renderer performs authenticated fetch, converts the response to a Markdown B
 
 Both return `403` unless `DAVE_ENABLE_TOOLS=true`. `DAVE_TOOL_ROOTS` must be a JSON array of absolute paths. File read, write, and append use the same resolved-path containment rule. `shell.exec` also requires `DAVE_ENABLE_SHELL_TOOL=true`.
 
-The generic registry, validation, execution result, call parsing, and bounded loop are provided by the in-process `daveharness` package at version `0.1.0`. `app.py` owns and injects the concrete tools, configured roots, authentication, Ollama model adapter, and HTTP routes. `tool_executor.py` remains a compatibility re-export only.
+The generic registry, validation, execution result, call parsing, exact-call approval state, and bounded loop are provided by the in-process `daveharness` package at version `0.2.0`. `app.py` owns and injects the concrete tools, configured roots, authentication, Ollama model adapter, and HTTP routes. `tool_executor.py` remains a compatibility re-export only. First-party handlers are synchronous except for explicitly opted-in and name-allowlisted `web.fetch`.
 
 ### `POST /tools/agent/run`
 
-Accepts a message array, inventory-backed node and model, step ceiling, error budget, and per-run approved tool names. FastAPI sends the current registered JSON schemas on every Ollama request. The response contains `status`, `transcript`, `final_answer`, `steps`, `errors`, `status_message`, and any `pending_tool_call`. The default ceiling is eight. Mutating and execution tools stop at `approval_required` unless named in `approved_tools` for that run.
+Accepts a message array, inventory-backed node and model, step ceiling, error budget, and the existing per-run approved tool-name list. FastAPI sends the current registered JSON schemas on every Ollama request. Existing request fields are unchanged. The response contains `status`, `transcript`, `final_answer`, `steps`, `errors`, `status_message`, and any `pending_tool_call`, plus additive `run_id` and pending-call fields. The default ceiling is eight. Mutating and execution tools stop at `approval_required` unless already named in `approved_tools` for that run.
+
+An approval-required call is schema-validated before it is exposed as pending. Its in-process record contains the call ID, tool name, canonical arguments, SHA-256 digest, transcript revision, single-use nonce, creation time, and expiry time. The public pending object omits the nonce. Its default time-to-live is 300 seconds.
+
+### `POST /tools/agent/resume`
+
+Requires the same API-key authentication and tools-enabled flag as the other tool routes. The JSON body is exactly `run_id`, `call_id`, `digest`, and `decision`, where `decision` is `approve` or `deny`. Approval atomically consumes the pending nonce, executes only the stored canonical arguments, and continues from the paused transcript without invoking the model again for that step. Denial atomically consumes the same decision, appends a tool message with `status: "denied"` and `termination: "denied"`, and continues the bounded loop without consuming the tool-error budget.
+
+Non-executing resume outcomes are distinct: `approval_not_found`, `approval_call_mismatch`, `approval_digest_mismatch`, `approval_stale`, `approval_replayed`, and `approval_expired`. The pending store is memory-only, so process restart makes pending runs unavailable. Tool-result `termination` is additive and may be `completed`, `deadline_abandoned`, `denied`, or `error`; existing `status` values and transcript fields remain intact. `deadline_abandoned` means the harness stopped waiting and the underlying synchronous worker may still run.
 
 ### Instruction endpoints
 

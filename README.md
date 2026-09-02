@@ -12,7 +12,7 @@ DaveLLM is an Electron desktop client backed by a FastAPI router. The router dis
 | [CLAUDE.md](CLAUDE.md) | Maintainer architecture, trust boundaries, and repository constraints. |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Placeholder-only launch, health, inventory, persistence, and troubleshooting runbook. |
 | [DaveHarness boundary and versioning decision](docs/decisions/0001-daveharness-boundary-and-versioning.md) | Implemented product ownership, package seam, SemVer authority, and revisit triggers. |
-| [DaveHarness implementation plan](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md) | Authoritative 60-action roadmap from the shipped in-process `0.1.0` boundary to a qualified `1.0.0` contract. |
+| [DaveHarness implementation plan](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md) | Authoritative 60-action roadmap from the original in-process `0.1.0` boundary through shipped `0.2.0` execution semantics to a qualified `1.0.0` contract. |
 | [dave-llm-feature-analysis-2026-03-25.md](dave-llm-feature-analysis-2026-03-25.md) | Dated feature-status analysis with explicit verification boundaries. |
 | [docs/EXECUTABLE_PROMPT_SERIES.md](docs/EXECUTABLE_PROMPT_SERIES.md) | P0 through P8 decision, plan, implementation, and review contracts. |
 | [Public landing page](https://davehomeassist.github.io/DaveLLM/) | Published product overview and quickstart; not the desktop runtime static root. |
@@ -109,9 +109,11 @@ The repository intentionally contains no real node addresses or verified model i
 
 Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and provide `DAVE_TOOL_ROOTS` as a JSON array of absolute paths. File read, write, and append operations share the same containment check. `shell.exec` remains disabled unless `DAVE_ENABLE_SHELL_TOOL=true` is also set. `web.fetch` accepts only bounded public HTTP/HTTPS responses and validates DNS plus each redirect target.
 
-The tool registry publishes one JSON schema per active tool. `POST /tools/agent/run` sends the current schemas to Ollama on every bounded model step, validates arguments, logs call and result timing, returns the complete transcript, stops after eight steps by default, and pauses before tools marked as requiring approval.
+The tool registry publishes one JSON schema per active tool. `POST /tools/agent/run` sends the current schemas to Ollama on every bounded model step, validates arguments, logs call and result timing, returns the complete transcript, stops after eight steps by default, and pauses before tools marked as requiring approval. The pending response includes a `run_id` plus exact-call metadata. `POST /tools/agent/resume` accepts that run ID, call ID, SHA-256 argument digest, and an `approve` or `deny` decision for up to 300 seconds. Approval executes the stored canonical arguments without replaying the paused model step; denial records an operator-denied tool result and continues.
 
-The generic registry and bounded-loop implementation lives in the in-process `daveharness` package at version `0.1.0`. DaveLLM imports that public API and retains concrete tools, authentication, Ollama transport, persistence, and HTTP routes in `app.py`. Root `tool_executor.py` is a compatibility re-export for existing imports; new code must import `daveharness`.
+The generic registry and bounded-loop implementation lives in the in-process `daveharness` package at version `0.2.0`. DaveLLM imports that public API and retains concrete tools, authentication, Ollama transport, persistence, and HTTP routes in `app.py`. Root `tool_executor.py` is a compatibility re-export for existing imports; new code must import `daveharness`.
+
+Tool handlers are synchronous by default. Coroutine handlers require both `async_handler=True` and a host-supplied name allowlist; DaveLLM currently permits only `web.fetch`. Definitions declare `cancellation` as `bounded` or `abandon`, and write or approval-required tools cannot use `abandon`. Existing tool status strings are unchanged. The additive `termination` field is `completed`, `deadline_abandoned`, `denied`, or `error`; `deadline_abandoned` means the response deadline elapsed and the underlying synchronous worker may still be running. Pending calls live only in the current process and do not survive restart.
 
 ## Instructions, copy, and project notes
 
@@ -163,11 +165,14 @@ python -m pytest -q
 node --check static/app.js
 node --check static/anticipation.js
 node --check static/prompt-contract.js
+node --check static/vendor/gsap/gsap.min.js
 node --check desktop/main.js
 node --check desktop/preload.js
-bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
+bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh
 npm ci
 npm ls --depth=0
+npm audit
+git diff --check
 ```
 
 Runtime UI files are under `static/`; only that directory is mounted at `/`. The separate `docs/` content is published through GitHub Pages and is not used by the desktop runtime.
