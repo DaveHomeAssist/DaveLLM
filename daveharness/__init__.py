@@ -1,0 +1,45 @@
+"""Public API for the in-process DaveHarness execution library."""
+
+from ._version import __version__
+from .executor import (
+    DEFAULT_ERROR_BUDGET,
+    DEFAULT_MODEL_TIMEOUT_SECONDS,
+    DEFAULT_STEP_LIMIT,
+    DEFAULT_TOOL_REGISTRY,
+    DEFAULT_TOOL_TIMEOUT_SECONDS,
+    ExecutorOutcome,
+    ModelInvoker,
+    ParsedToolCall,
+    SchemaValidationError,
+    ToolDefinition,
+    ToolExecution,
+    ToolHandler,
+    ToolRegistry,
+    parse_tool_calls,
+    run_executor_loop,
+    run_tool,
+    utc_timestamp,
+    validate_json_schema,
+)
+
+__all__ = [
+    "DEFAULT_ERROR_BUDGET",
+    "DEFAULT_MODEL_TIMEOUT_SECONDS",
+    "DEFAULT_STEP_LIMIT",
+    "DEFAULT_TOOL_REGISTRY",
+    "DEFAULT_TOOL_TIMEOUT_SECONDS",
+    "ExecutorOutcome",
+    "ModelInvoker",
+    "ParsedToolCall",
+    "SchemaValidationError",
+    "ToolDefinition",
+    "ToolExecution",
+    "ToolHandler",
+    "ToolRegistry",
+    "__version__",
+    "parse_tool_calls",
+    "run_executor_loop",
+    "run_tool",
+    "utc_timestamp",
+    "validate_json_schema",
+]

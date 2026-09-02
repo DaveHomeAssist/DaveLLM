@@ -3,7 +3,7 @@
 | Field | Current value |
 |---|---|
 | Product | DaveLLM |
-| Status | Implemented local application; DaveHarness boundary decided, package extraction planned |
+| Status | Implemented local application with in-process DaveHarness `0.1.0` boundary |
 | Owner and primary operator | Dave Robertson |
 | Canonical repository | `DaveHomeAssist/DaveLLM` |
 | Application version | DaveLLM `2.1.0`, sourced from root `VERSION` |
@@ -41,11 +41,11 @@ The product is intended for one high-bandwidth technical operator moving between
 
 ## 2. Product boundary
 
-**Decision:** DaveLLM and DaveHarness are separate product concepts with one-way dependency: DaveLLM consumes DaveHarness. DaveHarness will be a headless, independently versioned library contract, initially kept in this repository and called in-process. A separate service or repository is deferred until a second production consumer, independent deployment cadence, incompatible dependency set, or required remote execution boundary justifies it.
+**Decision:** DaveLLM and DaveHarness are separate product concepts with one-way dependency: DaveLLM consumes DaveHarness through the headless, independently versioned `daveharness` library in-process. The package remains in this repository. A separate service or repository is deferred until a second production consumer, independent deployment cadence, incompatible dependency set, or required remote execution boundary justifies it.
 
 DaveLLM owns the Electron/browser experience, FastAPI HTTP and authentication boundary, Ollama node/model integration, projects and BRAIN, persistence, dictation, and product-specific tool implementations. DaveHarness owns the tool registry, schemas, validation, permissions, approvals, bounded execution loop, timing, terminal states, and transcripts. It receives model and tool implementations through interfaces and must not read DaveLLM persistence, environment, HTTP, or UI state directly.
 
-The current `tool_executor.py` remains the compatibility implementation until it is extracted into the `daveharness` package. The extraction must preserve current behavior and tests; it does not authorize a new network service.
+The generic implementation lives in `daveharness/executor.py` and is exposed through an explicit package API. Root `tool_executor.py` remains a compatibility re-export for legacy callers. Duplicate tool registration is rejected, and the registry snapshots security-relevant definition data so caller-owned schema mutation cannot alter registered behavior.
 
 The complete options, tradeoffs, version policy, consequences, and revisit triggers are recorded in [`docs/decisions/0001-daveharness-boundary-and-versioning.md`](docs/decisions/0001-daveharness-boundary-and-versioning.md).
 
@@ -197,7 +197,8 @@ FastAPI router on 127.0.0.1
 |---|---|---|
 | FastAPI router | `app.py` | Auth, routes, Ollama transport, persistence integration, dictation, monitoring, routing advice, and tool registration. |
 | Project context store | `project_context.py` | Normalized project components, quotas, retrieval, BRAIN revisions, and exact request assembly. |
-| Tool executor | `tool_executor.py` | Registry, schemas, validation, approvals, timing, error handling, and bounded model/tool loop. |
+| DaveHarness | `daveharness/` | Versioned public API, registry, schemas, validation, approvals, timing, error handling, and bounded model/tool loop. |
+| Legacy executor import | `tool_executor.py` | Compatibility re-export only; contains no executor implementation. |
 | Runtime client | `static/` | Chat and project UI served by FastAPI. |
 | Desktop shell | `desktop/` | Backend lifecycle, exact-origin API-key injection, and isolated preload bridge. |
 | macOS launcher | `scripts/macos/` | Keychain, Tailscale node discovery, data-root selection, optional Duncan check, and application launch. |
@@ -334,7 +335,7 @@ The optional dictation installer adds `whisper-cpp` and a checksum-verified Engl
 
 Root `VERSION` is the canonical DaveLLM Semantic Version. FastAPI metadata, startup output, `GET /health`, `package.json`, and the root `package-lock.json` entry must match it. Release tags use `vMAJOR.MINOR.PATCH`. Documentation-only changes do not require a version increment.
 
-The current in-repository harness inherits the DaveLLM version. The extracted `daveharness` package will begin at `0.1.0` and then follow independent SemVer with an explicit compatible DaveLLM adapter range.
+The in-repository `daveharness` package is versioned independently at `0.1.0`. It is an internal importable package, not a published distribution, service, repository, CLI, or remote protocol. Future package changes follow independent SemVer while DaveLLM retains its own root `VERSION`.
 
 ## 13. Quality and acceptance criteria
 
@@ -353,6 +354,7 @@ Repository verification commands:
 
 ```bash
 python -m py_compile app.py project_context.py scripts/project_context_cli.py tool_executor.py
+python -m compileall -q daveharness
 python -m pytest -q
 node --check static/app.js static/anticipation.js static/prompt-contract.js desktop/main.js desktop/preload.js
 bash -n deploy/check-cluster.sh scripts/verify-cluster.sh
@@ -371,17 +373,18 @@ As of 2026-09-02:
 - The public documentation artifact is `https://davehomeassist.github.io/DaveLLM/`.
 - The local DaveLLM process was stopped during this specification review; no claim of live node, inventory, model, or dictation availability is made by this snapshot.
 - The product version is unified at `2.1.0` through root `VERSION`; runtime and package mirrors are regression-tested.
-- The DaveHarness library boundary is decided; physical package extraction has not yet been performed.
+- The DaveHarness library boundary is implemented in-process at `0.1.0`, with the legacy root import preserved as a compatibility shim.
 
 ## 15. Known limits and open decisions
 
 1. **Runtime proof:** repository tests cannot prove current node reachability, installed model inventory, inference quality, Whisper accuracy, or hardware performance.
-2. **Harness extraction:** the product boundary is decided, but moving `tool_executor.py` behind a dedicated `daveharness` package API remains implementation work.
-3. **Lifecycle API:** FastAPI startup/shutdown event handlers emit deprecation warnings; migration to lifespan handlers remains deferred.
-4. **Persistence evolution:** conversations and core project metadata remain JSON while normalized project context is SQLite; full migration is deferred.
-5. **Dictation quality:** the installed default `tiny.en` model is English-only and favors a small local footprint over maximum accuracy.
-6. **Tools UI:** the backend returns a complete bounded run result; a full streaming agent-run ledger remains future work.
-7. **Placeholder inventory:** source fallback nodes are deliberately non-working. Normal macOS operation depends on launcher-resolved Tailscale peers or an explicitly supplied `DAVE_NODES` value.
+2. **Harness distribution:** `daveharness` is intentionally importable only inside this repository; no publishable distribution, separate service, repository, CLI, or remote protocol exists.
+3. **Timeout semantics:** the existing executor timeout remains a response deadline and does not guarantee termination of an underlying synchronous worker thread.
+4. **Lifecycle API:** FastAPI startup/shutdown event handlers emit deprecation warnings; migration to lifespan handlers remains deferred.
+5. **Persistence evolution:** conversations and core project metadata remain JSON while normalized project context is SQLite; full migration is deferred.
+6. **Dictation quality:** the installed default `tiny.en` model is English-only and favors a small local footprint over maximum accuracy.
+7. **Tools UI:** the backend returns a complete bounded run result; a full streaming agent-run ledger and exact-call resume flow remain future work.
+8. **Placeholder inventory:** source fallback nodes are deliberately non-working. Normal macOS operation depends on launcher-resolved Tailscale peers or an explicitly supplied `DAVE_NODES` value.
 
 ## 16. Change control
 

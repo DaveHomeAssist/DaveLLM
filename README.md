@@ -11,7 +11,7 @@ DaveLLM is an Electron desktop client backed by a FastAPI router. The router dis
 | [INTEGRATION.md](INTEGRATION.md) | Authoritative frontend/backend flow, authentication, and API contracts. |
 | [CLAUDE.md](CLAUDE.md) | Maintainer architecture, trust boundaries, and repository constraints. |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Placeholder-only launch, health, inventory, persistence, and troubleshooting runbook. |
-| [DaveHarness boundary and versioning decision](docs/decisions/0001-daveharness-boundary-and-versioning.md) | Decided product ownership, extraction seam, SemVer authority, and revisit triggers. |
+| [DaveHarness boundary and versioning decision](docs/decisions/0001-daveharness-boundary-and-versioning.md) | Implemented product ownership, package seam, SemVer authority, and revisit triggers. |
 | [dave-llm-feature-analysis-2026-03-25.md](dave-llm-feature-analysis-2026-03-25.md) | Dated feature-status analysis with explicit verification boundaries. |
 | [docs/EXECUTABLE_PROMPT_SERIES.md](docs/EXECUTABLE_PROMPT_SERIES.md) | P0 through P8 decision, plan, implementation, and review contracts. |
 | [Public landing page](https://davehomeassist.github.io/DaveLLM/) | Published product overview and quickstart; not the desktop runtime static root. |
@@ -110,6 +110,8 @@ Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and 
 
 The tool registry publishes one JSON schema per active tool. `POST /tools/agent/run` sends the current schemas to Ollama on every bounded model step, validates arguments, logs call and result timing, returns the complete transcript, stops after eight steps by default, and pauses before tools marked as requiring approval.
 
+The generic registry and bounded-loop implementation lives in the in-process `daveharness` package at version `0.1.0`. DaveLLM imports that public API and retains concrete tools, authentication, Ollama transport, persistence, and HTTP routes in `app.py`. Root `tool_executor.py` is a compatibility re-export for existing imports; new code must import `daveharness`.
+
 ## Instructions, copy, and project notes
 
 The Chat header opens a layered instruction editor. It shows the global default, attached project instructions, session override, precedence, live character and token estimates, and the exact effective system text. Saves apply to the next message without restarting the application. Session overrides and the editable runtime global default each have a one-action reset.
@@ -155,6 +157,7 @@ source venv/bin/activate
 python -m py_compile app.py
 python -m py_compile project_context.py scripts/project_context_cli.py
 python -m py_compile tool_executor.py
+python -m compileall -q daveharness
 python -m pytest -q
 node --check static/app.js
 node --check static/anticipation.js

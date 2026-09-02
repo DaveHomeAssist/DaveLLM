@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 import httpx
 import uuid
 
-from tool_executor import (
+from daveharness import (
     DEFAULT_ERROR_BUDGET,
     DEFAULT_STEP_LIMIT,
     ToolDefinition,

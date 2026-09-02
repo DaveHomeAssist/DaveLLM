@@ -107,6 +107,8 @@ The renderer performs authenticated fetch, converts the response to a Markdown B
 
 Both return `403` unless `DAVE_ENABLE_TOOLS=true`. `DAVE_TOOL_ROOTS` must be a JSON array of absolute paths. File read, write, and append use the same resolved-path containment rule. `shell.exec` also requires `DAVE_ENABLE_SHELL_TOOL=true`.
 
+The generic registry, validation, execution result, call parsing, and bounded loop are provided by the in-process `daveharness` package at version `0.1.0`. `app.py` owns and injects the concrete tools, configured roots, authentication, Ollama model adapter, and HTTP routes. `tool_executor.py` remains a compatibility re-export only.
+
 ### `POST /tools/agent/run`
 
 Accepts a message array, inventory-backed node and model, step ceiling, error budget, and per-run approved tool names. FastAPI sends the current registered JSON schemas on every Ollama request. The response contains `status`, `transcript`, `final_answer`, `steps`, `errors`, `status_message`, and any `pending_tool_call`. The default ceiling is eight. Mutating and execution tools stop at `approval_required` unless named in `approved_tools` for that run.

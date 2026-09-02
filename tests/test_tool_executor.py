@@ -8,7 +8,7 @@ import pytest
 import respx
 
 from conftest import TEST_API_KEY, TEST_NODE_URL
-from tool_executor import (
+from daveharness import (
     ToolDefinition,
     ToolRegistry,
     run_executor_loop,

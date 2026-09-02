@@ -1,6 +1,6 @@
 # Decision: DaveHarness boundary and release versioning
 
-**Status:** decided
+**Status:** decided and implemented
 
 **Date:** 2026-09-02
 
@@ -10,7 +10,7 @@
 
 ## Decision 1: DaveHarness product boundary
 
-**Recommendation:** Make DaveHarness a headless library contract inside the DaveLLM repository, consumed in-process by DaveLLM. Give it an independent package and release identity when the extraction is implemented. Do not create a separate network service or repository yet.
+**Recommendation:** Keep DaveHarness as a headless library contract inside the DaveLLM repository, consumed in-process by DaveLLM. Maintain its independent package identity without creating a separate network service or repository.
 
 **Confidence:** high
 
@@ -41,14 +41,16 @@
 
 DaveHarness must not read DaveLLM persistence, environment variables, node configuration, HTTP requests, or UI state directly. DaveLLM supplies model invocation and tool-handler interfaces. DaveLLM remains responsible for authenticating the operator and deciding which implementations and roots are available.
 
-The current `tool_executor.py` is the compatibility implementation until extraction into a dedicated `daveharness` package. Its public behavior must remain stable during that move.
+The generic implementation is extracted into `daveharness/executor.py` and exposed by `daveharness/__init__.py`. Root `tool_executor.py` is a compatibility re-export for legacy imports. DaveLLM imports the package API directly, while concrete tools and the model adapter remain in `app.py`.
+
+The package starts at `0.1.0`. Its registry rejects duplicate names and snapshots tool definitions so mutation of caller-owned schema data cannot change a registered tool's permission, approval requirement, handler selection, or validation schema.
 
 ### Consequences
 
 - DaveLLM and DaveHarness are separate product concepts with an explicit dependency direction: DaveLLM depends on DaveHarness, never the reverse.
 - One process and repository remain the operational default.
 - A second service, repository, or remote protocol is out of scope until justified by evidence.
-- Extraction must preserve the existing default-off tool posture, approval gates, containment, complete partial transcripts, and test coverage.
+- Package evolution must preserve the existing default-off tool posture, approval gates, containment, complete partial transcripts, and test coverage.
 - Revisit the process/repository decision when there is a second production consumer, independent deployment cadence, incompatible dependency needs, or a required remote execution boundary.
 
 ## Decision 2: Release-version scheme
@@ -81,11 +83,11 @@ The current `tool_executor.py` is the compatibility implementation until extract
 - Increment **MINOR** for backward-compatible capabilities.
 - Increment **PATCH** for backward-compatible fixes. Documentation-only commits do not require a version increment.
 - Pre-release identifiers follow SemVer, for example `2.2.0-beta.1`.
-- The current DaveHarness compatibility module inherits the DaveLLM release version. When the dedicated package is created, it starts at `0.1.0`, follows independent SemVer, and declares the compatible DaveLLM adapter range.
+- The in-repository DaveHarness package starts at `0.1.0` and follows independent SemVer. It remains an internal package until a separately approved distribution phase defines publishable metadata and a compatible DaveLLM adapter range.
 
 ### Consequences
 
 - DaveLLM now has one operator-visible support version: `2.1.0`.
 - A release must update `VERSION` and generated/mirrored package metadata together.
-- DaveHarness can evolve independently after extraction without forcing its internal API version to equal the desktop application's version.
+- DaveHarness can evolve independently without forcing its internal API version to equal the desktop application's version.
 - The version rule is enforceable without importing the full application or contacting a runtime node.
