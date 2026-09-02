@@ -9,6 +9,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - `app.py`: FastAPI routes, persistence, inventory, chat, tools, monitoring
 - `project_context.py`: normalized Project Homepage storage, BRAIN revisions, file/artifact retrieval, and bounded request assembly
 - `tool_executor.py`: runtime tool registry, schema validation, timing, approval boundaries, and bounded executor loop
+- `VERSION`: canonical DaveLLM Semantic Version mirrored into package metadata and runtime output
 - `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
 - `static/vendor/`: pinned browser-only Lucide and GSAP assets with their license notices; no CDN runtime path
 - `desktop/`: Electron main process and preload bridge
@@ -30,6 +31,9 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - Global, project, and session instruction layers are visible in the UI and resolve into one exact primary system message.
 - Project notepads are plain text in project persistence. Do not add rich text, history, collaboration, or browser note storage.
 - Existing-chat project changes must use the explicit attachment endpoint and apply only to future messages.
+- DaveLLM and DaveHarness are separate product concepts with one dependency direction: DaveLLM consumes DaveHarness. Keep the current `tool_executor.py` behavior as the compatibility seam until it moves into an in-process `daveharness` package. DaveHarness owns generic registry, validation, permission, approval, budget, terminal-state, and transcript contracts; it must not directly own DaveLLM HTTP, Ollama inventory, persistence, project context, UI, environment, or product-specific tool implementations.
+- Do not create a DaveHarness network service or separate repository without a second production consumer, independent deployment cadence, incompatible dependency requirement, or required remote execution boundary.
+- Root `VERSION` is the DaveLLM release-version authority. FastAPI metadata, startup output, `GET /health`, `package.json`, and root lockfile metadata must match it.
 
 ## Ollama integration
 

@@ -29,10 +29,13 @@ Electron stores no renderer credential. `desktop/main.js` injects the environmen
 ```json
 {
   "status": "ok",
+  "version": "2.1.0",
   "nodes": [],
   "active_conversations": 0
 }
 ```
+
+The version is read from root `VERSION`, the canonical DaveLLM Semantic Version, and must match the desktop package manifests.
 
 ### `GET /nodes`
 

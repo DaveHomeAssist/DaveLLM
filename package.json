@@ -1,6 +1,6 @@
 {
   "name": "davellm-desktop",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Electron shell for DaveLLM",
   "main": "desktop/main.js",
   "scripts": {

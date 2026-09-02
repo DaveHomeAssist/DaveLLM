@@ -53,6 +53,9 @@ from project_context import (
 # CONSTANTS
 # ============================================================
 
+PRODUCT_VERSION = (Path(__file__).resolve().parent / "VERSION").read_text(
+    encoding="utf-8"
+).strip()
 BASE_DIR = Path(os.getenv("DAVE_DATA_DIR", ".")).expanduser().resolve()
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 DATA_FILE = BASE_DIR / "dave_conversations.json"
@@ -436,7 +439,7 @@ for _project_id, _project in PROJECTS.items():
 
 app = FastAPI(
     title="DaveLLM Router",
-    version="2.1",
+    version=PRODUCT_VERSION,
     description="Routes chat prompts to Ollama nodes with persistent conversation memory and metadata.",
 )
 
@@ -2032,6 +2035,7 @@ def health():
     """Health check endpoint."""
     return {
         "status": "ok",
+        "version": PRODUCT_VERSION,
         "nodes": [n.model_dump() for n in NODE_CONFIGS],
         "active_conversations": len(CONVERSATIONS)
     }           
@@ -3691,7 +3695,7 @@ app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 @app.on_event("startup")
 async def startup_event():
     """Load conversations on startup."""
-    print(f"✅ DaveLLM Router v2.1 started")
+    print(f"✅ DaveLLM Router v{PRODUCT_VERSION} started")
     print(f"📁 Loaded {len(CONVERSATIONS)} conversations from disk")
     print(f"🖥️  Active nodes: {len(NODE_CONFIGS)}")
     BACKGROUND_TASKS.extend(

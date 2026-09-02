@@ -77,6 +77,8 @@ Open `http://127.0.0.1:8000/`. The browser prompts for the API key and keeps it 
 curl -fsS http://127.0.0.1:8000/health
 ```
 
+The response reports `version` from the repository's canonical root `VERSION` file. It must match the installed DaveLLM package metadata.
+
 Do not treat this response alone as node, model, or chat proof.
 
 ## Verify configured nodes
@@ -176,7 +178,7 @@ The selected model is not in the loaded inventory for that node. Choose an ID re
 
 An operational verification report should record:
 
-- Router `/health` result
+- Router `/health` result and reported DaveLLM version
 - Authenticated node-status result
 - Selected node ID and model ID
 - Visible chat result

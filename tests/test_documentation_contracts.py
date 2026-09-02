@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
@@ -24,11 +25,20 @@ class DocumentationAttributeParser(HTMLParser):
 
 def test_public_documentation_matches_the_desktop_runtime_contract():
     package = json.loads((REPO / "package.json").read_text())
+    package_lock = json.loads((REPO / "package-lock.json").read_text())
+    version = (REPO / "VERSION").read_text().strip()
     landing = (REPO / "docs" / "index.html").read_text()
     landing_lower = landing.lower()
 
     assert package["name"] == "davellm-desktop"
     assert package["scripts"]["start"] == "electron ."
+    assert re.fullmatch(
+        r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?",
+        version,
+    )
+    assert package["version"] == version
+    assert package_lock["version"] == version
+    assert package_lock["packages"][""]["version"] == version
 
     for required in (
         "npm start",
@@ -79,6 +89,8 @@ def test_documentation_map_and_operations_runbook_preserve_boundaries():
     readme = (REPO / "README.md").read_text()
     operations = (REPO / "docs" / "OPERATIONS.md").read_text()
     project_spec = (REPO / "PROJECT_SPEC.md").read_text()
+    integration = (REPO / "INTEGRATION.md").read_text()
+    maintainer_contract = (REPO / "CLAUDE.md").read_text()
 
     for documented_path in (
         "[README.md](README.md)",
@@ -86,6 +98,7 @@ def test_documentation_map_and_operations_runbook_preserve_boundaries():
         "[INTEGRATION.md](INTEGRATION.md)",
         "[CLAUDE.md](CLAUDE.md)",
         "[docs/OPERATIONS.md](docs/OPERATIONS.md)",
+        "[DaveHarness boundary and versioning decision](docs/decisions/0001-daveharness-boundary-and-versioning.md)",
         "[dave-llm-feature-analysis-2026-03-25.md](dave-llm-feature-analysis-2026-03-25.md)",
         "[Public landing page](https://davehomeassist.github.io/DaveLLM/)",
     ):
@@ -127,8 +140,15 @@ def test_documentation_map_and_operations_runbook_preserve_boundaries():
         "DAVE_ENABLE_SHELL_TOOL",
         "X-API-Key",
         "DaveHarness",
+        "root `VERSION`",
     ):
         assert required_contract in project_spec
+
+    for version_contract in (integration, operations, maintainer_contract):
+        assert "`VERSION`" in version_contract
+
+    for harness_contract in (project_spec, maintainer_contract):
+        assert "DaveLLM consumes DaveHarness" in harness_contract
 
     assert "PLACEHOLDER_" not in operations
     assert "PLACEHOLDER_" not in project_spec

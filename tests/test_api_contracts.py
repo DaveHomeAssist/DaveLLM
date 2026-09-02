@@ -21,8 +21,11 @@ def mock_inventory(mock):
 
 
 def test_health_and_authentication(router_factory):
-    _, client, _ = router_factory()
-    assert client.get("/health").status_code == 200
+    router, client, _ = router_factory()
+    health = client.get("/health")
+    assert health.status_code == 200
+    assert health.json()["version"] == router.PRODUCT_VERSION == "2.1.0"
+    assert router.app.version == router.PRODUCT_VERSION
     assert client.get("/nodes").status_code == 401
     assert client.get("/nodes", headers={"X-API-Key": "wrong"}).status_code == 401
     response = client.get("/nodes", headers=AUTH)
