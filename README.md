@@ -12,6 +12,7 @@ DaveLLM is an Electron desktop client backed by a FastAPI router. The router dis
 | [CLAUDE.md](CLAUDE.md) | Maintainer architecture, trust boundaries, and repository constraints. |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Placeholder-only launch, health, inventory, persistence, and troubleshooting runbook. |
 | [DaveHarness boundary and versioning decision](docs/decisions/0001-daveharness-boundary-and-versioning.md) | Implemented product ownership, package seam, SemVer authority, and revisit triggers. |
+| [DaveHarness implementation plan](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md) | Authoritative 60-action roadmap from the shipped in-process `0.1.0` boundary to a qualified `1.0.0` contract. |
 | [dave-llm-feature-analysis-2026-03-25.md](dave-llm-feature-analysis-2026-03-25.md) | Dated feature-status analysis with explicit verification boundaries. |
 | [docs/EXECUTABLE_PROMPT_SERIES.md](docs/EXECUTABLE_PROMPT_SERIES.md) | P0 through P8 decision, plan, implementation, and review contracts. |
 | [Public landing page](https://davehomeassist.github.io/DaveLLM/) | Published product overview and quickstart; not the desktop runtime static root. |

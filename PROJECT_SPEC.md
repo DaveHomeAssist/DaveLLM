@@ -49,6 +49,8 @@ The generic implementation lives in `daveharness/executor.py` and is exposed thr
 
 The complete options, tradeoffs, version policy, consequences, and revisit triggers are recorded in [`docs/decisions/0001-daveharness-boundary-and-versioning.md`](docs/decisions/0001-daveharness-boundary-and-versioning.md).
 
+The authoritative path from the shipped `0.1.0` extraction to an in-process, qualified `1.0.0` contract is recorded in [`docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md`](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md). It defines the component boundaries, proposed interfaces, sixty implementation actions, compatibility and security invariants, version milestones, failure modes, and release gates.
+
 The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 
 ## 3. Primary user journeys

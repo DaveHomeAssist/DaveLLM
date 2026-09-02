@@ -99,6 +99,7 @@ def test_documentation_map_and_operations_runbook_preserve_boundaries():
         "[CLAUDE.md](CLAUDE.md)",
         "[docs/OPERATIONS.md](docs/OPERATIONS.md)",
         "[DaveHarness boundary and versioning decision](docs/decisions/0001-daveharness-boundary-and-versioning.md)",
+        "[DaveHarness implementation plan](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md)",
         "[dave-llm-feature-analysis-2026-03-25.md](dave-llm-feature-analysis-2026-03-25.md)",
         "[Public landing page](https://davehomeassist.github.io/DaveLLM/)",
     ):
@@ -152,3 +153,30 @@ def test_documentation_map_and_operations_runbook_preserve_boundaries():
 
     assert "PLACEHOLDER_" not in operations
     assert "PLACEHOLDER_" not in project_spec
+
+
+def test_daveharness_implementation_plan_is_complete_and_linked():
+    plan = (REPO / "docs" / "DAVEHARNESS_IMPLEMENTATION_PLAN.md").read_text()
+    project_spec = (REPO / "PROJECT_SPEC.md").read_text()
+    action_ids = [
+        int(match)
+        for match in re.findall(r"^\| (\d+) \|", plan, flags=re.MULTILINE)
+    ]
+
+    assert action_ids == list(range(1, 61))
+    for phase in range(10):
+        assert f"### H{phase}:" in plan
+    for required in (
+        "**Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`",
+        "**Target:** DaveHarness `1.0.0`",
+        "RunSnapshot",
+        "ApprovalDecision",
+        "CancellationToken",
+        "EventSink",
+        "RunStore",
+        "POST /tools/agent/runs",
+        "Tools and shell remain default-off",
+        "Blocked by runtime authorization",
+    ):
+        assert required in plan
+    assert "(docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md)" in project_spec
