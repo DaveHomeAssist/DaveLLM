@@ -120,14 +120,17 @@ After health, node status, and inventory checks pass:
 
 ## Persistence
 
-When `DAVE_DATA_DIR` is unset, persistence defaults to the process working directory. When set, these six artifacts resolve beneath it:
+When `DAVE_DATA_DIR` is unset, persistence defaults to the process working directory. When set, these artifacts resolve beneath it:
 
 - `dave_conversations.json`
 - `dave_projects.json`
+- `dave_settings.json`
+- `dave_project_context.db`
 - `dave_vectors.db`
 - `feedback.db`
 - `performance.db`
 - `cost_log.jsonl`
+- `project_uploads/`
 
 Stop DaveLLM before copying or relocating persistence artifacts. Do not infer, import, or overwrite legacy data locations.
 

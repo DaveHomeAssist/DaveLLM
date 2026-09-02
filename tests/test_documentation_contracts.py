@@ -78,9 +78,11 @@ def test_public_documentation_matches_the_desktop_runtime_contract():
 def test_documentation_map_and_operations_runbook_preserve_boundaries():
     readme = (REPO / "README.md").read_text()
     operations = (REPO / "docs" / "OPERATIONS.md").read_text()
+    project_spec = (REPO / "PROJECT_SPEC.md").read_text()
 
     for documented_path in (
         "[README.md](README.md)",
+        "[PROJECT_SPEC.md](PROJECT_SPEC.md)",
         "[INTEGRATION.md](INTEGRATION.md)",
         "[CLAUDE.md](CLAUDE.md)",
         "[docs/OPERATIONS.md](docs/OPERATIONS.md)",
@@ -101,4 +103,32 @@ def test_documentation_map_and_operations_runbook_preserve_boundaries():
     ):
         assert required in operations
 
+    for persisted_path in (
+        "dave_conversations.json",
+        "dave_projects.json",
+        "dave_settings.json",
+        "dave_project_context.db",
+        "dave_vectors.db",
+        "feedback.db",
+        "performance.db",
+        "cost_log.jsonl",
+        "project_uploads/",
+    ):
+        assert persisted_path in operations
+        assert persisted_path in project_spec
+
+    for required_contract in (
+        "## 4. Functional requirements",
+        "## 7. System architecture",
+        "## 9. Security and privacy requirements",
+        "## 13. Quality and acceptance criteria",
+        "## 15. Known limits and open decisions",
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "X-API-Key",
+        "DaveHarness",
+    ):
+        assert required_contract in project_spec
+
     assert "PLACEHOLDER_" not in operations
+    assert "PLACEHOLDER_" not in project_spec

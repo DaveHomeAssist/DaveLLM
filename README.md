@@ -7,6 +7,7 @@ DaveLLM is an Electron desktop client backed by a FastAPI router. The router dis
 | Document | Authority |
 |---|---|
 | [README.md](README.md) | Primary setup, configuration, feature, and validation guide. |
+| [PROJECT_SPEC.md](PROJECT_SPEC.md) | Current product scope, functional requirements, architecture, security, limits, and acceptance criteria. |
 | [INTEGRATION.md](INTEGRATION.md) | Authoritative frontend/backend flow, authentication, and API contracts. |
 | [CLAUDE.md](CLAUDE.md) | Maintainer architecture, trust boundaries, and repository constraints. |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Placeholder-only launch, health, inventory, persistence, and troubleshooting runbook. |
