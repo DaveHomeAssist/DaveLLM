@@ -233,6 +233,16 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert "innerHTML" not in app_source
     assert "innerHTML" not in monitoring_source
     assert "localStorage.getItem(\"dave_api_key\")" not in app_source + monitoring_source
+    # The router is the only conversation and feedback store. The renderer must
+    # not mirror prompt or response content into persistent browser storage or
+    # restore a browser copy when the router is unreachable.
+    assert "saveAllConversations" not in app_source
+    assert "loadAllConversations" not in app_source
+    assert "localStorage.setItem(LOCAL_STORAGE_KEY" not in app_source
+    assert 'localStorage.setItem("dave_convos"' not in app_source
+    assert 'localStorage.setItem("dave_feedback"' not in app_source
+    assert 'LEGACY_CONTENT_STORAGE_KEYS = ["dave_convos", "dave_feedback"]' in app_source
+    assert "purgeLegacyContentStorage();" in app_source
     assert "DAVE_API_KEY" not in preload_source
     assert 'details.requestHeaders["X-API-Key"] = apiKey' in main_source
     assert main_source.index("await waitForBackend(child)") < main_source.index("createWindow();")

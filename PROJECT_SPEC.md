@@ -124,7 +124,7 @@ The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 | FR-23 | Tool catalog | Tools default off. When enabled, active schemas and permission metadata come from the runtime registry. |
 | FR-24 | Agent execution | Model-selected tools run through schema validation, per-tool deadlines, an error budget, an eight-step default ceiling, approval boundaries, and a complete partial transcript. Tool results add an honest `termination` classification without changing existing status values. |
 | FR-25 | Exact-call approval | An approval-required call is stored in process with canonical arguments, SHA-256 digest, transcript revision, single-use nonce, and a 300-second expiry. Resume accepts only the matching run, call, digest, and unmodified transcript; approval executes those exact arguments without replaying the paused model step, and denial appends an operator-denied tool result before continuing. |
-| FR-25 | Responsive access | Chat, History, and Runtime navigation remains usable at mobile widths; motion respects `prefers-reduced-motion`. |
+| FR-26 | Responsive access | Chat, History, and Runtime navigation remains usable at mobile widths; motion respects `prefers-reduced-motion`. |
 
 ## 5. Context and prompt contract
 

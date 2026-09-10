@@ -101,11 +101,6 @@ WHISPER_MODEL = Path(
 ).expanduser()
 FFMPEG_BIN = os.getenv("FFMPEG_BIN") or shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 
-DEFAULT_MODEL_ID = (
-    "/Users/daverobertson/Desktop/Dave-LLM/models/qwen-vl-7b/"
-    "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
-)
-
 # Simple model catalog for routing decisions
 MODEL_CATALOG = {
     str(Path("/Users/daverobertson/Desktop/Dave-LLM/models/qwen-vl-7b/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf").resolve()): {
@@ -312,19 +307,16 @@ TEMPLATES = {
         "title": "New Conversation",
         "system_prompt": SYSTEM_PROMPT,
         "session_override": "",
-        "preferred_model": DEFAULT_MODEL_ID,
     },
     "code_review": {
         "title": "Code Review Session",
         "system_prompt": SYSTEM_PROMPT + "\n\nFocus on code quality, bugs, and optimization.",
         "session_override": "Focus on code quality, bugs, and optimization.",
-        "preferred_model": "./models/llama3.2-3b-instruct-q4_k_m.gguf",
     },
     "brainstorm": {
         "title": "Brainstorm",
         "system_prompt": SYSTEM_PROMPT + "\n\nBe exploratory and propose multiple options.",
         "session_override": "Be exploratory and propose multiple options.",
-        "preferred_model": "/Users/daverobertson/Desktop/Dave-LLM/models/qwen-vl-7b/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
     },
 }
 
@@ -3123,7 +3115,10 @@ def create_from_template(req: TemplateConversationRequest, user_id: str = Depend
         provisional_conversation,
         project_cfg,
     )
-    preferred_model = template.get("preferred_model") or project_cfg.get("preferred_model")
+    # Templates carry no model preference. The only preferred model is the
+    # project's own setting, and the actual send still uses the visible
+    # inventory-backed selection.
+    preferred_model = project_cfg.get("preferred_model")
     cid = f"convo_{uuid.uuid4().hex}"
     CONVERSATIONS[cid] = {
         "title": template.get("title", DEFAULT_CONVO_TITLE),

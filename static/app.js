@@ -33,7 +33,10 @@ const state = {
 // ---------------------------------------------
 const ROUTER_BASE = (typeof window !== "undefined" && window.__API_BASE__)
     || (typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000");
-const LOCAL_STORAGE_KEY = "dave_convos";
+// Conversation and feedback content live only on the router. These legacy
+// browser keys once mirrored them and are purged so no prompt or response
+// text remains in persistent browser storage.
+const LEGACY_CONTENT_STORAGE_KEYS = ["dave_convos", "dave_feedback"];
 const LAST_SESSION_KEY = "dave_last_session";
 const API_KEY_SESSION_KEY = "dave_api_key_session";
 const THEME_STORAGE_KEY = "dave_theme";
@@ -190,9 +193,6 @@ function sendFeedback(score, content, modelId) {
                 complexity: complexityScoreClient(content || "")
             })
         }).catch(() => {});
-        const fb = JSON.parse(localStorage.getItem("dave_feedback") || "[]");
-        fb.push({ score, modelId: fbModel, content: content.slice(0, 200), ts: Date.now() });
-        localStorage.setItem("dave_feedback", JSON.stringify(fb));
     } catch (e) {}
 }
 
@@ -931,15 +931,10 @@ async function createProjectFlow() {
     }
 }
 
-function saveAllConversations() {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state.conversations));
-}
-
-function loadAllConversations() {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (saved) {
-        state.conversations = JSON.parse(saved);
-    }
+function purgeLegacyContentStorage() {
+    try {
+        LEGACY_CONTENT_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    } catch (e) {}
 }
 
 function toggleDictation() {
@@ -1127,7 +1122,8 @@ async function downloadModelFromHF() {
 
 /**
  * Load all conversations from backend server.
- * Replaces localStorage as source of truth when available.
+ * The router is the only source of truth; a failure leaves the list empty
+ * and visible as an error instead of restoring a browser copy.
  */
 async function loadConversationsFromBackend() {
     try {
@@ -1156,8 +1152,7 @@ async function loadConversationsFromBackend() {
         
     } catch (err) {
         console.error("Failed to load conversations from backend:", err);
-        console.warn("⚠️ Falling back to localStorage");
-        loadAllConversations();
+        state.conversations = {};
         return false;
     }
 }
@@ -1461,7 +1456,6 @@ async function deleteConversation(cid, element) {
         try {
             await deleteConversationFromBackend(cid);
             delete state.conversations[cid];
-            saveAllConversations();
 
             if (state.sessionId === cid) {
                 const remaining = Object.keys(state.conversations);
@@ -1492,7 +1486,6 @@ async function clearConversation(cid) {
         await clearConversationOnBackend(cid);
         const convo = state.conversations[cid];
         convo.messages = [];
-        saveAllConversations();
         renderMessages();
     } catch (err) {
         console.error("Failed to clear conversation:", err);
@@ -2672,9 +2665,6 @@ async function renameConversation(cid, element) {
             } else {
                 console.log("ℹ️ New conversation, skipping backend sync (will sync on first message)");
             }
-            
-            saveAllConversations();
-            
         } catch (err) {
             console.error("❌ Error during finalize:", err);
         } finally {
@@ -3967,6 +3957,7 @@ async function init() {
         restoredAnything = restoredAnything || preferredTemplate !== "general";
     }
 
+    purgeLegacyContentStorage();
     await loadConversationsFromBackend();
 
     const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
