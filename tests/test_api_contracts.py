@@ -156,6 +156,22 @@ def test_template_body_and_authenticated_markdown_export(router_factory):
     assert response.json()["system_prompt"] == expected_prompt
     assert router.CONVERSATIONS[conversation_id]["system_prompt"] == expected_prompt
     assert router.CONVERSATIONS[conversation_id]["messages"] == []
+    # Templates carry no source-controlled model path; a General chat has no
+    # preferred model and a project chat reports only the project's setting.
+    assert response.json()["preferred_model"] is None
+    assert all("preferred_model" not in template for template in router.TEMPLATES.values())
+    project = client.post(
+        "/projects",
+        headers=AUTH,
+        json={"name": "Preferred", "preferred_model": MODEL_ID},
+    ).json()
+    project_chat = client.post(
+        "/conversations/from_template",
+        headers=AUTH,
+        json={"template_name": "brainstorm", "project_id": project["project_id"]},
+    )
+    assert project_chat.status_code == 200
+    assert project_chat.json()["preferred_model"] == MODEL_ID
 
     assert client.get(f"/conversations/{conversation_id}/export").status_code == 401
     exported = client.get(f"/conversations/{conversation_id}/export", headers=AUTH)
