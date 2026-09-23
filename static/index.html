@@ -106,6 +106,20 @@
             <button id="scrollBottomBtn" class="scroll-bottom-btn" title="Jump to latest" aria-label="Jump to latest message">⬇️</button>
 
             <div id="toolsBox" class="tools-box hidden"></div>
+            <section id="runLedger" class="run-ledger hidden" aria-labelledby="runLedgerTitle">
+                <div class="run-ledger-heading">
+                    <h3 id="runLedgerTitle">Tool run</h3>
+                    <div class="run-ledger-heading-actions">
+                        <span id="runLedgerStatus" role="status" aria-live="polite">Ready</span>
+                        <button id="runLedgerRetry" type="button" class="secondary hidden">Reconnect</button>
+                        <button id="runLedgerStop" type="button" class="secondary">Stop run</button>
+                    </div>
+                </div>
+                <p id="runLedgerReason" class="run-ledger-reason"></p>
+                <div id="runLedgerApproval" class="run-ledger-approval hidden"></div>
+                <ol id="runLedgerEvents" class="run-ledger-events" aria-label="Run events"></ol>
+                <div id="runLedgerTranscript" class="run-ledger-transcript" aria-label="Partial run transcript"></div>
+            </section>
 
             <!-- model selectors now on right -->
 
@@ -151,6 +165,7 @@
                     <div class="composer-primary-actions">
                         <button id="attachToolsToggle" type="button" class="attach-tools-toggle" aria-expanded="false" aria-controls="attachmentTools">Attach</button>
                         <div class="actions">
+                            <button id="runToolsBtn" type="button" class="secondary hidden" aria-controls="runLedger">Run tools</button>
                             <button id="sendBtn" class="primary">Send</button>
                         </div>
                     </div>

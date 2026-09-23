@@ -207,6 +207,19 @@ const responseBox = document.getElementById("responseBox");
 const memoryBox = document.getElementById("memoryBox");
 const promptInput = document.getElementById("promptInput");
 const sendBtn = document.getElementById("sendBtn");
+const runToolsBtn = document.getElementById("runToolsBtn");
+const runLedger = document.getElementById("runLedger");
+const runLedgerStatus = document.getElementById("runLedgerStatus");
+const runLedgerReason = document.getElementById("runLedgerReason");
+const runLedgerApproval = document.getElementById("runLedgerApproval");
+const runLedgerEvents = document.getElementById("runLedgerEvents");
+const runLedgerTranscript = document.getElementById("runLedgerTranscript");
+const runLedgerRetry = document.getElementById("runLedgerRetry");
+const runLedgerStop = document.getElementById("runLedgerStop");
+let activeToolRunId = null;
+let toolRunState = { runId: null, cursor: 0, events: [] };
+let toolRunWatcher = null;
+let toolRunStreamAbort = null;
 const nodeSelect = document.getElementById("targetNodeSelect");
 const modelSelect = document.getElementById("modelSelect");
 const loadModelsBtn = document.getElementById("loadModelsBtn");
@@ -3475,6 +3488,220 @@ imageInput.addEventListener("change", (e) => {
 // ---------------------------------------------
 // EVENT BINDINGS
 // ---------------------------------------------
+const TERMINAL_TOOL_RUNS = new Set([
+    "completed", "model_timeout", "model_error", "error_budget", "step_limit",
+    "budget_exceeded", "cancelled", "cancellation_failed", "approval_rejected",
+    "run_conflict", "run_expired"
+]);
+
+async function toolRunRequest(path, options = {}) {
+    const response = await fetch(routerEndpoint(path), {
+        ...options,
+        headers: authHeaders({ "Content-Type": "application/json", ...(options.headers || {}) })
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `Run request failed (${response.status})`);
+    }
+    return response.json();
+}
+
+function renderToolRun(run) {
+    if (run.run_id !== activeToolRunId) return;
+    runLedger.classList.remove("hidden");
+    const snapshot = run.snapshot || {};
+    runLedgerStatus.textContent = run.status.replaceAll("_", " ");
+    runLedgerReason.textContent = TERMINAL_TOOL_RUNS.has(run.status)
+        ? `Finished: ${run.reason_code.replaceAll("_", " ")}`
+        : `Run ${run.run_id.slice(0, 13)}… · ${snapshot.steps || 0} model steps`;
+    runLedgerEvents.replaceChildren(...toolRunState.events.map((event) => {
+        const item = document.createElement("li");
+        item.textContent = `${event.sequence}. ${event.kind.replaceAll("_", " ")}${event.tool_name ? ` · ${event.tool_name}` : ""}${event.status ? ` · ${event.status}` : ""}`;
+        return item;
+    }));
+    runLedgerTranscript.replaceChildren(...(snapshot.transcript || [])
+        .filter((item) => item.role === "assistant" || item.role === "tool")
+        .slice(-8).map((item) => {
+            const block = document.createElement("p");
+            const content = typeof item.content === "string" ? item.content : "[tool call]";
+            block.textContent = `${item.role}: ${content.slice(0, 2000)}`;
+            return block;
+        }));
+    const pending = snapshot.pending_call;
+    runLedgerApproval.classList.toggle("hidden", !pending);
+    if (!pending) {
+        runLedgerApproval.replaceChildren();
+        delete runLedgerApproval.dataset.callId;
+        delete runLedgerApproval.dataset.runId;
+    } else if (
+        runLedgerApproval.dataset.callId !== pending.call_id
+        || runLedgerApproval.dataset.runId !== run.run_id
+    ) {
+        runLedgerApproval.replaceChildren();
+        runLedgerApproval.dataset.callId = pending.call_id;
+        runLedgerApproval.dataset.runId = run.run_id;
+        const heading = document.createElement("h4");
+        heading.tabIndex = -1;
+        heading.textContent = "Approval required";
+        const summary = document.createElement("p");
+        summary.textContent = `${pending.tool_name} · permission: ${pending.permission} · call: ${pending.call_id}`;
+        const argumentsBlock = document.createElement("pre");
+        argumentsBlock.textContent = JSON.stringify(pending.arguments, null, 2);
+        const actions = document.createElement("div");
+        actions.className = "run-ledger-actions";
+        for (const [label, decision] of [["Approve once", "approve"], ["Reject", "reject"]]) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = label;
+            button.className = decision === "approve" ? "primary" : "secondary";
+            button.addEventListener("click", async () => {
+                actions.querySelectorAll("button").forEach((item) => { item.disabled = true; });
+                try {
+                    const exact = Object.fromEntries([
+                        "call_id", "digest", "definition_fingerprint", "permission", "nonce"
+                    ].map((key) => [key, pending[key]]));
+                    const decided = await toolRunRequest(
+                        `/tools/agent/runs/${run.run_id}/decisions`,
+                        { method: "POST", body: JSON.stringify({ ...exact, decision }) }
+                    );
+                    if (activeToolRunId === run.run_id) renderToolRun(decided);
+                } catch (error) {
+                    if (activeToolRunId !== run.run_id) return;
+                    runLedgerReason.textContent = error.message;
+                    actions.querySelectorAll("button").forEach((item) => { item.disabled = false; });
+                }
+            });
+            actions.appendChild(button);
+        }
+        runLedgerApproval.append(heading, summary, actions, argumentsBlock);
+        heading.focus();
+    }
+    runLedgerStop.disabled = TERMINAL_TOOL_RUNS.has(run.status) || run.status === "approval_required";
+    runLedgerStop.title = run.status === "approval_required"
+        ? "Reject the pending call to stop this run" : "Stop the active run";
+}
+
+async function refreshToolRun(runId) {
+    if (activeToolRunId !== runId) return null;
+    const run = await toolRunRequest(`/tools/agent/runs/${runId}`);
+    if (activeToolRunId !== runId) return null;
+    renderToolRun(run);
+    return run;
+}
+
+async function watchToolRun(runId) {
+    const runState = toolRunState;
+    const abort = new AbortController();
+    toolRunStreamAbort = abort;
+    let failures = 0;
+    runLedgerRetry.classList.add("hidden");
+    try {
+        while (activeToolRunId === runId && toolRunState === runState && !abort.signal.aborted) {
+            try {
+                const response = await fetch(
+                    routerEndpoint(`/tools/agent/runs/${runId}/events?stream=true&after=${runState.cursor}`),
+                    { headers: authHeaders({ "Accept": "text/event-stream" }), signal: abort.signal }
+                );
+                if (activeToolRunId !== runId || toolRunState !== runState || abort.signal.aborted) return;
+                if (!response.ok || !response.body) throw new Error("Event stream unavailable");
+                failures = 0;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                while (activeToolRunId === runId && toolRunState === runState && !abort.signal.aborted) {
+                    const { done, value } = await reader.read();
+                    if (activeToolRunId !== runId || toolRunState !== runState || abort.signal.aborted) return;
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    let boundary;
+                    while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+                        const frame = buffer.slice(0, boundary);
+                        buffer = buffer.slice(boundary + 2);
+                        const data = frame.split("\n").find((line) => line.startsWith("data: "));
+                        if (!data) continue;
+                        const event = JSON.parse(data.slice(6));
+                        if (event.sequence <= runState.cursor) continue;
+                        runState.cursor = event.sequence;
+                        runState.events.push(event);
+                        await refreshToolRun(runId);
+                        if (activeToolRunId !== runId || toolRunState !== runState) return;
+                        if (event.kind === "terminal") return;
+                    }
+                }
+                const current = await refreshToolRun(runId);
+                if (!current || TERMINAL_TOOL_RUNS.has(current.status)) return;
+            } catch (error) {
+                if (activeToolRunId !== runId || toolRunState !== runState || abort.signal.aborted) return;
+                failures += 1;
+                if (failures >= 3) {
+                    runLedgerReason.textContent = "Event connection lost. Reconnect to continue this run.";
+                    runLedgerRetry.classList.remove("hidden");
+                    return;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+        }
+    } finally {
+        if (toolRunStreamAbort === abort) toolRunStreamAbort = null;
+    }
+}
+
+async function startToolRun() {
+    const prompt = promptInput.value.trim();
+    if (!prompt || !state.selectedNode || !modelSelect.value) {
+        runLedger.classList.remove("hidden");
+        runLedgerReason.textContent = "Enter a message and select a node and model first.";
+        return;
+    }
+    runToolsBtn.disabled = true;
+    try {
+        const history = (currentConversation()?.messages || [])
+            .filter((item) => ["user", "assistant"].includes(item.role) && typeof item.content === "string")
+            .slice(-24).map((item) => ({ role: item.role, content: item.content }));
+        const run = await toolRunRequest("/tools/agent/runs", {
+            method: "POST",
+            body: JSON.stringify({
+                messages: [...history, { role: "user", content: prompt }],
+                node_id: state.selectedNode, model: modelSelect.value,
+                project_id: currentConversation()?.project_id || null,
+                conversation_id: state.sessionId || null
+            })
+        });
+        toolRunStreamAbort?.abort();
+        activeToolRunId = run.run_id;
+        toolRunState = { runId: run.run_id, cursor: 0, events: [] };
+        runLedgerRetry.classList.add("hidden");
+        renderToolRun(run);
+        runLedger.scrollIntoView({ block: "nearest", behavior: "instant" });
+        toolRunWatcher = watchToolRun(run.run_id);
+    } catch (error) {
+        runLedger.classList.remove("hidden");
+        runLedgerReason.textContent = error.message;
+    } finally {
+        runToolsBtn.disabled = false;
+    }
+}
+
+runToolsBtn.addEventListener("click", startToolRun);
+runLedgerRetry.addEventListener("click", () => {
+    if (activeToolRunId) {
+        toolRunStreamAbort?.abort();
+        toolRunWatcher = watchToolRun(activeToolRunId);
+    }
+});
+runLedgerStop.addEventListener("click", async () => {
+    if (!activeToolRunId) return;
+    runLedgerStop.disabled = true;
+    try {
+        renderToolRun(await toolRunRequest(
+            `/tools/agent/runs/${activeToolRunId}/cancel`, { method: "POST" }
+        ));
+    } catch (error) {
+        runLedgerReason.textContent = error.message;
+        runLedgerStop.disabled = false;
+    }
+});
+
 sendBtn.onclick = () => {
     if (state.streaming && state.abortController) {
         state.abortController.abort();
@@ -3930,6 +4157,9 @@ async function init() {
         return;
     }
     initRoutingControls();
+    fetch(routerEndpoint("/tools"), { headers: authHeaders() })
+        .then((response) => { runToolsBtn.classList.toggle("hidden", !response.ok); })
+        .catch(() => { runToolsBtn.classList.add("hidden"); });
     initDictation();
     loadStats();
     updateStatsDisplay();

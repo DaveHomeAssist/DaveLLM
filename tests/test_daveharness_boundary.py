@@ -28,7 +28,7 @@ def _definition(*, schema=None, handler=None, approval_required=True):
 
 
 def test_public_api_and_legacy_compatibility_exports_are_stable():
-    assert daveharness.__version__ == "0.8.0"
+    assert daveharness.__version__ == "0.9.0"
     expected = {
         "ApprovalDecision",
         "CancellationToken",

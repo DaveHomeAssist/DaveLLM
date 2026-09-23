@@ -106,6 +106,33 @@ def test_brain_compaction_preserves_protected_tiers_and_restores_revisions(route
     assert expired["deleted_at"] is None
 
 
+def test_run_context_captures_one_brain_revision_even_when_brain_changes_during_assembly(router_factory, monkeypatch):
+    router, client, _ = router_factory()
+    project_id = create_project(client)["project_id"]
+    saved = router.PROJECT_CONTEXT.update_brain(
+        project_id, pinned_text="Original run decision", expected_revision=1,
+    )
+    original_assembly = router.PROJECT_CONTEXT.build_context_messages
+
+    def edit_during_assembly(*args, **kwargs):
+        router.PROJECT_CONTEXT.update_brain(
+            project_id, pinned_text="Later edited decision", expected_revision=2,
+        )
+        return original_assembly(*args, **kwargs)
+
+    monkeypatch.setattr(router.PROJECT_CONTEXT, "build_context_messages", edit_during_assembly)
+    captured = router.PROJECT_CONTEXT.capture_run_context(project_id, query="decision")
+    assert captured["brain_revision"] == saved["revision"] == 2
+    assert "Original run decision" in captured["messages"][0]["content"]
+    assert "Later edited decision" not in captured["messages"][0]["content"]
+
+    monkeypatch.setattr(router.PROJECT_CONTEXT, "build_context_messages", original_assembly)
+    current = router.PROJECT_CONTEXT.capture_run_context(project_id, query="decision")
+    assert current["brain_revision"] == 3
+    assert current["brain_digest"] != captured["brain_digest"]
+    assert "Later edited decision" in current["messages"][0]["content"]
+
+
 def test_project_homepage_files_artifacts_and_context_order(router_factory):
     _, client, data_dir = router_factory()
     project = create_project(client)

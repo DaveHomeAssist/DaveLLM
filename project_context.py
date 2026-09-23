@@ -1022,8 +1022,11 @@ class ProjectContextStore:
         if not deleted:
             raise ProjectContextError(f"Project artifact '{artifact_id}' was not found")
 
-    def _brain_context(self, project_id: str, token_limit: int) -> tuple[str, int]:
-        brain = self.get_brain(project_id)
+    def _brain_context(
+        self, project_id: str, token_limit: int,
+        brain_snapshot: dict[str, Any] | None = None,
+    ) -> tuple[str, int]:
+        brain = brain_snapshot if brain_snapshot is not None else self.get_brain(project_id)
         if brain["deleted_at"]:
             return "", 0
         pinned = brain["pinned_text"]
@@ -1118,6 +1121,7 @@ class ProjectContextStore:
         *,
         query: str,
         available_tokens: int | None = None,
+        brain_snapshot: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         profile = self.get_profile(project_id)
         configured_budget = int(profile["context_budget_tokens"])
@@ -1134,7 +1138,7 @@ class ProjectContextStore:
             0,
             quotas["project_instructions"] - instruction_tokens,
         )
-        brain, brain_tokens = self._brain_context(project_id, brain_limit)
+        brain, brain_tokens = self._brain_context(project_id, brain_limit, brain_snapshot)
         file_limit = quotas["file_context"] + max(0, brain_limit - brain_tokens)
         files, file_tokens = self._file_context(project_id, query, file_limit)
         artifact_limit = quotas["artifact_history"] + max(
@@ -1171,6 +1175,32 @@ class ProjectContextStore:
                 },
                 "unused_tokens": max(0, artifact_limit - artifact_tokens),
             },
+        }
+
+    def capture_run_context(
+        self, project_id: str, *, query: str,
+        available_tokens: int | None = None,
+    ) -> dict[str, Any]:
+        """Bind one assembled context to the exact BRAIN revision read at run start."""
+        brain = self.get_brain(project_id)
+        assembled = self.build_context_messages(
+            project_id, query=query, available_tokens=available_tokens,
+            brain_snapshot=brain,
+        )
+        identity = {
+            "project_id": project_id,
+            "pinned_text": brain["pinned_text"],
+            "active_text": brain["active_text"],
+            "recent_text": brain["recent_text"],
+            "deleted_at": brain["deleted_at"],
+        }
+        digest = hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        return {
+            **assembled,
+            "brain_revision": brain["revision"],
+            "brain_digest": digest,
         }
 
     def homepage(self, project_id: str) -> dict[str, Any]:
