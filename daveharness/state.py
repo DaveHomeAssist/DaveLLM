@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, cast
 
+from .limits import bounded_loads, validate_payload
 from .budgets import RunBudget
 from .contracts import CONTRACT_VERSION, ContractDecodeError, ParsedToolCall
 
@@ -37,6 +38,7 @@ _TRANSITIONS = {
 
 
 def _canonical(value: Any) -> str:
+    validate_payload(value)
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
@@ -52,6 +54,10 @@ def _timestamp(value: str) -> datetime:
 def _exact_fields(value: Any, names: set[str]) -> dict[str, Any]:
     if not isinstance(value, dict) or value.keys() != names:
         raise ContractDecodeError("run-state fields must be exact")
+    try:
+        validate_payload(value)
+    except ValueError as exc:
+        raise ContractDecodeError(str(exc)) from exc
     return value
 
 
@@ -97,11 +103,11 @@ class PendingToolCall:
 
     @property
     def arguments(self) -> dict[str, Any]:
-        return cast(dict[str, Any], json.loads(self.arguments_json))
+        return cast(dict[str, Any], bounded_loads(self.arguments_json))
 
     @property
     def remaining_calls(self) -> list[dict[str, Any]]:
-        return cast(list[dict[str, Any]], json.loads(self.remaining_calls_json))
+        return cast(list[dict[str, Any]], bounded_loads(self.remaining_calls_json))
 
     @classmethod
     def create(
@@ -284,11 +290,11 @@ class RunSnapshot:
 
     @property
     def transcript(self) -> list[dict[str, Any]]:
-        return cast(list[dict[str, Any]], json.loads(self.transcript_json))
+        return cast(list[dict[str, Any]], bounded_loads(self.transcript_json))
 
     @property
     def queued_calls(self) -> list[dict[str, Any]]:
-        return cast(list[dict[str, Any]], json.loads(self.queued_calls_json))
+        return cast(list[dict[str, Any]], bounded_loads(self.queued_calls_json))
 
     @classmethod
     def create(

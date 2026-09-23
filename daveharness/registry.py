@@ -14,22 +14,27 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Collection, cast
 
+from .schema import validate_schema_definition
+from .limits import validate_payload
+
 DEFAULT_TOOL_TIMEOUT_SECONDS = 10.0
 VALID_CANCELLATION_MODES = frozenset({"bounded", "abandon"})
 
 ToolHandler = Callable[..., Any | Awaitable[Any]]
 
 
-def _stable_handler_value(value: Any) -> Any:
+def _stable_handler_value(value: Any, *, checked: bool = False) -> Any:
     """Capture declared handler configuration without exposing it in the digest."""
+    if not checked:
+        validate_payload(value)
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float) and math.isfinite(value):
         return value
     if isinstance(value, (list, tuple)):
-        return [_stable_handler_value(item) for item in value]
+        return [_stable_handler_value(item, checked=True) for item in value]
     if isinstance(value, dict) and all(isinstance(key, str) for key in value):
-        return {key: _stable_handler_value(item) for key, item in value.items()}
+        return {key: _stable_handler_value(item, checked=True) for key, item in value.items()}
     raise ValueError("Opaque handler state requires an explicit handler_version")
 
 
@@ -107,6 +112,7 @@ class ToolDefinition:
             "context_handler": self.context_handler,
             "handler": _handler_provenance(self.handler, self.handler_version),
         }
+        validate_payload(payload)
         canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -149,6 +155,7 @@ class ToolRegistry:
         self._async_handler_allowlist = frozenset(async_handler_allowlist)
 
     def register(self, definition: ToolDefinition) -> None:
+        validate_schema_definition(definition.parameters)
         if not definition.name or not definition.name.strip():
             raise ValueError("Tool name is required")
         if isinstance(definition.timeout_seconds, bool) or not isinstance(definition.timeout_seconds, (int, float)) or not math.isfinite(definition.timeout_seconds) or definition.timeout_seconds <= 0:

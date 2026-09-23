@@ -14,3 +14,8 @@ dist/
 .DS_Store
 tmp_audio_*
 project_uploads/
+.coverage
+.hypothesis/
+coverage.xml
+qualification-report.json
+load-report.json

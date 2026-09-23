@@ -6,7 +6,7 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
-**Current:** DaveLLM `2.1.0`, DaveHarness `0.9.0`
+**Current:** DaveLLM `2.1.0`, DaveHarness `1.0.0-rc.1`
 
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
@@ -31,7 +31,7 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.9.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, opt-in cancellation/deadline contracts, metadata-only lifecycle events, bounded run store, and instance-owned facade.
+- `daveharness 1.0.0-rc.1` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, opt-in cancellation/deadline contracts, metadata-only lifecycle events, bounded run store, and instance-owned facade.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
 - Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.
@@ -292,23 +292,23 @@ This compatibility milestone was intentionally narrower than the future lifecycl
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
-| 43 | Instantiate one DaveHarness facade in `app.py` with DaveLLM's registry, Ollama model adapter, bounded memory store, runner, and safe event sink. | App import and dependency-boundary tests pass; no runtime state moves into the package. | High | Legacy route remains available | Ready |
-| 44 | Preserve `/tools`, `/tools/execute`, `/tools/agent/run`, and `/tools/agent/resume` and route their implementation through compatibility adapters. | Existing endpoint snapshots and security tests pass byte-for-byte for stable fields. | High | Direct legacy implementation can be restored | Ready |
-| 45 | Add authenticated, tools-default-off lifecycle endpoints: `POST /tools/agent/runs`, `GET /tools/agent/runs/{run_id}`, `GET /tools/agent/runs/{run_id}/events`, `POST /tools/agent/runs/{run_id}/decisions`, and `POST /tools/agent/runs/{run_id}/cancel`. | Auth, disabled-tools, invalid-node/model, unknown-run, conflict, expiry, and happy-path tests pass. | High | Entire additive route family can be removed | Ready |
-| 46 | Stream ledger events with the existing authenticated `fetch` and SSE framing; support cursor-based replay within the retained event window. | Reconnect resumes after the last sequence without duplicates and ends with one terminal event. | High | Complete-result polling remains fallback | Ready |
-| 47 | Add an accessible run ledger with ordered states, exact call and permission summary, Approve once, Reject, Stop, partial transcript, and terminal reason. | Keyboard, focus, screen-reader labels, responsive widths, and reduced-motion behavior are verified on the actual surface. | High | UI entry point can remain hidden while API stays | Ready |
-| 48 | Refactor DaveLLM's process-backed shell handler to use the cancellable runner contract while preserving shell opt-in, root containment, command controls, timeout defaults, and output shape. | Controlled temporary-root tests prove process-group termination and no post-cancel file effect. | High | Tool remains disabled unless both flags are set | Ready |
+| 43 | Instantiate one DaveHarness facade in `app.py` with DaveLLM's registry, Ollama model adapter, bounded memory store, runner, and safe event sink. | App import and dependency-boundary tests pass; no runtime state moves into the package. | High | Legacy route remains available | Completed |
+| 44 | Preserve `/tools`, `/tools/execute`, `/tools/agent/run`, and `/tools/agent/resume` and route their implementation through compatibility adapters. | Existing endpoint snapshots and security tests pass byte-for-byte for stable fields. | High | Direct legacy implementation can be restored | Completed |
+| 45 | Add authenticated, tools-default-off lifecycle endpoints: `POST /tools/agent/runs`, `GET /tools/agent/runs/{run_id}`, `GET /tools/agent/runs/{run_id}/events`, `POST /tools/agent/runs/{run_id}/decisions`, and `POST /tools/agent/runs/{run_id}/cancel`. | Auth, disabled-tools, invalid-node/model, unknown-run, conflict, expiry, and happy-path tests pass. | High | Entire additive route family can be removed | Completed |
+| 46 | Stream ledger events with the existing authenticated `fetch` and SSE framing; support cursor-based replay within the retained event window. | Reconnect resumes after the last sequence without duplicates and ends with one terminal event. | High | Complete-result polling remains fallback | Completed |
+| 47 | Add an accessible run ledger with ordered states, exact call and permission summary, Approve once, Reject, Stop, partial transcript, and terminal reason. | Keyboard, focus, screen-reader labels, responsive widths, and reduced-motion behavior are verified on the actual surface. | High | UI entry point can remain hidden while API stays | Completed |
+| 48 | Refactor DaveLLM's process-backed shell handler to use the cancellable runner contract while preserving shell opt-in, root containment, command controls, timeout defaults, and output shape. | Controlled temporary-root tests prove process-group termination and no post-cancel file effect. | High | Tool remains disabled unless both flags are set | Completed |
 
 ### H8: complete security, compatibility, and deterministic evaluation, `1.0.0-rc.1`
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
-| 49 | Add and pin the currently supported Hypothesis release as a development-only dependency, then add property-based tests for contract serialization, schema validation, parser normalization, and transition legality. | Seeded and generated cases reproduce locally and in CI; no runtime dependency is added. | Low | Remove dev dependency and generated gate | Ready |
-| 50 | Add adversarial cases for deep nesting, oversized values, duplicate IDs, Unicode, non-finite numbers, malformed native calls, fenced fallback calls, and unsupported schema keywords. | Each case fails predictably within byte, depth, and time bounds. | Medium | Test and input limits are local | Ready |
-| 51 | Add concurrency tests for duplicate decisions, revocation during approval, cancellation during completion, store conflicts, late model/tool results, and sink failure. | Exactly one side effect and one terminal state occur in every seeded race. | High | Test-only revert | Ready |
-| 52 | Add output, transcript, event, nesting, and payload limits before data is copied or serialized. | Memory and latency stay bounded at current expected load plus two-times headroom. | High | Limits are configurable with safe defaults | Ready |
-| 53 | Add the currently supported `coverage.py` release as a development-only dependency and create a CI matrix for supported Python versions, strict typing, package-only coverage, public-API snapshots, dependency-boundary scans, and log-redaction canaries. | Every required lane passes at the exact commit. | Medium | CI jobs can be reverted individually | Ready |
-| 54 | Build a deterministic model-adapter evaluation corpus covering final answers, native calls, fallback calls, repairs, approvals, repeated calls, ceilings, timeouts, and cancellation. | Fake and recorded-response runs produce a machine-readable report with zero unauthorized effects. | Medium | Evaluation suite is isolated | Ready |
+| 49 | Add and pin the currently supported Hypothesis release as a development-only dependency, then add property-based tests for contract serialization, schema validation, parser normalization, and transition legality. | Seeded and generated cases reproduce locally and in CI; no runtime dependency is added. | Low | Remove dev dependency and generated gate | Implemented; candidate gates pending |
+| 50 | Add adversarial cases for deep nesting, oversized values, duplicate IDs, Unicode, non-finite numbers, malformed native calls, fenced fallback calls, and unsupported schema keywords. | Each case fails predictably within byte, depth, and time bounds. | Medium | Test and input limits are local | Implemented; candidate gates pending |
+| 51 | Add concurrency tests for duplicate decisions, revocation during approval, cancellation during completion, store conflicts, late model/tool results, and sink failure. | Exactly one side effect and one terminal state occur in every seeded race. | High | Test-only revert | Implemented; candidate gates pending |
+| 52 | Add output, transcript, event, nesting, and payload limits before data is copied or serialized. | Memory and latency stay bounded at current expected load plus two-times headroom. | High | Limits are configurable with safe defaults | Implemented; candidate gates pending |
+| 53 | Add the currently supported `coverage.py` release as a development-only dependency and create a CI matrix for supported Python versions, strict typing, package-only coverage, public-API snapshots, dependency-boundary scans, and log-redaction canaries. | Every required lane passes at the exact commit. | Medium | CI jobs can be reverted individually | Implemented; candidate gates pending |
+| 54 | Build a deterministic model-adapter evaluation corpus covering final answers, native calls, fallback calls, repairs, approvals, repeated calls, ceilings, timeouts, and cancellation. | Fake and recorded-response runs produce a machine-readable report with zero unauthorized effects. | Medium | Evaluation suite is isolated | Implemented; candidate gates pending |
 
 ### H9: qualify and converge on `1.0.0`
 

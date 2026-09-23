@@ -28,7 +28,7 @@ def _definition(*, schema=None, handler=None, approval_required=True):
 
 
 def test_public_api_and_legacy_compatibility_exports_are_stable():
-    assert daveharness.__version__ == "0.9.0"
+    assert daveharness.__version__ == "1.0.0-rc.1"
     expected = {
         "ApprovalDecision",
         "CancellationToken",
@@ -248,7 +248,7 @@ def test_executor_package_has_no_davellm_runtime_dependencies():
         "__init__.py",
         "_version.py",
         "budgets.py",
-        "contracts.py",
+        "contracts.py", "limits.py",
         "engine.py",
         "events.py",
         "facade.py",

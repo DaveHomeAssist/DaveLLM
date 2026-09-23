@@ -91,7 +91,7 @@ DaveHarness `0.3.0` adds an internal version-one envelope for existing parsed ca
 - Increment **MINOR** for backward-compatible capabilities.
 - Increment **PATCH** for backward-compatible fixes. Documentation-only commits do not require a version increment.
 - Pre-release identifiers follow SemVer, for example `2.2.0-beta.1`.
-- The in-repository DaveHarness package started at `0.1.0`, is currently `0.9.0`, and follows independent SemVer. The `0.2.0` execution-semantics and `0.3.0` leaf-contract milestones remain part of its history. It remains an internal package until a separately approved distribution phase defines publishable metadata and a compatible DaveLLM adapter range.
+- The in-repository DaveHarness package started at `0.1.0`, is currently `1.0.0-rc.1`, and follows independent SemVer. The `0.2.0` execution-semantics and `0.3.0` leaf-contract milestones remain part of its history. It remains an internal package until a separately approved distribution phase defines publishable metadata and a compatible DaveLLM adapter range.
 
 ### Consequences
 
@@ -99,3 +99,5 @@ DaveHarness `0.3.0` adds an internal version-one envelope for existing parsed ca
 - A release must update `VERSION` and generated/mirrored package metadata together.
 - DaveHarness can evolve independently without forcing its internal API version to equal the desktop application's version.
 - The version rule is enforceable without importing the full application or contacting a runtime node.
+
+DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, and Python 3.12–3.14 CI. See [H8 qualification](../DAVEHARNESS_H8_QUALIFICATION.md). This candidate does not establish live-model qualification or human acceptance. DaveLLM remains `2.1.0`.

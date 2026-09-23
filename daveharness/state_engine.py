@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Protocol
 
+from .limits import PayloadLimitError, PayloadLimits, validate_payload
 from .contracts import ParsedToolCall, ToolExecution
 from .engine import (
     DEFAULT_MODEL_TIMEOUT_SECONDS, ModelInvoker, _canonical_arguments,
@@ -143,6 +144,14 @@ def _operation_timeout(
     return max(0.0, deadline - monotonic_clock())
 
 
+def _transcript_fits(snapshot: RunSnapshot, transcript: list[dict[str, Any]]) -> bool:
+    try:
+        validate_payload(transcript, PayloadLimits(max_bytes=snapshot.budget.transcript_bytes or 16_777_216))
+    except PayloadLimitError:
+        return False
+    return True
+
+
 def _transcript_over_limit(snapshot: RunSnapshot) -> bool:
     limit = snapshot.budget.transcript_bytes
     return limit is not None and len(snapshot.transcript_json.encode("utf-8")) > limit
@@ -260,6 +269,8 @@ async def _execute_reserved(
     _log_tool_result(execution)
     transcript = snapshot.transcript
     transcript.append(execution.tool_message())
+    if not _transcript_fits(snapshot, transcript):
+        return _terminal(store, snapshot, "budget_exceeded", "transcript_limit", clock, events).snapshot
     errors = snapshot.errors + (execution.status != "success")
     return _progress(
         store, snapshot, clock, events=events,
@@ -340,6 +351,8 @@ async def _drain_calls(
             execution = _tool_result(call, "revoked" if decision.reason_code in {"tool_unknown", "tool_revoked", "definition_changed", "registration_changed"} else "denied", decision.reason_code, clock)
             transcript = snapshot.transcript
             transcript.append(execution.tool_message())
+            if not _transcript_fits(snapshot, transcript):
+                return _terminal(store, snapshot, "budget_exceeded", "transcript_limit", clock, events)
             progressed = _progress(
                 store, snapshot, clock, events=events,
                 notes=(
@@ -493,6 +506,8 @@ async def resume_run(
                 "role": "system",
                 "content": "The prior tool call was malformed and was not executed. Return a valid tool call or final answer.",
             })
+            if not _transcript_fits(snapshot, transcript):
+                return _terminal(store, snapshot, "budget_exceeded", "transcript_limit", clock, events)
             next_snapshot = _progress(
                 store, snapshot, clock, events=events,
                 notes=(EventNote("model_result", status="validation_error",
@@ -509,6 +524,8 @@ async def resume_run(
             continue
         if not calls:
             transcript.append(assistant)
+            if not _transcript_fits(snapshot, transcript):
+                return _terminal(store, snapshot, "budget_exceeded", "transcript_limit", clock, events)
             done = transition_run(
                 snapshot, "completed", updated_at=_updated_at(snapshot, clock),
                 transcript=transcript, last_content=content if isinstance(content, str) else "",
@@ -526,6 +543,8 @@ async def resume_run(
         assistant["content"] = content if isinstance(content, str) else ""
         assistant["tool_calls"] = [call.as_openai_call() for call in calls]
         transcript.append(assistant)
+        if not _transcript_fits(snapshot, transcript):
+            return _terminal(store, snapshot, "budget_exceeded", "transcript_limit", clock, events)
         next_snapshot = _progress(
             store, snapshot, clock, events=events,
             notes=(EventNote("model_result", status="success",

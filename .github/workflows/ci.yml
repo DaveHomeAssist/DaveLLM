@@ -8,12 +8,16 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
           cache: pip
 
       - uses: actions/setup-node@v4
@@ -30,7 +34,25 @@ jobs:
           python -m compileall -q daveharness
 
       - name: Tests
-        run: python -m pytest -q
+        run: |
+          python -m coverage run -m pytest -q
+          python -m coverage report
+          python -m coverage xml
+
+      - name: Offline qualification and load
+        run: |
+          python scripts/qualify_daveharness.py --output qualification-report.json
+          python scripts/measure_daveharness.py > load-report.json
+
+      - name: Qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-python-${{ matrix.python }}
+          path: |
+            coverage.xml
+            qualification-report.json
+            load-report.json
 
       - name: DaveHarness strict types
         run: python -m mypy daveharness

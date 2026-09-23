@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
+from .limits import validate_payload
+
 
 CONTRACT_VERSION = 1
 
@@ -59,6 +61,8 @@ def _nonnegative_integer(value: Any, field: str) -> None:
 
 def _copy_json(value: Any, field: str, ancestors: set[int] | None = None) -> Any:
     """Validate and own only JSON-compatible values, including nested values."""
+    if ancestors is None:
+        validate_payload(value)
     if value is None or isinstance(value, (str, bool)):
         return value
     if isinstance(value, int):
@@ -95,6 +99,7 @@ def _copy_object(value: Any, field: str) -> dict[str, Any]:
 
 
 def _copy_transcript(value: Any) -> list[dict[str, Any]]:
+    validate_payload(value)
     if not isinstance(value, list):
         raise ValueError("transcript must be a JSON array")
     return [_copy_object(message, f"transcript[{index}]") for index, message in enumerate(value)]
@@ -280,6 +285,7 @@ def encode_contract(value: ContractValue) -> dict[str, Any]:
         ParsedToolCall, PendingCall, ToolExecution, ExecutorOutcome
     ):
         raise TypeError("unsupported DaveHarness contract type")
+    validate_payload({name: getattr(value, name) for name in _CONTRACT_FIELDS[contract_type]})
     checked = _checked_contract(contract_type, asdict(value))
     payload: dict[str, Any] = json.loads(
         json.dumps(asdict(checked), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
