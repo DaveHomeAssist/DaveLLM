@@ -1,5 +1,6 @@
 """Compatibility re-exports for the original DaveHarness executor module."""
 
+from .budgets import RunBudget
 from .contracts import (
     CONTRACT_VERSION,
     ContractDecodeError,
@@ -26,6 +27,7 @@ from .engine import (
     utc_timestamp,
 )
 from .parser import parse_tool_calls
+from .policy import KNOWN_PERMISSIONS, PolicyDecision, RunPolicyContext, ToolPolicy
 from .registry import (
     DEFAULT_TOOL_REGISTRY,
     DEFAULT_TOOL_TIMEOUT_SECONDS,
@@ -47,16 +49,21 @@ __all__ = [
     "ExecutorOutcome",
     "InMemoryPendingCallStore",
     "ModelInvoker",
+    "KNOWN_PERMISSIONS",
     "PENDING_CALL_TTL_SECONDS",
     "PendingCall",
     "PendingCallClaim",
     "PendingCallStore",
+    "PolicyDecision",
     "ParsedToolCall",
     "SchemaValidationError",
+    "RunBudget",
+    "RunPolicyContext",
     "ToolDefinition",
     "ToolExecution",
     "ToolHandler",
     "ToolRegistry",
+    "ToolPolicy",
     "decode_contract",
     "encode_contract",
     "parse_tool_calls",

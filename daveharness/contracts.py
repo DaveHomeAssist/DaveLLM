@@ -227,6 +227,11 @@ class ExecutorOutcome:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @property
+    def reason_code(self) -> str:
+        """Expose a stable in-process reason without changing legacy wire fields."""
+        return self.status_message if self.status == "budget_exceeded" else self.status
+
 
 ContractValue = ParsedToolCall | PendingCall | ToolExecution | ExecutorOutcome
 
