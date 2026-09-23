@@ -28,7 +28,7 @@ def _definition(*, schema=None, handler=None, approval_required=True):
 
 
 def test_public_api_and_legacy_compatibility_exports_are_stable():
-    assert daveharness.__version__ == "0.7.0"
+    assert daveharness.__version__ == "0.8.0"
     expected = {
         "ApprovalDecision",
         "CancellationToken",
@@ -49,7 +49,9 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "NoopEventSink",
         "RunEvent",
         "ExecutionContext",
+        "Harness",
         "InMemoryPendingCallStore",
+        "InMemoryRunStore",
         "ModelInvoker",
         "OperationController",
         "KNOWN_PERMISSIONS",
@@ -64,7 +66,9 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "RUN_STATUSES",
         "TERMINAL_RUN_STATUSES",
         "RunCommandResult",
+        "RunRequest",
         "RunSnapshot",
+        "RunStore",
         "SnapshotCAS",
         "absolute_deadline",
         "cancel_run",
@@ -247,6 +251,7 @@ def test_executor_package_has_no_davellm_runtime_dependencies():
         "contracts.py",
         "engine.py",
         "events.py",
+        "facade.py",
         "executor.py",
         "parser.py",
         "policy.py",
@@ -255,6 +260,7 @@ def test_executor_package_has_no_davellm_runtime_dependencies():
         "schema.py",
         "state.py",
         "state_engine.py",
+        "store.py",
     }
 
     forbidden_imports = {

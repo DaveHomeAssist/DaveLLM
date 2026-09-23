@@ -22,7 +22,7 @@ from .contracts import ExecutorOutcome, ParsedToolCall, PendingCall, ToolExecuti
 from .events import safe_identifier, safe_status
 from .parser import parse_tool_calls
 from .policy import RunPolicyContext, ToolPolicy
-from .registry import DEFAULT_TOOL_REGISTRY, ToolDefinition, ToolRegistry
+from .registry import ToolDefinition, ToolRegistry
 from .runtime import CancellableToolRunner, ExecutionContext
 from .schema import SchemaValidationError, validate_json_schema
 
@@ -102,12 +102,12 @@ def _log_tool_result(execution: ToolExecution) -> None:
     )
 
 
-async def run_tool(
+async def _run_tool(
     name: str,
     args: dict[str, Any],
     *,
     call_id: str | None = None,
-    registry: ToolRegistry = DEFAULT_TOOL_REGISTRY,
+    registry: ToolRegistry,
     timeout_seconds: float | None = None,
     policy: ToolPolicy | None = None,
     policy_context: RunPolicyContext | None = None,
@@ -463,8 +463,6 @@ class InMemoryPendingCallStore:
             )
 
 
-DEFAULT_PENDING_CALL_STORE = InMemoryPendingCallStore()
-
 async def _invoke_model(
     invoke_model: ModelInvoker,
     transcript: list[dict[str, Any]],
@@ -660,7 +658,7 @@ async def _process_calls(
                     call.arguments,
                 )
             except (SchemaValidationError, TypeError, ValueError):
-                execution = await run_tool(
+                execution = await _run_tool(
                     call.name,
                     call.arguments,
                     call_id=call.call_id,
@@ -709,7 +707,7 @@ async def _process_calls(
                     ),
                 )
         else:
-            execution = await run_tool(
+            execution = await _run_tool(
                 call.name,
                 call.arguments,
                 call_id=call.call_id,
@@ -842,16 +840,16 @@ async def _continue_executor_loop(
     )
 
 
-async def run_executor_loop(
+async def _run_executor_loop(
     messages: list[dict[str, Any]],
     invoke_model: ModelInvoker,
     *,
-    registry: ToolRegistry = DEFAULT_TOOL_REGISTRY,
+    registry: ToolRegistry,
     step_limit: int = DEFAULT_STEP_LIMIT,
     error_budget: int = DEFAULT_ERROR_BUDGET,
     approved_tools: set[str] | None = None,
     model_timeout_seconds: float = DEFAULT_MODEL_TIMEOUT_SECONDS,
-    pending_store: PendingCallStore = DEFAULT_PENDING_CALL_STORE,
+    pending_store: PendingCallStore,
     run_id: str | None = None,
     budget: RunBudget | None = None,
     policy: ToolPolicy | None = None,
@@ -879,13 +877,13 @@ async def run_executor_loop(
     return await _continue_executor_loop(state, pending_store)
 
 
-async def resume_executor_loop(
+async def _resume_executor_loop(
     *,
     run_id: str,
     call_id: str,
     digest: str,
     decision: str,
-    pending_store: PendingCallStore = DEFAULT_PENDING_CALL_STORE,
+    pending_store: PendingCallStore,
 ) -> ExecutorOutcome:
     """Consume one exact pending decision and resume without replaying its model step."""
     lookup = pending_store.lookup(run_id, call_id)
@@ -954,7 +952,7 @@ async def resume_executor_loop(
     if _wall_time_exceeded(state):
         return _budget_stop(state, "run_wall_limit")
     if decision == "approve":
-        execution = await run_tool(
+        execution = await _run_tool(
             pending_call.tool_name,
             copy.deepcopy(pending_call.arguments),
             call_id=pending_call.call_id,
