@@ -168,7 +168,7 @@ def test_daveharness_implementation_plan_is_complete_and_linked():
         assert f"### H{phase}:" in plan
     for required in (
         "**Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`",
-        "**Current:** DaveLLM `2.1.0`, DaveHarness `0.7.0`",
+        "**Current:** DaveLLM `2.1.0`, DaveHarness `0.8.0`",
         "**Target:** DaveHarness `1.0.0`",
         "RunSnapshot",
         "ApprovalDecision",
@@ -200,7 +200,7 @@ def test_daveharness_execution_semantics_are_documented_consistently():
 
     assert (REPO / "VERSION").read_text().strip() == "2.1.0"
     harness_version = (REPO / "daveharness" / "_version.py").read_text()
-    assert re.search(r'^__version__ = "0\.7\.0"$', harness_version, re.MULTILINE)
+    assert re.search(r'^__version__ = "0\.8\.0"$', harness_version, re.MULTILINE)
     for content in documents.values():
         assert "0.2.0" in content
         assert "0.3.0" in content
@@ -208,7 +208,20 @@ def test_daveharness_execution_semantics_are_documented_consistently():
         assert "0.5.0" in content
         assert "0.6.0" in content
         assert "0.7.0" in content
+        assert "0.8.0" in content
     for name in ("project_spec", "maintainer", "readme", "integration", "decision"):
         assert "/tools/agent/resume" in documents[name]
         assert "deadline_abandoned" in documents[name]
         assert "300" in documents[name]
+
+
+def test_h6_support_table_and_deprecation_policy_are_locked():
+    guide = (REPO / "docs" / "DAVEHARNESS_H6_FACADE.md").read_text()
+    for required in (
+        "| API | Support | Contract |",
+        "`RunStore`, `InMemoryRunStore`, `Harness`",
+        "`run_executor_loop`, `resume_executor_loop`, `run_tool`",
+        "No public name in DaveHarness `1.x` is removed.",
+        "no root-shim removal before a separately approved DaveLLM major version",
+    ):
+        assert required in guide

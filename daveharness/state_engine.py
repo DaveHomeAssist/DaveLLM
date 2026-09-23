@@ -15,7 +15,8 @@ from typing import Any, Callable, Protocol
 from .contracts import ParsedToolCall, ToolExecution
 from .engine import (
     DEFAULT_MODEL_TIMEOUT_SECONDS, ModelInvoker, _canonical_arguments,
-    _canonical_json, _invoke_model, _log_tool_result, _transcript_revision, run_tool,
+    _canonical_json, _invoke_model, _log_tool_result, _transcript_revision,
+    _run_tool as run_tool,
 )
 from .events import EventJournal, EventNote, RunEvent, safe_identifier, safe_reason, safe_status
 from .parser import parse_tool_calls

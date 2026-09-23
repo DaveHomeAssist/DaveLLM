@@ -3,6 +3,7 @@
 from ._version import __version__
 from .budgets import RunBudget
 from .events import EVENT_VERSION, EventJournal, EventSink, NoopEventSink, RunEvent
+from .facade import Harness, RunRequest
 from .executor import (
     ApprovalDecision,
     CancellationToken,
@@ -54,6 +55,7 @@ from .executor import (
     validate_json_schema,
 )
 from .policy import KNOWN_PERMISSIONS, PolicyDecision, RunPolicyContext, ToolPolicy
+from .store import InMemoryRunStore, RunStore
 
 __all__ = [
     "ApprovalDecision",
@@ -75,7 +77,9 @@ __all__ = [
     "NoopEventSink",
     "RunEvent",
     "ExecutionContext",
+    "Harness",
     "InMemoryPendingCallStore",
+    "InMemoryRunStore",
     "ModelInvoker",
     "OperationController",
     "KNOWN_PERMISSIONS",
@@ -90,7 +94,9 @@ __all__ = [
     "RUN_STATUSES",
     "TERMINAL_RUN_STATUSES",
     "RunCommandResult",
+    "RunRequest",
     "RunSnapshot",
+    "RunStore",
     "SnapshotCAS",
     "absolute_deadline",
     "cancel_run",

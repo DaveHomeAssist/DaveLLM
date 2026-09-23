@@ -6,7 +6,7 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
-**Current:** DaveLLM `2.1.0`, DaveHarness `0.7.0`
+**Current:** DaveLLM `2.1.0`, DaveHarness `0.8.0`
 
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
@@ -31,7 +31,7 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.7.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, opt-in cancellation/deadline contracts, and metadata-only lifecycle events.
+- `daveharness 0.8.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, opt-in cancellation/deadline contracts, metadata-only lifecycle events, bounded run store, and instance-owned facade.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
 - Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.
@@ -179,7 +179,7 @@ Only `approval_required` may resume. Only `running` may enter `cancelling`. Ever
 | H3 | `0.5.0` | None | Completed generalized serializable state and exact-call approval API |
 | H4 | `0.6.0` | None | Completed additive cancellation and deadline API |
 | H5 | `0.7.0` | None | Completed additive event and observability API |
-| H6 | `0.8.0` | None | Instance-owned facade and host protocols |
+| H6 | `0.8.0` | None | Completed instance-owned facade and host protocols |
 | H7 | `0.9.0` | Prepare DaveLLM `2.2.0` capability | Additive DaveLLM lifecycle endpoints and UI integration |
 | H8 | `1.0.0-rc.1` | Release candidate validation | Security, compatibility, load, and model evaluation |
 | H9 | `1.0.0` | Ship DaveLLM `2.2.0` when approved | Stable in-process contract and coordinated evidence |
@@ -281,12 +281,12 @@ This compatibility milestone was intentionally narrower than the future lifecycl
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
-| 37 | Define `RunStore` and add a bounded in-memory implementation with compare-and-swap versions, maximum run count, and time-to-live expiry. | Conflict, expiry, eviction, and memory-bound tests pass. | High | Host may keep legacy direct loop | Ready |
-| 38 | Add an instance-owned `Harness` facade over registry, policy, model, runner, store, clock, and event sink. | Two harness instances run concurrently without shared tools, approvals, counters, or events. | High | Existing functions remain adapters | Ready |
-| 39 | Implement `start`, `snapshot`, `decide`, `resume`, and `cancel` through the facade. | Public lifecycle tests cover every legal operation and terminal state. | High | Additive API | Ready |
-| 40 | Retain `run_executor_loop`, `run_tool`, and `DEFAULT_TOOL_REGISTRY` as compatibility adapters with documented limitations. | Existing package and shim tests remain unchanged. | Medium | Compatibility layer isolates change | Ready |
-| 41 | Remove engine reliance on mutable module globals while keeping compatibility globals at the outermost adapter only. | Parallel tests prove no cross-run registry or approval leakage. | High | Adapter can restore legacy internals | Ready |
-| 42 | Publish an API support table and deprecation rule: no removal from DaveHarness `1.x`, and no root-shim removal before a separately approved DaveLLM major version. | Documentation contract test locks the table and policy. | Low | Documentation revert | Ready |
+| 37 | Define `RunStore` and add a bounded in-memory implementation with compare-and-swap versions, maximum run count, and time-to-live expiry. | Conflict, expiry, eviction, and memory-bound tests pass. | High | Host may keep legacy direct loop | Completed |
+| 38 | Add an instance-owned `Harness` facade over registry, policy, model, runner, store, clock, and event sink. | Two harness instances run concurrently without shared tools, approvals, counters, or events. | High | Existing functions remain adapters | Completed |
+| 39 | Implement `start`, `snapshot`, `decide`, `resume`, and `cancel` through the facade. | Public lifecycle tests cover every legal operation and terminal state. | High | Additive API | Completed |
+| 40 | Retain `run_executor_loop`, `run_tool`, and `DEFAULT_TOOL_REGISTRY` as compatibility adapters with documented limitations. | Existing package and shim tests remain unchanged. | Medium | Compatibility layer isolates change | Completed |
+| 41 | Remove engine reliance on mutable module globals while keeping compatibility globals at the outermost adapter only. | Parallel tests prove no cross-run registry or approval leakage. | High | Adapter can restore legacy internals | Completed |
+| 42 | Publish an API support table and deprecation rule: no removal from DaveHarness `1.x`, and no root-shim removal before a separately approved DaveLLM major version. | Documentation contract test locks the table and policy. | Low | Documentation revert | Completed |
 
 ### H7: integrate the full run lifecycle into DaveLLM, `0.9.0`
 
