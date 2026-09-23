@@ -1,0 +1,1 @@
+{"contract_type":"ExecutorOutcome","contract_version":1,"payload":{"errors":0,"final_answer":"done","pending_tool_call":null,"run_id":"run_4","status":"completed","status_message":"Model returned a final answer.","steps":1,"transcript":[{"content":"ready","role":"user"}]}}

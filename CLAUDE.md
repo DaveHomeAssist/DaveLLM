@@ -8,7 +8,8 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 
 - `app.py`: FastAPI routes, persistence, inventory, chat, tools, monitoring
 - `project_context.py`: normalized Project Homepage storage, BRAIN revisions, file/artifact retrieval, and bounded request assembly
-- `daveharness/`: headless in-process `0.2.0` library for the registry, schema validation, timing, exact-call approval/resume, and bounded executor loop
+- `daveharness/`: headless in-process `0.3.0` library for typed leaf contracts, versioned serialization, registry, schema validation, timing, exact-call approval/resume, and bounded executor loop
+- DaveHarness `0.2.0` was the prior execution-semantics milestone; `0.3.0` adds the internal module split and leaf-contract envelope without changing DaveLLM endpoints.
 - `tool_executor.py`: compatibility re-export for legacy imports; do not add implementation here
 - `VERSION`: canonical DaveLLM Semantic Version mirrored into package metadata and runtime output
 - `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
@@ -80,6 +81,7 @@ Required checks after relevant changes:
 ```bash
 python -m py_compile app.py project_context.py scripts/project_context_cli.py tool_executor.py
 python -m compileall -q daveharness
+python -m mypy daveharness
 python -m pytest -q
 node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
 bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh

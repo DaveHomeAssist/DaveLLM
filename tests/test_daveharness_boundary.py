@@ -28,8 +28,10 @@ def _definition(*, schema=None, handler=None, approval_required=True):
 
 
 def test_public_api_and_legacy_compatibility_exports_are_stable():
-    assert daveharness.__version__ == "0.2.0"
+    assert daveharness.__version__ == "0.3.0"
     expected = {
+        "CONTRACT_VERSION",
+        "ContractDecodeError",
         "DEFAULT_ERROR_BUDGET",
         "DEFAULT_MODEL_TIMEOUT_SECONDS",
         "DEFAULT_PENDING_CALL_STORE",
@@ -50,6 +52,8 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "ToolHandler",
         "ToolRegistry",
         "__version__",
+        "decode_contract",
+        "encode_contract",
         "parse_tool_calls",
         "resume_executor_loop",
         "run_executor_loop",
@@ -210,7 +214,12 @@ def test_executor_package_has_no_davellm_runtime_dependencies():
     assert {path.name for path in package_files} == {
         "__init__.py",
         "_version.py",
+        "contracts.py",
+        "engine.py",
         "executor.py",
+        "parser.py",
+        "registry.py",
+        "schema.py",
     }
 
     forbidden_imports = {
