@@ -28,7 +28,7 @@ def _definition(*, schema=None, handler=None, approval_required=True):
 
 
 def test_public_api_and_legacy_compatibility_exports_are_stable():
-    assert daveharness.__version__ == "0.6.0"
+    assert daveharness.__version__ == "0.7.0"
     expected = {
         "ApprovalDecision",
         "CancellationToken",
@@ -43,6 +43,11 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "DEFAULT_TOOL_REGISTRY",
         "DEFAULT_TOOL_TIMEOUT_SECONDS",
         "ExecutorOutcome",
+        "EVENT_VERSION",
+        "EventJournal",
+        "EventSink",
+        "NoopEventSink",
+        "RunEvent",
         "ExecutionContext",
         "InMemoryPendingCallStore",
         "ModelInvoker",
@@ -241,6 +246,7 @@ def test_executor_package_has_no_davellm_runtime_dependencies():
         "budgets.py",
         "contracts.py",
         "engine.py",
+        "events.py",
         "executor.py",
         "parser.py",
         "policy.py",
