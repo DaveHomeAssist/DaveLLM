@@ -51,7 +51,7 @@ Every tool execution adds `termination` without changing the established `status
 
 Exact-call approval is also implemented in `0.2.0`. A pending record holds the run-scoped call ID, tool name, harness-validated canonical arguments, their SHA-256 digest, transcript revision, a single-use nonce, creation time, and a 300-second expiry. The host supplies a pending-call store; DaveLLM uses the in-memory default. `POST /tools/agent/resume` consumes a matching decision atomically. Approval executes the exact stored arguments without replaying the paused model step. Denial appends an operator-denied tool result and continues the bounded loop. Digest mismatch, stale transcript, replay, expiry, call mismatch, and missing run remain distinct non-executing outcomes.
 
-DaveHarness `0.3.0` adds an internal version-one envelope for existing parsed calls, pending calls, tool executions, and outcomes. `encode_contract` and `decode_contract` validate complete payloads and own nested JSON copies. The legacy `ExecutorOutcome.to_dict()` and DaveLLM HTTP responses are unchanged. Generalized budgets and run snapshots remain future phases.
+DaveHarness `0.3.0` adds an internal version-one envelope for existing parsed calls, pending calls, tool executions, and outcomes. `encode_contract` and `decode_contract` validate complete payloads and own nested JSON copies. DaveHarness `0.4.0` adds injected policy decisions, definition fingerprints, and immutable budgets. The legacy `ExecutorOutcome.to_dict()` and DaveLLM HTTP responses are unchanged. Serializable run snapshots remain H3 work.
 
 ### Consequences
 
@@ -91,7 +91,7 @@ DaveHarness `0.3.0` adds an internal version-one envelope for existing parsed ca
 - Increment **MINOR** for backward-compatible capabilities.
 - Increment **PATCH** for backward-compatible fixes. Documentation-only commits do not require a version increment.
 - Pre-release identifiers follow SemVer, for example `2.2.0-beta.1`.
-- The in-repository DaveHarness package started at `0.1.0`, is currently `0.3.0`, and follows independent SemVer. The `0.2.0` execution-semantics milestone remains part of its history. It remains an internal package until a separately approved distribution phase defines publishable metadata and a compatible DaveLLM adapter range.
+- The in-repository DaveHarness package started at `0.1.0`, is currently `0.4.0`, and follows independent SemVer. The `0.2.0` execution-semantics and `0.3.0` leaf-contract milestones remain part of its history. It remains an internal package until a separately approved distribution phase defines publishable metadata and a compatible DaveLLM adapter range.
 
 ### Consequences
 

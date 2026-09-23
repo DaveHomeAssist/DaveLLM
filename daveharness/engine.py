@@ -17,8 +17,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence, cast
 
+from .budgets import RunBudget
 from .contracts import ExecutorOutcome, ParsedToolCall, PendingCall, ToolExecution
 from .parser import parse_tool_calls
+from .policy import RunPolicyContext, ToolPolicy
 from .registry import DEFAULT_TOOL_REGISTRY, ToolDefinition, ToolRegistry
 from .schema import SchemaValidationError, validate_json_schema
 
@@ -32,6 +34,13 @@ ModelInvoker = Callable[
     [list[dict[str, Any]], list[dict[str, Any]]],
     Mapping[str, Any] | Awaitable[Mapping[str, Any]],
 ]
+
+
+class _ToolGateError(Exception):
+    def __init__(self, status: str, reason_code: str) -> None:
+        self.status = status
+        self.reason_code = reason_code
+        super().__init__(reason_code)
 
 
 def _utc_now() -> datetime:
@@ -82,12 +91,18 @@ async def run_tool(
     call_id: str | None = None,
     registry: ToolRegistry = DEFAULT_TOOL_REGISTRY,
     timeout_seconds: float | None = None,
+    policy: ToolPolicy | None = None,
+    policy_context: RunPolicyContext | None = None,
+    expected_fingerprint: str | None = None,
+    expected_permission: str | None = None,
+    expected_registration_revision: int | None = None,
+    output_bytes: int | None = None,
 ) -> ToolExecution:
     """Validate and run one registered tool, returning errors instead of raising."""
     resolved_call_id = call_id or f"call_{uuid.uuid4().hex}"
     started_at = utc_timestamp()
     started_monotonic = time.monotonic()
-    definition = registry.get(name)
+    definition, initial_revision, initial_fingerprint = registry.get_with_revision(name)
     LOGGER.info(
         json.dumps(
             {
@@ -123,6 +138,25 @@ async def run_tool(
     else:
         try:
             validate_json_schema(args, definition.parameters)
+            context = policy_context or RunPolicyContext(approved_tools=frozenset({name}))
+            decision = (policy or ToolPolicy()).evaluate(
+                registry, name, context,
+                expected_fingerprint=expected_fingerprint or initial_fingerprint,
+                expected_permission=expected_permission or definition.permission,
+                expected_registration_revision=expected_registration_revision
+                if expected_registration_revision is not None else initial_revision,
+            )
+            if decision.action != "allow":
+                raise _ToolGateError(
+                    "revoked" if decision.reason_code in {"tool_revoked", "tool_unknown", "definition_changed", "permission_changed", "registration_changed"} else "denied",
+                    decision.reason_code,
+                )
+            if decision.fingerprint is None or decision.registration_revision is None:
+                raise _ToolGateError("revoked", "definition_changed")
+            current_definition = registry.begin_execution(name, decision.fingerprint, decision.registration_revision)
+            if current_definition is None:
+                raise _ToolGateError("revoked", "definition_changed")
+            definition = current_definition
             timeout = timeout_seconds or definition.timeout_seconds
             raw_result = await asyncio.wait_for(
                 _invoke_handler(definition, args),
@@ -161,6 +195,13 @@ async def run_tool(
                     ),
                     termination="completed",
                 )
+        except _ToolGateError as exc:
+            execution = _execution_error(
+                call_id=resolved_call_id, name=name, status=exc.status,
+                error=exc.reason_code, started_at=started_at,
+                started_monotonic=started_monotonic,
+                termination="error" if exc.status == "output_limit" else "denied",
+            )
         except SchemaValidationError as exc:
             execution = _execution_error(
                 call_id=resolved_call_id,
@@ -190,6 +231,15 @@ async def run_tool(
                 started_at=started_at,
                 started_monotonic=started_monotonic,
             )
+
+    if output_bytes is not None and (
+        len(execution.result.encode("utf-8")) + len((execution.error or "").encode("utf-8")) > output_bytes
+    ):
+        execution = _execution_error(
+            call_id=resolved_call_id, name=name, status="output_limit",
+            error="tool_output_limit", started_at=started_at,
+            started_monotonic=started_monotonic,
+        )
 
     LOGGER.info(
         json.dumps(
@@ -441,12 +491,15 @@ class _ExecutorState:
     transcript: list[dict[str, Any]]
     invoke_model: ModelInvoker
     registry: ToolRegistry
-    step_limit: int
-    error_budget: int
+    budget: RunBudget
     approved_tools: set[str]
+    allowed_permissions: frozenset[str]
     model_timeout_seconds: float
+    policy: ToolPolicy
+    started_monotonic: float
     step: int = 0
     errors: int = 0
+    tool_calls: int = 0
     last_content: str | None = None
 
 
@@ -454,6 +507,9 @@ class _ExecutorState:
 class _PendingContinuation:
     state: _ExecutorState
     remaining_calls: list[ParsedToolCall]
+    definition_fingerprint: str
+    permission: str
+    registration_revision: int
 
 
 def _state_outcome(
@@ -523,17 +579,66 @@ def _operator_denied_execution(call: PendingCall) -> ToolExecution:
     )
 
 
+def _budget_stop(state: _ExecutorState, reason_code: str) -> ExecutorOutcome:
+    return _state_outcome(
+        state, status="budget_exceeded", status_message=reason_code,
+    )
+
+
+def _transcript_too_large(state: _ExecutorState) -> bool:
+    if state.budget.transcript_bytes is None:
+        return False
+    return state.budget.exceeded(
+        "transcript_bytes", len(_canonical_json(state.transcript).encode("utf-8"))
+    )
+
+
+def _wall_time_exceeded(state: _ExecutorState) -> bool:
+    return state.budget.wall_expired(state.started_monotonic, time.monotonic())
+
+
+def _remaining_wall_time(state: _ExecutorState) -> float | None:
+    limit = state.budget.total_wall_seconds
+    if limit is None:
+        return None
+    return max(0.0, limit - (time.monotonic() - state.started_monotonic))
+
+
+def _bounded_tool_timeout(state: _ExecutorState, definition: ToolDefinition | None) -> float | None:
+    remaining = _remaining_wall_time(state)
+    if remaining is None or definition is None:
+        return None
+    return min(definition.timeout_seconds, remaining)
+
+
 async def _process_calls(
     state: _ExecutorState,
     calls: list[ParsedToolCall],
     pending_store: PendingCallStore,
 ) -> ExecutorOutcome | None:
     for index, call in enumerate(calls):
+        state.tool_calls += 1
+        if state.budget.exceeded("tool_calls", state.tool_calls):
+            return _budget_stop(state, "tool_call_limit")
+        if _wall_time_exceeded(state):
+            return _budget_stop(state, "run_wall_limit")
+        context = RunPolicyContext(
+            approved_tools=frozenset(state.approved_tools),
+            allowed_permissions=state.allowed_permissions,
+        )
+        decision = state.policy.evaluate(state.registry, call.name, context)
         definition = state.registry.get(call.name)
-        if (
+        if decision.action == "deny":
+            now = utc_timestamp()
+            execution = ToolExecution(
+                call_id=call.call_id, name=call.name,
+                status="revoked" if decision.reason_code in {"tool_revoked", "tool_unknown", "definition_changed", "permission_changed", "registration_changed"} else "denied",
+                result="", error=decision.reason_code, started_at=now,
+                completed_at=now, duration_ms=0.0, termination="denied",
+            )
+        elif (
             definition
-            and definition.approval_required
-            and call.name not in state.approved_tools
+            and decision.action == "pause"
         ):
             try:
                 canonical_arguments = _canonical_arguments(
@@ -546,6 +651,13 @@ async def _process_calls(
                     call.arguments,
                     call_id=call.call_id,
                     registry=state.registry,
+                    policy=state.policy,
+                    policy_context=context,
+                    expected_fingerprint=decision.fingerprint,
+                    expected_permission=decision.permission,
+                    expected_registration_revision=decision.registration_revision,
+                    output_bytes=state.budget.tool_output_bytes,
+                    timeout_seconds=_bounded_tool_timeout(state, definition),
                 )
             else:
                 created_at = pending_store.now()
@@ -567,6 +679,9 @@ async def _process_calls(
                     _PendingContinuation(
                         state=state,
                         remaining_calls=copy.deepcopy(calls[index + 1 :]),
+                        definition_fingerprint=decision.fingerprint or "",
+                        permission=decision.permission or "",
+                        registration_revision=decision.registration_revision or 0,
                     ),
                 )
                 return _state_outcome(
@@ -585,12 +700,23 @@ async def _process_calls(
                 call.arguments,
                 call_id=call.call_id,
                 registry=state.registry,
+                policy=state.policy,
+                policy_context=context,
+                expected_fingerprint=decision.fingerprint,
+                expected_permission=decision.permission,
+                expected_registration_revision=decision.registration_revision,
+                output_bytes=state.budget.tool_output_bytes,
+                timeout_seconds=_bounded_tool_timeout(state, definition),
             )
 
         state.transcript.append(execution.tool_message())
+        if _wall_time_exceeded(state):
+            return _budget_stop(state, "run_wall_limit")
+        if _transcript_too_large(state):
+            return _budget_stop(state, "transcript_limit")
         if execution.status != "success":
             state.errors += 1
-            if state.errors >= state.error_budget:
+            if state.errors >= state.budget.errors:
                 return _state_outcome(
                     state,
                     status="error_budget",
@@ -603,17 +729,25 @@ async def _continue_executor_loop(
     state: _ExecutorState,
     pending_store: PendingCallStore,
 ) -> ExecutorOutcome:
-    while state.step < state.step_limit:
+    while state.step < state.budget.model_steps:
+        if _wall_time_exceeded(state):
+            return _budget_stop(state, "run_wall_limit")
+        if _transcript_too_large(state):
+            return _budget_stop(state, "transcript_limit")
         state.step += 1
+        remaining = _remaining_wall_time(state)
+        timeout = min(state.model_timeout_seconds, remaining) if remaining is not None else state.model_timeout_seconds
         try:
             model_message = await _invoke_model(
                 state.invoke_model,
                 state.transcript,
                 state.registry.model_schemas(),
-                state.model_timeout_seconds,
+                timeout,
             )
         except asyncio.TimeoutError:
             state.errors += 1
+            if _wall_time_exceeded(state):
+                return _budget_stop(state, "run_wall_limit")
             return _state_outcome(
                 state,
                 status="model_timeout",
@@ -629,6 +763,9 @@ async def _continue_executor_loop(
                 status_message=f"Model invocation failed: {exc}",
             )
 
+        if _wall_time_exceeded(state):
+            return _budget_stop(state, "run_wall_limit")
+
         content = model_message.get("content")
         if isinstance(content, str) and content.strip():
             state.last_content = content
@@ -636,6 +773,8 @@ async def _continue_executor_loop(
 
         if parse_error:
             state.transcript.append(dict(model_message))
+            if _transcript_too_large(state):
+                return _budget_stop(state, "transcript_limit")
             state.errors += 1
             state.transcript.append(
                 {
@@ -647,7 +786,7 @@ async def _continue_executor_loop(
                     ),
                 }
             )
-            if state.errors >= state.error_budget:
+            if state.errors >= state.budget.errors:
                 return _state_outcome(
                     state,
                     status="error_budget",
@@ -659,6 +798,8 @@ async def _continue_executor_loop(
 
         if not calls:
             state.transcript.append(dict(model_message))
+            if _transcript_too_large(state):
+                return _budget_stop(state, "transcript_limit")
             return _state_outcome(
                 state,
                 status="completed",
@@ -671,6 +812,8 @@ async def _continue_executor_loop(
         assistant_message["content"] = content if isinstance(content, str) else ""
         assistant_message["tool_calls"] = [call.as_openai_call() for call in calls]
         state.transcript.append(assistant_message)
+        if _transcript_too_large(state):
+            return _budget_stop(state, "transcript_limit")
         outcome = await _process_calls(state, calls, pending_store)
         if outcome is not None:
             return outcome
@@ -679,7 +822,7 @@ async def _continue_executor_loop(
         state,
         status="step_limit",
         status_message=(
-            f"Stopped after the configured {state.step_limit} model steps. "
+            f"Stopped after the configured {state.budget.model_steps} model steps. "
             "The full partial transcript is available."
         ),
     )
@@ -696,6 +839,9 @@ async def run_executor_loop(
     model_timeout_seconds: float = DEFAULT_MODEL_TIMEOUT_SECONDS,
     pending_store: PendingCallStore = DEFAULT_PENDING_CALL_STORE,
     run_id: str | None = None,
+    budget: RunBudget | None = None,
+    policy: ToolPolicy | None = None,
+    policy_context: RunPolicyContext | None = None,
 ) -> ExecutorOutcome:
     """Run model and tools until a final answer, ceiling, approval gate, or error budget."""
     if step_limit < 1:
@@ -703,15 +849,18 @@ async def run_executor_loop(
     if error_budget < 1:
         raise ValueError("error_budget must be at least 1")
 
+    run_context = policy_context or RunPolicyContext()
     state = _ExecutorState(
         run_id=run_id or f"run_{uuid.uuid4().hex}",
         transcript=copy.deepcopy(messages),
         invoke_model=invoke_model,
         registry=registry,
-        step_limit=step_limit,
-        error_budget=error_budget,
-        approved_tools=set(approved_tools or set()),
+        budget=budget or RunBudget.legacy(model_steps=step_limit, errors=error_budget),
+        approved_tools=set(approved_tools or set()) | set(run_context.approved_tools),
+        allowed_permissions=run_context.allowed_permissions,
         model_timeout_seconds=model_timeout_seconds,
+        policy=policy or ToolPolicy(),
+        started_monotonic=time.monotonic(),
     )
     return await _continue_executor_loop(state, pending_store)
 
@@ -746,6 +895,26 @@ async def resume_executor_loop(
         )
 
     continuation = lookup.continuation
+    if decision == "approve":
+        pending_for_check = lookup.pending_call
+        if pending_for_check is None:
+            return _approval_failure_outcome(
+                status="approval_stale", run_id=run_id, continuation=continuation,
+            )
+        policy_decision = continuation.state.policy.evaluate(
+            continuation.state.registry, pending_for_check.tool_name,
+            RunPolicyContext(
+                approved_tools=frozenset({pending_for_check.tool_name}),
+                allowed_permissions=continuation.state.allowed_permissions,
+            ),
+            expected_fingerprint=continuation.definition_fingerprint,
+            expected_permission=continuation.permission,
+            expected_registration_revision=continuation.registration_revision,
+        )
+        if policy_decision.action != "allow":
+            return _approval_failure_outcome(
+                status="approval_stale", run_id=run_id, continuation=continuation,
+            )
     current_revision = _transcript_revision(continuation.state.transcript)
     claim = pending_store.claim(
         run_id,
@@ -768,20 +937,34 @@ async def resume_executor_loop(
 
     pending_call = claim.pending_call
     state = continuation.state
+    if _wall_time_exceeded(state):
+        return _budget_stop(state, "run_wall_limit")
     if decision == "approve":
         execution = await run_tool(
             pending_call.tool_name,
             copy.deepcopy(pending_call.arguments),
             call_id=pending_call.call_id,
             registry=state.registry,
+            policy=state.policy,
+            policy_context=RunPolicyContext(
+                approved_tools=frozenset({pending_call.tool_name}),
+                allowed_permissions=state.allowed_permissions,
+            ),
+            expected_fingerprint=continuation.definition_fingerprint,
+            expected_permission=continuation.permission,
+            expected_registration_revision=continuation.registration_revision,
+            output_bytes=state.budget.tool_output_bytes,
+            timeout_seconds=_bounded_tool_timeout(state, state.registry.get(pending_call.tool_name)),
         )
     else:
         execution = _operator_denied_execution(pending_call)
     state.transcript.append(execution.tool_message())
+    if _transcript_too_large(state):
+        return _budget_stop(state, "transcript_limit")
 
     if decision == "approve" and execution.status != "success":
         state.errors += 1
-        if state.errors >= state.error_budget:
+        if state.errors >= state.budget.errors:
             return _state_outcome(
                 state,
                 status="error_budget",

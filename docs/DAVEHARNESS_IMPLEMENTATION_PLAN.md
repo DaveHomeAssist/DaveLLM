@@ -6,7 +6,7 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
-**Current:** DaveLLM `2.1.0`, DaveHarness `0.3.0`
+**Current:** DaveLLM `2.1.0`, DaveHarness `0.4.0`
 
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
@@ -31,7 +31,7 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.3.0` owns the generic registry, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, and versioned leaf-contract serializer.
+- `daveharness 0.4.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, and versioned leaf-contract serializer.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
 - Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.
@@ -113,7 +113,7 @@ DaveHarness owns decisions about how a run advances. DaveLLM owns whether a requ
 
 ## 5. Proposed interface contracts
 
-These are target `1.0.0` interfaces. DaveHarness `0.2.0` provided the smaller `PendingCall`, `PendingCallStore`, and `resume_executor_loop` compatibility milestone. H1 `0.3.0` adds versioned serialization only for existing leaf values; budgets remain H2 work and `RunSnapshot` plus resumable lifecycle state remain H3 work.
+These are target `1.0.0` interfaces. DaveHarness `0.2.0` provided the smaller `PendingCall`, `PendingCallStore`, and `resume_executor_loop` compatibility milestone. H1 `0.3.0` added versioned serialization only for existing leaf values; H2 `0.4.0` adds policy, fingerprints, and budget values; `RunSnapshot` plus resumable lifecycle state remain H3 work.
 
 | Interface | Required contract | Failure contract |
 |---|---|---|
@@ -175,7 +175,7 @@ Only `approval_required` may resume. Only `running` may enter `cancelling`. Ever
 | H0 | `0.1.0` | Remains `2.1.0` | Completed extraction baseline |
 | Execution semantics | `0.2.0` | Remains `2.1.0` | Completed sync-first, honest termination, and exact-call compatibility milestone |
 | H1 | `0.3.0` | None | Completed leaf-contract decomposition and versioned serialization |
-| H2 | `0.4.0` | None | Additive policy and budget contracts |
+| H2 | `0.4.0` | None | Completed additive policy and budget contracts |
 | H3 | `0.5.0` | None | Generalized serializable state and exact-call approval API |
 | H4 | `0.6.0` | None | Additive cancellation and deadline API |
 | H5 | `0.7.0` | None | Additive event and observability API |
@@ -237,12 +237,12 @@ This compatibility milestone was intentionally narrower than the future lifecycl
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
-| 13 | Introduce an injected policy object that evaluates registered name, permission string, approval requirement, and current run context. | Table-driven tests cover allow, deny, pause, revoke, and unknown permission behavior. | Medium | Legacy policy adapter remains | Ready |
-| 14 | Return a structured policy decision with stable reason codes instead of scattered booleans. | Outcomes and events expose reason codes without changing existing status text. | Medium | Additive decision type | Ready |
-| 15 | Canonically fingerprint each immutable tool definition and its schema. | Equivalent definitions produce one digest; any security-relevant change produces a different digest. | Medium | Fingerprint is additive | Ready |
-| 16 | Replace loose step and error integers internally with an immutable budget contract covering model steps, tool calls, errors, total wall time, tool output bytes, transcript bytes, and event count. | Defaults remain eight steps and two errors; each new ceiling has a boundary test. | Medium | Legacy arguments adapt to budgets | Ready |
-| 17 | Recheck registry presence, fingerprint, permission, and approval immediately before every effect. | Revocation and mutation race tests prove fail-closed behavior. | High | Policy path is feature-contained | Ready |
-| 18 | Add the complete policy and budget matrix to unit tests and documentation. | Every permission and terminal reason has at least one positive and negative test. | Low | Test and docs revert | Ready |
+| 13 | Introduce an injected policy object that evaluates registered name, permission string, approval requirement, and current run context. | Table-driven tests cover allow, deny, pause, revoke, and unknown permission behavior. | Medium | Legacy policy adapter remains | Completed |
+| 14 | Return a structured policy decision with stable reason codes instead of scattered booleans. | Outcomes and events expose reason codes without changing existing status text. | Medium | Additive decision type | Completed |
+| 15 | Canonically fingerprint each immutable tool definition and its schema. | Equivalent definitions produce one digest; any security-relevant change produces a different digest. | Medium | Fingerprint is additive | Completed |
+| 16 | Replace loose step and error integers internally with an immutable budget contract covering model steps, tool calls, errors, total wall time, tool output bytes, transcript bytes, and event count. | Defaults remain eight steps and two errors; each new ceiling has a boundary test. | Medium | Legacy arguments adapt to budgets | Completed |
+| 17 | Recheck registry presence, fingerprint, permission, and approval immediately before every effect. | Revocation and mutation race tests prove fail-closed behavior. | High | Policy path is feature-contained | Completed |
+| 18 | Add the complete policy and budget matrix to unit tests and documentation. | Every permission and terminal reason has at least one positive and negative test. | Low | Test and docs revert | Completed |
 
 ### H3: generalize resumable run state and exact-call approval, `0.5.0`
 
@@ -412,7 +412,7 @@ When H1 introduces the approved development checks, strict typing, supported-Pyt
 H0 complete
    -> 0.2.0 execution semantics complete
    -> H1 0.3.0 leaf contracts complete
-   -> H2 policy and budgets
+   -> H2 0.4.0 policy and budgets complete
    -> H3 state and exact approval
    -> H4 deadlines and cancellation
    -> H5 events
@@ -424,4 +424,4 @@ H0 complete
 
 Do not implement H7 before H3 through H6 are stable: an HTTP or UI layer built on an unsettled state machine would create duplicate lifecycle logic. Do not claim `1.0.0` before H9 live qualification; deterministic tests prove engineering behavior, not model-specific reliability. Do not combine all remaining phases into one change. Each phase must finish its own test, commit, push, CI, and documentation gates before the next phase begins.
 
-The next package is **H2: centralize policy and budgets at `0.4.0`**. H2 owns the generalized immutable budget contract. H3 owns `RunSnapshot`, transitions, and resumable lifecycle state. H1's serializer is deliberately limited to `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome`; it does not serialize handlers, continuations, registries, run state, or storage.
+The next package is **H3: generalize resumable run state and exact-call approval at `0.5.0`**. H3 owns `RunSnapshot`, transitions, and resumable lifecycle state. H1's serializer is deliberately limited to `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome`; it does not serialize handlers, continuations, registries, run state, or storage. H2's new ceilings are opt-in until the lifecycle facade; legacy routes retain their shipped limits and fields.

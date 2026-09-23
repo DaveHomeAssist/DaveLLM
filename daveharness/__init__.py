@@ -1,6 +1,7 @@
 """Public API for the in-process DaveHarness execution library."""
 
 from ._version import __version__
+from .budgets import RunBudget
 from .executor import (
     CONTRACT_VERSION,
     ContractDecodeError,
@@ -32,6 +33,7 @@ from .executor import (
     utc_timestamp,
     validate_json_schema,
 )
+from .policy import KNOWN_PERMISSIONS, PolicyDecision, RunPolicyContext, ToolPolicy
 
 __all__ = [
     "CONTRACT_VERSION",
@@ -45,16 +47,21 @@ __all__ = [
     "ExecutorOutcome",
     "InMemoryPendingCallStore",
     "ModelInvoker",
+    "KNOWN_PERMISSIONS",
     "PENDING_CALL_TTL_SECONDS",
     "PendingCall",
     "PendingCallClaim",
     "PendingCallStore",
+    "PolicyDecision",
     "ParsedToolCall",
     "SchemaValidationError",
+    "RunBudget",
+    "RunPolicyContext",
     "ToolDefinition",
     "ToolExecution",
     "ToolHandler",
     "ToolRegistry",
+    "ToolPolicy",
     "__version__",
     "decode_contract",
     "encode_contract",
