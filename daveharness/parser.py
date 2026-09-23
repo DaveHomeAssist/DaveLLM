@@ -7,14 +7,16 @@ import uuid
 from typing import Any, Mapping
 
 from .contracts import ParsedToolCall
+from .limits import PayloadLimitError, PayloadLimits, DEFAULT_PAYLOAD_LIMITS, bounded_loads, validate_payload
 
 
-def _decode_arguments(raw: Any) -> dict[str, Any]:
+def _decode_arguments(raw: Any, limits: PayloadLimits = DEFAULT_PAYLOAD_LIMITS) -> dict[str, Any]:
     if isinstance(raw, dict):
+        validate_payload(raw, limits)
         return raw
     if not isinstance(raw, str):
         raise ValueError("Tool arguments must be a JSON object or JSON string")
-    decoded = json.loads(raw)
+    decoded = bounded_loads(raw, limits)
     if not isinstance(decoded, dict):
         raise ValueError("Tool arguments must decode to a JSON object")
     return decoded
@@ -29,10 +31,14 @@ def _strip_json_fence(content: str) -> str:
     return stripped
 
 
-def parse_tool_calls(message: Mapping[str, Any]) -> tuple[list[ParsedToolCall], str | None]:
+def parse_tool_calls(message: Mapping[str, Any], *, limits: PayloadLimits = DEFAULT_PAYLOAD_LIMITS) -> tuple[list[ParsedToolCall], str | None]:
     """Read native tool calls first, then one bounded JSON-content fallback."""
+    try:
+        validate_payload(message, limits)
+    except PayloadLimitError as exc:
+        return [], str(exc)
     native_calls = message.get("tool_calls")
-    if native_calls:
+    if native_calls is not None and native_calls != []:
         parsed: list[ParsedToolCall] = []
         try:
             if not isinstance(native_calls, list):
@@ -46,15 +52,19 @@ def parse_tool_calls(message: Mapping[str, Any]) -> tuple[list[ParsedToolCall], 
                 name = function.get("name")
                 if not isinstance(name, str) or not name.strip():
                     raise ValueError(f"tool_calls[{index}] is missing a function name")
+                if "id" in call and (not isinstance(call["id"], str) or not call["id"].strip()):
+                    raise ValueError("call ID must be a nonempty string")
                 parsed.append(
                     ParsedToolCall(
                         call_id=str(call.get("id") or f"call_{uuid.uuid4().hex}"),
                         name=name,
                         arguments=_decode_arguments(
-                            function.get("arguments", function.get("params", {}))
+                            function.get("arguments", function.get("params", {})), limits
                         ),
                     )
                 )
+            if len({call.call_id for call in parsed}) != len(parsed):
+                raise ValueError("duplicate_call_id")
             return parsed, None
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             return [], str(exc)
@@ -66,7 +76,9 @@ def parse_tool_calls(message: Mapping[str, Any]) -> tuple[list[ParsedToolCall], 
     if not candidate.startswith("{"):
         return [], None
     try:
-        decoded = json.loads(candidate)
+        decoded = bounded_loads(candidate, limits)
+    except PayloadLimitError as exc:
+        return [], str(exc)
     except json.JSONDecodeError as exc:
         if '"tool"' in candidate or '"name"' in candidate:
             return [], f"Malformed JSON tool call: {exc.msg}"
@@ -77,7 +89,9 @@ def parse_tool_calls(message: Mapping[str, Any]) -> tuple[list[ParsedToolCall], 
     if not name:
         return [], None
     try:
-        arguments = _decode_arguments(decoded.get("params", decoded.get("arguments", {})))
+        if not isinstance(name, str):
+            raise ValueError("function name must be a string")
+        arguments = _decode_arguments(decoded.get("params", decoded.get("arguments", {})), limits)
         call = ParsedToolCall(
             call_id=f"call_{uuid.uuid4().hex}",
             name=str(name),

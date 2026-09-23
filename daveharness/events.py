@@ -48,7 +48,10 @@ def safe_identifier(value: str | None) -> str | None:
     sensitive_words = ("secret", "token", "password", "key", "canary", "prompt", "argument", "result", "private")
     if _SAFE_LABEL.fullmatch(value) and not any(part in value.lower() for part in sensitive_words):
         return value
-    return "redacted_" + hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:12]
+    digest = hashlib.sha256()
+    for offset in range(0, len(value), 4096):
+        digest.update(value[offset:offset + 4096].encode("utf-8", errors="replace"))
+    return "redacted_" + digest.hexdigest()[:12]
 
 
 def safe_status(value: str | None) -> str | None:
@@ -80,11 +83,11 @@ class RunEvent:
             raise ValueError("unsupported event version")
         if not isinstance(self.run_id, str) or safe_identifier(self.run_id) != self.run_id:
             raise ValueError("run_id must be a safe identifier")
-        if type(self.sequence) is not int or self.sequence < 1:
+        if type(self.sequence) is not int or self.sequence < 1 or self.sequence.bit_length() > 63:
             raise ValueError("sequence must be positive")
         if self.kind not in EVENT_KINDS:
             raise ValueError("unknown event kind")
-        if type(self.step) is not int or self.step < 0:
+        if type(self.step) is not int or self.step < 0 or self.step.bit_length() > 63:
             raise ValueError("step must be nonnegative")
         for name in ("call_id", "tool_name"):
             value = getattr(self, name)
@@ -104,7 +107,7 @@ class RunEvent:
             raise ValueError("timestamp must include a timezone")
         for name in ("input_bytes", "output_bytes"):
             value = getattr(self, name)
-            if value is not None and (type(value) is not int or value < 0):
+            if value is not None and (type(value) is not int or value < 0 or value.bit_length() > 63):
                 raise ValueError(f"{name} must be nonnegative")
         if self.duration_ms is not None and (
             isinstance(self.duration_ms, bool) or not isinstance(self.duration_ms, (int, float))
@@ -160,7 +163,10 @@ class EventJournal:
         self.max_count = max_count
         self.max_bytes = max_bytes
         self._events: dict[str, list[RunEvent]] = {}
+        self._sizes: dict[str, dict[int, int]] = {}
+        self._retained_bytes: dict[str, int] = {}
         self._pending: deque[RunEvent] = deque()
+        self._pending_bytes = 0
         self._worker: asyncio.Task[None] | None = None
         self.sink_failures = 0
         self.dropped_delivery = 0
@@ -178,16 +184,24 @@ class EventJournal:
         """Let an owning host evict a run alongside its snapshot."""
         key = safe_identifier(run_id) or "redacted_run"
         self._events.pop(key, None)
+        self._sizes.pop(key, None)
+        self._retained_bytes.pop(key, None)
         self._sink_failure_markers.pop(key, None)
 
     def record(self, event: RunEvent) -> None:
+        event_bytes = event.byte_size
+        if event_bytes > self.max_bytes:
+            raise ValueError("event_byte_limit")
         retained = self._events.setdefault(event.run_id, [])
         if retained and event.sequence <= retained[-1].sequence:
             raise ValueError("event sequence must advance")
         retained.append(event)
+        self._sizes.setdefault(event.run_id, {})[event.sequence] = event_bytes
+        self._retained_bytes[event.run_id] = self._retained_bytes.get(event.run_id, 0) + event_bytes
         self._bound(event.run_id)
-        if len(self._pending) < self.max_count:
+        if len(self._pending) < self.max_count and self._pending_bytes + event_bytes <= self.max_bytes:
             self._pending.append(event)
+            self._pending_bytes += event_bytes
             if self._worker is None or self._worker.done():
                 self._worker = asyncio.get_running_loop().create_task(self._deliver())
         else:
@@ -195,10 +209,11 @@ class EventJournal:
 
     def _bound(self, run_id: str) -> None:
         events = self._events[run_id]
+        sizes = self._sizes[run_id]
         first = events[0]
         latest = events[-1]
         terminal = next((item for item in reversed(events) if item.kind == "terminal"), None)
-        if len(events) <= self.max_count and sum(item.byte_size for item in events) <= self.max_bytes:
+        if len(events) <= self.max_count and self._retained_bytes[run_id] <= self.max_bytes:
             return
         keep: list[RunEvent] = [latest]
         if terminal is not None and terminal != latest:
@@ -214,14 +229,18 @@ class EventJournal:
         )
         if self.max_count >= len(keep) + 1 and marker.sequence not in {item.sequence for item in keep}:
             keep.insert(1 if keep[0] == first else 0, marker)
+            sizes[marker.sequence] = marker.byte_size
+        kept_sequences = {item.sequence for item in keep}
+        kept_bytes = sum(sizes[item.sequence] for item in keep)
         for item in reversed(events[1:-1]):
-            if item.kind == "truncated" or item in keep or len(keep) >= self.max_count:
+            if item.kind == "truncated" or item.sequence in kept_sequences or len(keep) >= self.max_count:
                 continue
-            candidate = sorted(keep + [item], key=lambda value: value.sequence)
-            if sum(value.byte_size for value in candidate) <= self.max_bytes:
-                keep = candidate
+            if kept_bytes + sizes[item.sequence] <= self.max_bytes:
+                keep.append(item)
+                kept_sequences.add(item.sequence)
+                kept_bytes += sizes[item.sequence]
         keep = sorted(keep, key=lambda value: value.sequence)
-        while len(keep) > 1 and sum(item.byte_size for item in keep) > self.max_bytes:
+        while len(keep) > 1 and kept_bytes > self.max_bytes:
             # Prefer first and terminal/latest over the truncation marker when tight.
             removable = next((item for item in keep if item.kind == "truncated"), None)
             if removable is None:
@@ -233,11 +252,15 @@ class EventJournal:
             if removable is None:
                 break
             keep.remove(removable)
+            kept_bytes -= sizes[removable.sequence]
         self._events[run_id] = keep
+        self._sizes[run_id] = {item.sequence: sizes[item.sequence] for item in keep}
+        self._retained_bytes[run_id] = kept_bytes
 
     async def _deliver(self) -> None:
         while self._pending:
             event = self._pending.popleft()
+            self._pending_bytes -= event.byte_size
             try:
                 await self.sink.emit(event)
             except Exception:

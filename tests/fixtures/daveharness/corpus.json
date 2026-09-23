@@ -1,0 +1,221 @@
+{
+  "version": 1,
+  "provenance": "Authored synthetic response recordings; no live model samples or credentials.",
+  "cases": [
+    {
+      "id": "final",
+      "responses": [
+        {
+          "content": "done"
+        }
+      ],
+      "status": "completed",
+      "effects": 0
+    },
+    {
+      "id": "native",
+      "responses": [
+        {
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "function": {
+                "name": "read",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "content": "done"
+        }
+      ],
+      "status": "completed",
+      "effects": 1
+    },
+    {
+      "id": "fallback",
+      "responses": [
+        {
+          "content": "{\"tool\":\"read\",\"params\":{}}"
+        },
+        {
+          "content": "done"
+        }
+      ],
+      "status": "completed",
+      "effects": 1
+    },
+    {
+      "id": "repair",
+      "responses": [
+        {
+          "content": "{\"tool\":\"read\",}"
+        },
+        {
+          "content": "done"
+        }
+      ],
+      "status": "completed",
+      "effects": 0
+    },
+    {
+      "id": "approve",
+      "decision": "approve",
+      "responses": [
+        {
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "function": {
+                "name": "write",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "content": "done"
+        }
+      ],
+      "status": "completed",
+      "effects": 1
+    },
+    {
+      "id": "reject",
+      "decision": "reject",
+      "responses": [
+        {
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "function": {
+                "name": "write",
+                "arguments": "{}"
+              }
+            }
+          ]
+        }
+      ],
+      "status": "approval_rejected",
+      "effects": 0
+    },
+    {
+      "id": "denied",
+      "permissions": [],
+      "responses": [
+        {
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "function": {
+                "name": "write",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "content": "done"
+        }
+      ],
+      "status": "completed",
+      "effects": 0
+    },
+    {
+      "id": "repeated",
+      "responses": [
+        {
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "function": {
+                "name": "read",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "function": {
+                "name": "read",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "content": "done"
+        }
+      ],
+      "status": "run_conflict",
+      "effects": 1
+    },
+    {
+      "id": "ceiling",
+      "budget": {
+        "tool_calls": 1
+      },
+      "responses": [
+        {
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "function": {
+                "name": "read",
+                "arguments": "{}"
+              }
+            },
+            {
+              "id": "call_2",
+              "function": {
+                "name": "read",
+                "arguments": "{}"
+              }
+            }
+          ]
+        }
+      ],
+      "status": "budget_exceeded",
+      "effects": 1
+    },
+    {
+      "id": "steps",
+      "budget": {
+        "model_steps": 1
+      },
+      "responses": [
+        {
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "function": {
+                "name": "read",
+                "arguments": "{}"
+              }
+            }
+          ]
+        }
+      ],
+      "status": "step_limit",
+      "effects": 1
+    },
+    {
+      "id": "timeout",
+      "mode": "timeout",
+      "responses": [],
+      "status": "model_timeout",
+      "effects": 0
+    },
+    {
+      "id": "cancel",
+      "mode": "cancel",
+      "responses": [],
+      "status": "cancelled",
+      "effects": 0
+    }
+  ]
+}

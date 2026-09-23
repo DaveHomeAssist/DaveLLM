@@ -107,7 +107,7 @@ The renderer performs authenticated fetch, converts the response to a Markdown B
 
 Both return `403` unless `DAVE_ENABLE_TOOLS=true`. `DAVE_TOOL_ROOTS` must be a JSON array of absolute paths. File read, write, and append use the same resolved-path containment rule. `shell.exec` also requires `DAVE_ENABLE_SHELL_TOOL=true`.
 
-The generic registry, validation, policy, budgets, execution result, call parsing, exact-call approval state, and bounded loop are provided by the in-process `daveharness` package at version `0.9.0`. Its `CONTRACT_VERSION = 1` envelope from `0.3.0` serializes only `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome` through `encode_contract`/`decode_contract`; it is not an HTTP response format. `app.py` owns and injects the concrete tools, configured roots, authentication, Ollama model adapter, and HTTP routes. `tool_executor.py` remains a compatibility re-export only. First-party handlers are synchronous except for explicitly opted-in and name-allowlisted `web.fetch`.
+The generic registry, validation, policy, budgets, execution result, call parsing, exact-call approval state, and bounded loop are provided by the in-process `daveharness` package at version `1.0.0-rc.1`. Its `CONTRACT_VERSION = 1` envelope from `0.3.0` serializes only `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome` through `encode_contract`/`decode_contract`; it is not an HTTP response format. `app.py` owns and injects the concrete tools, configured roots, authentication, Ollama model adapter, and HTTP routes. `tool_executor.py` remains a compatibility re-export only. First-party handlers are synchronous except for explicitly opted-in and name-allowlisted `web.fetch`.
 
 The `0.2.0` milestone introduced the current sync-first execution and exact-call approval/resume semantics. H1 leaves those behaviors in place.
 
@@ -154,3 +154,5 @@ All persistence artifacts, including `dave_settings.json`, `dave_project_context
 Automated tests verify auth states, static isolation, Ollama-compatible inventory and chat transports, stream success and failure events, templates, export, tools default-off behavior, title generation, raw embedding indexes, exact effective-prompt construction, Project Homepage lifecycles, request-context order and preview, BRAIN compaction/recovery, token rollover, and data-directory containment.
 
 Real cluster reachability, actual model inventory, Whisper binaries, inference performance, and end-to-end hardware behavior remain runtime-dependent and require an authorized cluster check.
+
+DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, and Python 3.12–3.14 CI. See [H8 qualification](docs/DAVEHARNESS_H8_QUALIFICATION.md). This candidate does not establish live-model qualification or human acceptance. DaveLLM remains `2.1.0`.

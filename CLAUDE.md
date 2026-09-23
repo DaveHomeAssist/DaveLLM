@@ -8,7 +8,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 
 - `app.py`: FastAPI routes, persistence, inventory, chat, tools, monitoring
 - `project_context.py`: normalized Project Homepage storage, BRAIN revisions, file/artifact retrieval, and bounded request assembly
-- `daveharness/`: headless in-process `0.9.0` library for typed leaf contracts, versioned serialization, policy, budgets, registry, schema validation, timing, exact-call approval/resume, and bounded executor loop
+- `daveharness/`: headless in-process `1.0.0-rc.1` library for typed leaf contracts, versioned serialization, policy, budgets, registry, schema validation, timing, exact-call approval/resume, and bounded executor loop
 - DaveHarness `0.2.0` was the execution-semantics milestone; `0.3.0` added the internal module split and leaf-contract envelope; `0.4.0` added policy, fingerprints, and budgets; `0.5.0` adds snapshot and exact decision operations without changing DaveLLM endpoints. `0.6.0` adds opt-in cooperative cancellation and absolute deadlines; `0.7.0` adds metadata-only ordered events; `0.8.0` adds a bounded store and instance-owned facade; `0.9.0` integrates the DaveLLM lifecycle and frozen BRAIN run context.
 - `tool_executor.py`: compatibility re-export for legacy imports; do not add implementation here
 - `VERSION`: canonical DaveLLM Semantic Version mirrored into package metadata and runtime output
@@ -97,3 +97,5 @@ git diff --check
 - Electron is pinned to `^44.0.0` (upgraded from `^30.0.0` per audit finding H-1, 2026-08-26). npm audit reports no known vulnerabilities at this line; keep the pin on a supported major.
 - FastAPI startup/shutdown event deprecation warnings are known; a lifespan migration is deferred because it is outside the P0 stabilization scope.
 - Conversation JSON and core project metadata remain compatible. Project Instructions, BRAIN revisions, uploaded-file indexes, and artifact history are normalized in `dave_project_context.db`; a full conversation migration remains deferred.
+
+DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, and Python 3.12–3.14 CI. See [H8 qualification](docs/DAVEHARNESS_H8_QUALIFICATION.md). This candidate does not establish live-model qualification or human acceptance. DaveLLM remains `2.1.0`.

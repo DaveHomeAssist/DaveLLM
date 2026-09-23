@@ -1,0 +1,1620 @@
+{
+  "ApprovalDecision": {
+    "fields": [
+      "run_id",
+      "call_id",
+      "digest",
+      "definition_fingerprint",
+      "permission",
+      "nonce",
+      "decision_id",
+      "decision",
+      "issued_at",
+      "expires_at",
+      "contract_version"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "call_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "digest",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "definition_fingerprint",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "permission",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "nonce",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "decision_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "decision",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "issued_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "expires_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "contract_version",
+        "required": false
+      }
+    ]
+  },
+  "CONTRACT_VERSION": {},
+  "CancellableToolRunner": {
+    "parameters": [
+      {
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": true
+      },
+      {
+        "kind": "VAR_KEYWORD",
+        "name": "kwargs",
+        "required": true
+      }
+    ]
+  },
+  "CancellationToken": {
+    "parameters": []
+  },
+  "ContractDecodeError": {},
+  "CooperativeToolRunner": {
+    "parameters": [
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "stop_grace_seconds",
+        "required": false
+      }
+    ]
+  },
+  "DEFAULT_ERROR_BUDGET": {},
+  "DEFAULT_MODEL_TIMEOUT_SECONDS": {},
+  "DEFAULT_PENDING_CALL_STORE": {},
+  "DEFAULT_STEP_LIMIT": {},
+  "DEFAULT_TOOL_REGISTRY": {},
+  "DEFAULT_TOOL_TIMEOUT_SECONDS": {},
+  "EVENT_VERSION": {},
+  "EventJournal": {
+    "parameters": [
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "sink",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "max_count",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "max_bytes",
+        "required": false
+      }
+    ]
+  },
+  "EventSink": {
+    "parameters": [
+      {
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": true
+      },
+      {
+        "kind": "VAR_KEYWORD",
+        "name": "kwargs",
+        "required": true
+      }
+    ]
+  },
+  "ExecutionContext": {
+    "fields": [
+      "run_id",
+      "call_id",
+      "run_deadline",
+      "model_deadline",
+      "tool_deadline",
+      "output_budget_bytes",
+      "cancellation",
+      "monotonic_clock",
+      "event"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "call_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_deadline",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "model_deadline",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "tool_deadline",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "output_budget_bytes",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "cancellation",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "monotonic_clock",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "event",
+        "required": false
+      }
+    ]
+  },
+  "ExecutorOutcome": {
+    "fields": [
+      "status",
+      "transcript",
+      "final_answer",
+      "steps",
+      "errors",
+      "status_message",
+      "pending_tool_call",
+      "run_id"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "status",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "transcript",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "final_answer",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "steps",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "errors",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "status_message",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "pending_tool_call",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_id",
+        "required": false
+      }
+    ]
+  },
+  "Harness": {
+    "parameters": [
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "registry",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "invoke_model",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "policy",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "runner",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "store",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "clock",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "monotonic_clock",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "event_sink",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "model_timeout_seconds",
+        "required": false
+      }
+    ]
+  },
+  "InMemoryPendingCallStore": {
+    "parameters": [
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "clock",
+        "required": false
+      }
+    ]
+  },
+  "InMemoryRunStore": {
+    "parameters": [
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "max_runs",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "max_bytes",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "ttl_seconds",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "clock",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "on_remove",
+        "required": false
+      }
+    ]
+  },
+  "KNOWN_PERMISSIONS": {
+    "values": [
+      "execute_process",
+      "public_network",
+      "read",
+      "read_files",
+      "read_system",
+      "write",
+      "write_files"
+    ]
+  },
+  "ModelInvoker": {
+    "parameters": [
+      {
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": true
+      },
+      {
+        "kind": "VAR_KEYWORD",
+        "name": "kwargs",
+        "required": true
+      }
+    ]
+  },
+  "NoopEventSink": {
+    "parameters": []
+  },
+  "OperationController": {
+    "parameters": [
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "stop_grace_seconds",
+        "required": false
+      }
+    ]
+  },
+  "PENDING_CALL_TTL_SECONDS": {},
+  "ParsedToolCall": {
+    "fields": [
+      "call_id",
+      "name",
+      "arguments"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "call_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "name",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "arguments",
+        "required": true
+      }
+    ]
+  },
+  "PendingCall": {
+    "fields": [
+      "call_id",
+      "tool_name",
+      "arguments",
+      "digest",
+      "transcript_revision",
+      "nonce",
+      "created_at",
+      "expires_at"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "call_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "tool_name",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "arguments",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "digest",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "transcript_revision",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "nonce",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "created_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "expires_at",
+        "required": true
+      }
+    ]
+  },
+  "PendingCallClaim": {
+    "fields": [
+      "status",
+      "pending_call",
+      "continuation"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "status",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "pending_call",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "continuation",
+        "required": false
+      }
+    ]
+  },
+  "PendingCallStore": {
+    "parameters": [
+      {
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": true
+      },
+      {
+        "kind": "VAR_KEYWORD",
+        "name": "kwargs",
+        "required": true
+      }
+    ]
+  },
+  "PendingToolCall": {
+    "fields": [
+      "call_id",
+      "tool_name",
+      "arguments_json",
+      "digest",
+      "definition_fingerprint",
+      "permission",
+      "registry_instance_id",
+      "registration_revision",
+      "transcript_revision",
+      "nonce",
+      "created_at",
+      "expires_at",
+      "remaining_calls_json",
+      "contract_version"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "call_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "tool_name",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "arguments_json",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "digest",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "definition_fingerprint",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "permission",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "registry_instance_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "registration_revision",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "transcript_revision",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "nonce",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "created_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "expires_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "remaining_calls_json",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "contract_version",
+        "required": false
+      }
+    ]
+  },
+  "PolicyDecision": {
+    "fields": [
+      "action",
+      "reason_code",
+      "fingerprint",
+      "permission",
+      "registration_revision"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "action",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "reason_code",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "fingerprint",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "permission",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "registration_revision",
+        "required": false
+      }
+    ]
+  },
+  "RUN_STATE_VERSION": {},
+  "RUN_STATUSES": {
+    "values": [
+      "approval_rejected",
+      "approval_required",
+      "budget_exceeded",
+      "cancellation_failed",
+      "cancelled",
+      "cancelling",
+      "completed",
+      "created",
+      "error_budget",
+      "model_error",
+      "model_timeout",
+      "run_conflict",
+      "run_expired",
+      "running",
+      "step_limit"
+    ]
+  },
+  "RunBudget": {
+    "fields": [
+      "model_steps",
+      "errors",
+      "tool_calls",
+      "total_wall_seconds",
+      "tool_output_bytes",
+      "transcript_bytes",
+      "event_count"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "model_steps",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "errors",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "tool_calls",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "total_wall_seconds",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "tool_output_bytes",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "transcript_bytes",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "event_count",
+        "required": false
+      }
+    ]
+  },
+  "RunCommandResult": {
+    "fields": [
+      "status",
+      "snapshot",
+      "reason_code"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "status",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "snapshot",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "reason_code",
+        "required": true
+      }
+    ]
+  },
+  "RunEvent": {
+    "fields": [
+      "run_id",
+      "sequence",
+      "kind",
+      "step",
+      "call_id",
+      "tool_name",
+      "status",
+      "reason_code",
+      "timestamp",
+      "duration_ms",
+      "input_bytes",
+      "output_bytes",
+      "event_version"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "sequence",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "kind",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "step",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "call_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "tool_name",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "status",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "reason_code",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "timestamp",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "duration_ms",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "input_bytes",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "output_bytes",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "event_version",
+        "required": false
+      }
+    ]
+  },
+  "RunPolicyContext": {
+    "fields": [
+      "approved_tools",
+      "allowed_permissions"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "approved_tools",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "allowed_permissions",
+        "required": false
+      }
+    ]
+  },
+  "RunRequest": {
+    "fields": [
+      "messages_json",
+      "run_id",
+      "model_id",
+      "budget",
+      "deadline_at",
+      "allowed_permissions"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "messages_json",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_id",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "model_id",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "budget",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "deadline_at",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "allowed_permissions",
+        "required": false
+      }
+    ]
+  },
+  "RunSnapshot": {
+    "fields": [
+      "run_id",
+      "status",
+      "optimistic_version",
+      "transcript_json",
+      "steps",
+      "errors",
+      "tool_calls",
+      "created_at",
+      "updated_at",
+      "deadline_at",
+      "pending_call",
+      "executed_call_ids",
+      "event_cursor",
+      "budget",
+      "allowed_permissions",
+      "queued_calls_json",
+      "inflight_call_id",
+      "model_inflight",
+      "used_decision_ids",
+      "last_content",
+      "contract_version"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "status",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "optimistic_version",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "transcript_json",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "steps",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "errors",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "tool_calls",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "created_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "updated_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "deadline_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "pending_call",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "executed_call_ids",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "event_cursor",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "budget",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "allowed_permissions",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "queued_calls_json",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "inflight_call_id",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "model_inflight",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "used_decision_ids",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "last_content",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "contract_version",
+        "required": false
+      }
+    ]
+  },
+  "RunStore": {
+    "parameters": [
+      {
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": true
+      },
+      {
+        "kind": "VAR_KEYWORD",
+        "name": "kwargs",
+        "required": true
+      }
+    ]
+  },
+  "SchemaValidationError": {},
+  "SnapshotCAS": {
+    "parameters": [
+      {
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": true
+      },
+      {
+        "kind": "VAR_KEYWORD",
+        "name": "kwargs",
+        "required": true
+      }
+    ]
+  },
+  "TERMINAL_RUN_STATUSES": {
+    "values": [
+      "approval_rejected",
+      "budget_exceeded",
+      "cancellation_failed",
+      "cancelled",
+      "completed",
+      "error_budget",
+      "model_error",
+      "model_timeout",
+      "run_conflict",
+      "run_expired",
+      "step_limit"
+    ]
+  },
+  "ToolDefinition": {
+    "fields": [
+      "name",
+      "description",
+      "parameters",
+      "handler",
+      "permission",
+      "approval_required",
+      "timeout_seconds",
+      "cancellation",
+      "async_handler",
+      "handler_version",
+      "context_handler"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "name",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "description",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "parameters",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "handler",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "permission",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "approval_required",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "timeout_seconds",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "cancellation",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "async_handler",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "handler_version",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "context_handler",
+        "required": false
+      }
+    ]
+  },
+  "ToolExecution": {
+    "fields": [
+      "call_id",
+      "name",
+      "status",
+      "result",
+      "error",
+      "started_at",
+      "completed_at",
+      "duration_ms",
+      "termination"
+    ],
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "call_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "name",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "status",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "result",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "error",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "started_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "completed_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "duration_ms",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "termination",
+        "required": false
+      }
+    ]
+  },
+  "ToolHandler": {
+    "parameters": [
+      {
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": true
+      },
+      {
+        "kind": "VAR_KEYWORD",
+        "name": "kwargs",
+        "required": true
+      }
+    ]
+  },
+  "ToolPolicy": {
+    "fields": [],
+    "parameters": []
+  },
+  "ToolRegistry": {
+    "parameters": [
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "async_handler_allowlist",
+        "required": false
+      }
+    ]
+  },
+  "__version__": {},
+  "absolute_deadline": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "monotonic_clock",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "duration_seconds",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_remaining_seconds",
+        "required": true
+      }
+    ]
+  },
+  "cancel_run": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "store",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_id",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "controller",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "clock",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "events",
+        "required": false
+      }
+    ]
+  },
+  "decide_run": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "store",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "decision",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "registry",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "invoke_model",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "policy",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "clock",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "model_timeout_seconds",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "monotonic_clock",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "controller",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "runner",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "events",
+        "required": false
+      }
+    ]
+  },
+  "decode_contract": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "envelope",
+        "required": true
+      }
+    ]
+  },
+  "encode_contract": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "value",
+        "required": true
+      }
+    ]
+  },
+  "parse_tool_calls": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "message",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "limits",
+        "required": false
+      }
+    ]
+  },
+  "remaining_wall_seconds": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "deadline_at",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "now",
+        "required": true
+      }
+    ]
+  },
+  "resume_executor_loop": {
+    "parameters": [
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "run_id",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "call_id",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "digest",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "decision",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "pending_store",
+        "required": false
+      }
+    ]
+  },
+  "resume_run": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "store",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "run_id",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "registry",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "invoke_model",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "policy",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "clock",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "model_timeout_seconds",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "monotonic_clock",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "controller",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "runner",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "events",
+        "required": false
+      }
+    ]
+  },
+  "run_executor_loop": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "messages",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "invoke_model",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "registry",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "step_limit",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "error_budget",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "approved_tools",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "model_timeout_seconds",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "pending_store",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "run_id",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "budget",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "policy",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "policy_context",
+        "required": false
+      }
+    ]
+  },
+  "run_tool": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "name",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "args",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "call_id",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "registry",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "timeout_seconds",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "policy",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "policy_context",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "expected_fingerprint",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "expected_permission",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "expected_registration_revision",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "output_bytes",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "execution_context",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "runner",
+        "required": false
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "log_result",
+        "required": false
+      }
+    ]
+  },
+  "transition_run": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "snapshot",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "status",
+        "required": true
+      },
+      {
+        "kind": "KEYWORD_ONLY",
+        "name": "updated_at",
+        "required": true
+      },
+      {
+        "kind": "VAR_KEYWORD",
+        "name": "changes",
+        "required": true
+      }
+    ]
+  },
+  "utc_timestamp": {
+    "parameters": []
+  },
+  "validate_json_schema": {
+    "parameters": [
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "value",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "schema",
+        "required": true
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "path",
+        "required": false
+      }
+    ]
+  }
+}

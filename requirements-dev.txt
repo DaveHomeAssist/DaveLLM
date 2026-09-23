@@ -2,3 +2,5 @@ pytest
 pytest-asyncio
 respx
 mypy==2.3.1
+hypothesis==6.168.1
+coverage==7.16.1

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, cast
 
+from .limits import PayloadLimits, bounded_loads, text_bytes, validate_payload
 from .budgets import RunBudget
 from .engine import DEFAULT_MODEL_TIMEOUT_SECONDS, ModelInvoker
 from .events import EventJournal, EventSink, RunEvent
@@ -57,7 +58,9 @@ class RunRequest:
             if deadline.tzinfo is None or deadline.utcoffset() is None:
                 raise ValueError("deadline_at must include a timezone")
         try:
-            messages = json.loads(self.messages_json)
+            if self.budget.transcript_bytes is not None:
+                text_bytes(self.messages_json, self.budget.transcript_bytes)
+            messages = bounded_loads(self.messages_json)
             canonical = json.dumps(messages, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError, RecursionError) as exc:
             raise ValueError("messages must be finite JSON") from exc
@@ -76,6 +79,7 @@ class RunRequest:
         deadline_at: str | None = None, allowed_permissions: tuple[str, ...] = (),
     ) -> RunRequest:
         try:
+            validate_payload(messages, PayloadLimits(max_bytes=(budget or RunBudget()).transcript_bytes or 16_777_216))
             encoded = json.dumps(messages, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError, RecursionError) as exc:
             raise ValueError("messages must be finite JSON") from exc
@@ -83,7 +87,7 @@ class RunRequest:
 
     @property
     def messages(self) -> list[dict[str, Any]]:
-        return cast(list[dict[str, Any]], json.loads(self.messages_json))
+        return cast(list[dict[str, Any]], bounded_loads(self.messages_json))
 
 
 class Harness:

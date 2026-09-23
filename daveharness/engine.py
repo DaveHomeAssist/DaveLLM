@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence, cast
 
+from .limits import PayloadLimitError, PayloadLimits, text_bytes, validate_payload
 from .budgets import RunBudget
 from .contracts import ExecutorOutcome, ParsedToolCall, PendingCall, ToolExecution
 from .events import safe_identifier, safe_status
@@ -190,17 +191,34 @@ async def _run_tool(
             if hasattr(raw_result, "model_dump"):
                 raw_result = raw_result.model_dump()
             if isinstance(raw_result, Mapping) and raw_result.get("status") == "error":
+                raw_error = raw_result.get("error") or "Tool failed"
+                if output_bytes is not None:
+                    try:
+                        if isinstance(raw_error, str):
+                            text_bytes(raw_error, output_bytes)
+                        else:
+                            validate_payload(raw_error, PayloadLimits(max_bytes=output_bytes))
+                    except PayloadLimitError as exc:
+                        raise _ToolGateError("output_limit", "tool_output_limit") from exc
                 execution = _execution_error(
                     call_id=resolved_call_id,
                     name=name,
                     status="error",
-                    error=str(raw_result.get("error") or "Tool failed"),
+                    error=str(raw_error),
                     started_at=started_at,
                     started_monotonic=started_monotonic,
                 )
             else:
                 if isinstance(raw_result, Mapping) and "result" in raw_result:
                     raw_result = raw_result["result"]
+                if output_bytes is not None:
+                    try:
+                        if isinstance(raw_result, str):
+                            text_bytes(raw_result, output_bytes)
+                        else:
+                            validate_payload(raw_result, PayloadLimits(max_bytes=output_bytes))
+                    except PayloadLimitError as exc:
+                        raise _ToolGateError("output_limit", "tool_output_limit") from exc
                 result = (
                     raw_result
                     if isinstance(raw_result, str)
@@ -257,9 +275,14 @@ async def _run_tool(
                 started_monotonic=started_monotonic,
             )
 
-    if output_bytes is not None and (
-        len(execution.result.encode("utf-8")) + len((execution.error or "").encode("utf-8")) > output_bytes
-    ):
+    within_limit = True
+    if output_bytes is not None:
+        try:
+            used = text_bytes(execution.result, output_bytes)
+            text_bytes(execution.error or "", output_bytes - used)
+        except PayloadLimitError:
+            within_limit = False
+    if not within_limit:
         execution = _execution_error(
             call_id=resolved_call_id, name=name, status="output_limit",
             error="tool_output_limit", started_at=started_at,
@@ -271,6 +294,7 @@ async def _run_tool(
     return execution
 
 def _canonical_json(value: Any) -> str:
+    validate_payload(value)
     return json.dumps(
         value,
         ensure_ascii=False,
@@ -470,6 +494,8 @@ async def _invoke_model(
     timeout_seconds: float,
 ) -> Mapping[str, Any]:
     async def call_model() -> Any:
+        validate_payload(transcript)
+        validate_payload(schemas)
         copied_transcript = copy.deepcopy(transcript)
         copied_schemas = copy.deepcopy(schemas)
         if inspect.iscoroutinefunction(invoke_model):
@@ -484,6 +510,7 @@ async def _invoke_model(
         return result
 
     result = await asyncio.wait_for(call_model(), timeout=timeout_seconds)
+    validate_payload(result)
     if not isinstance(result, Mapping):
         raise ValueError("Model invoker must return an object")
     choices = result.get("choices")
@@ -862,6 +889,7 @@ async def _run_executor_loop(
         raise ValueError("error_budget must be at least 1")
 
     run_context = policy_context or RunPolicyContext()
+    validate_payload(messages)
     state = _ExecutorState(
         run_id=run_id or f"run_{uuid.uuid4().hex}",
         transcript=copy.deepcopy(messages),
