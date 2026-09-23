@@ -6,7 +6,7 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
-**Current:** DaveLLM `2.1.0`, DaveHarness `0.5.0`
+**Current:** DaveLLM `2.1.0`, DaveHarness `0.6.0`
 
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
@@ -31,7 +31,7 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.5.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, and the new serializable run-state engine.
+- `daveharness 0.6.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, and opt-in cancellation/deadline contracts.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
 - Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.
@@ -177,7 +177,7 @@ Only `approval_required` may resume. Only `running` may enter `cancelling`. Ever
 | H1 | `0.3.0` | None | Completed leaf-contract decomposition and versioned serialization |
 | H2 | `0.4.0` | None | Completed additive policy and budget contracts |
 | H3 | `0.5.0` | None | Completed generalized serializable state and exact-call approval API |
-| H4 | `0.6.0` | None | Additive cancellation and deadline API |
+| H4 | `0.6.0` | None | Completed additive cancellation and deadline API |
 | H5 | `0.7.0` | None | Additive event and observability API |
 | H6 | `0.8.0` | None | Instance-owned facade and host protocols |
 | H7 | `0.9.0` | Prepare DaveLLM `2.2.0` capability | Additive DaveLLM lifecycle endpoints and UI integration |
@@ -259,12 +259,12 @@ This compatibility milestone was intentionally narrower than the future lifecycl
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
-| 25 | Add `CancellationToken` and `ExecutionContext` with run, call, deadline, output-budget, and event access. | Cooperative fake handlers observe cancellation and stop before returning. | High | Optional context path | Ready |
-| 26 | Compute absolute run, model, and tool deadlines from one injected monotonic clock. | Fake-clock tests prove deterministic boundary behavior without sleeps. | Medium | Clock defaults to current behavior | Ready |
-| 27 | Carry the current `bounded` or `abandon` declaration and `deadline_abandoned` termination through the new runner without changing existing status strings. | Compatibility tests show unchanged timing and result shapes; documentation does not claim hard cancellation. | Medium | Existing path retained | Ready |
-| 28 | Add an injected cancellable runner path for async, cooperative, and process-backed handlers. | Runner contract proves stop acknowledgement before emitting `cancelled`. | High | Per-tool opt-in | Ready |
-| 29 | Enforce one total run deadline in addition to existing per-model and per-tool timeouts. | A run cannot extend indefinitely through individually successful calls. | High | Budget can default to compatibility mode | Ready |
-| 30 | Test timeout/cancel races, cancel-before-start, cancel-during-model, cancel-during-tool, late result, and exactly-one-terminal-event behavior. | Repeated seeded concurrency tests pass without duplicate effects. | High | Test and new runner revert | Ready |
+| 25 | Add `CancellationToken` and `ExecutionContext` with run, call, deadline, output-budget, and event access. | Cooperative fake handlers observe cancellation and stop before returning. | High | Optional context path | Completed |
+| 26 | Compute absolute run, model, and tool deadlines from one injected monotonic clock. | Fake-clock tests prove deterministic boundary behavior without sleeps. | Medium | Clock defaults to current behavior | Completed |
+| 27 | Carry the current `bounded` or `abandon` declaration and `deadline_abandoned` termination through the new runner without changing existing status strings. | Compatibility tests show unchanged timing and result shapes; documentation does not claim hard cancellation. | Medium | Existing path retained | Completed |
+| 28 | Add an injected cancellable runner path for async, cooperative, and process-backed handlers. | Runner contract proves stop acknowledgement before emitting `cancelled`. | High | Per-tool opt-in | Completed |
+| 29 | Enforce one total run deadline in addition to existing per-model and per-tool timeouts. | A run cannot extend indefinitely through individually successful calls. | High | Budget can default to compatibility mode | Completed |
+| 30 | Test timeout/cancel races, cancel-before-start, cancel-during-model, cancel-during-tool, late result, and exactly-one-terminal-event behavior. | Repeated seeded concurrency tests pass without duplicate effects. | High | Test and new runner revert | Completed |
 
 ### H5: add ordered events and observability, `0.7.0`
 
@@ -414,7 +414,7 @@ H0 complete
    -> H1 0.3.0 leaf contracts complete
    -> H2 0.4.0 policy and budgets complete
    -> H3 0.5.0 state and exact approval complete
-   -> H4 deadlines and cancellation
+   -> H4 0.6.0 deadlines and cancellation complete
    -> H5 events
    -> H6 facade and host protocols
    -> H7 DaveLLM API and UI
@@ -424,4 +424,4 @@ H0 complete
 
 Do not implement H7 before H3 through H6 are stable: an HTTP or UI layer built on an unsettled state machine would create duplicate lifecycle logic. Do not claim `1.0.0` before H9 live qualification; deterministic tests prove engineering behavior, not model-specific reliability. Do not combine all remaining phases into one change. Each phase must finish its own test, commit, push, CI, and documentation gates before the next phase begins.
 
-The next package is **H4: cooperative cancellation and absolute deadlines at `0.6.0`**. H3 owns `RunSnapshot`, transitions, and resumable lifecycle state. H1's serializer remains limited to `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome`; H3 state uses its own versioned dictionaries. H2's new ceilings are opt-in until the lifecycle facade; legacy routes retain their shipped limits and fields.
+The next package is **H5: ordered events and observability at `0.7.0`**. H4 introduces opt-in cooperative cancellation and absolute deadlines while retaining legacy response-deadline behavior for synchronous handlers. H5 adds actual event emission and retention to the single-terminal transition tested in H4. Legacy routes retain their shipped limits and fields.
