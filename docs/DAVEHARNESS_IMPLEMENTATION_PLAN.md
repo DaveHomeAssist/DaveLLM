@@ -6,7 +6,7 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
-**Current:** DaveLLM `2.1.0`, DaveHarness `0.8.0`
+**Current:** DaveLLM `2.1.0`, DaveHarness `0.9.0`
 
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
@@ -31,7 +31,7 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.8.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, opt-in cancellation/deadline contracts, metadata-only lifecycle events, bounded run store, and instance-owned facade.
+- `daveharness 0.9.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, opt-in cancellation/deadline contracts, metadata-only lifecycle events, bounded run store, and instance-owned facade.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
 - Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.

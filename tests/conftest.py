@@ -15,7 +15,7 @@ TEST_NODE = {"id": "node-test", "name": "Test Ollama", "url": TEST_NODE_URL}
 def router_factory(monkeypatch, tmp_path):
     clients = []
 
-    def load(*, api_key=TEST_API_KEY, tools=False, tool_roots=None):
+    def load(*, api_key=TEST_API_KEY, tools=False, tool_roots=None, shell=False):
         data_dir = tmp_path / f"data-{len(clients)}"
         monkeypatch.setenv("DAVE_DATA_DIR", str(data_dir))
         monkeypatch.setenv("DAVE_NODES", json.dumps([TEST_NODE]))
@@ -24,7 +24,7 @@ def router_factory(monkeypatch, tmp_path):
         else:
             monkeypatch.setenv("DAVE_API_KEY", api_key)
         monkeypatch.setenv("DAVE_ENABLE_TOOLS", "true" if tools else "false")
-        monkeypatch.delenv("DAVE_ENABLE_SHELL_TOOL", raising=False)
+        monkeypatch.setenv("DAVE_ENABLE_SHELL_TOOL", "true" if shell else "false")
         monkeypatch.setenv("DAVE_TOOL_ROOTS", json.dumps(tool_roots or []))
 
         sys.modules.pop("app", None)

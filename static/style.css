@@ -1869,6 +1869,119 @@ textarea {
   overflow-y: auto;
 }
 
+.run-ledger {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  padding: 14px;
+  margin: 8px 0;
+  flex: 0 0 min(34dvh, 280px);
+  min-height: 180px;
+  overflow: auto;
+}
+
+.panel.prompt:has(.run-ledger:not(.hidden)) .response {
+  min-height: 0;
+  flex: 1 1 60px;
+}
+
+.run-ledger-heading,
+.run-ledger-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.run-ledger-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.run-ledger-heading {
+  position: sticky;
+  top: -14px;
+  z-index: 1;
+  background: var(--panel);
+  padding: 8px 0;
+}
+
+.run-ledger-heading h3,
+.run-ledger-approval h4 {
+  margin: 0;
+}
+
+.run-ledger-reason {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.run-ledger-events {
+  max-height: 112px;
+  overflow: auto;
+  padding-left: 26px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.run-ledger-approval {
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 10px 0;
+}
+
+.run-ledger-approval pre,
+.run-ledger-transcript {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 120px;
+  overflow: auto;
+  background: var(--input-bg);
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.run-ledger-transcript p {
+  margin: 0 0 8px;
+}
+
+.run-ledger-actions button,
+#runLedgerStop {
+  min-height: 44px;
+}
+
+.run-ledger-actions {
+  padding: 8px 0;
+}
+
+@media (max-width: 600px) {
+  .run-ledger {
+    flex-basis: min(38dvh, 320px);
+    min-height: 240px;
+  }
+  .run-ledger-heading {
+    padding: 3px 0;
+  }
+  .run-ledger-reason {
+    margin: 6px 0;
+  }
+  .run-ledger-approval {
+    margin: 6px 0;
+    padding: 8px;
+  }
+  .panel.prompt:has(.run-ledger:not(.hidden)) #promptInput {
+    min-height: 54px;
+    max-height: 90px;
+  }
+  .run-ledger-actions button {
+    flex: 1 1 120px;
+  }
+}
+
 .tools-box.hidden {
   display: none;
 }
@@ -2408,6 +2521,18 @@ textarea {
 
   .response {
     min-height: 180px;
+  }
+}
+
+@media (max-width: 600px) and (orientation: portrait) {
+  .panel.prompt.mobile-active:has(.run-ledger:not(.hidden)) {
+    overflow-y: auto;
+  }
+
+  .panel.prompt.mobile-active:has(.run-ledger:not(.hidden)) .chat-footer {
+    position: relative;
+    bottom: auto;
+    flex: 0 0 auto;
   }
 }
 

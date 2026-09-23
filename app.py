@@ -20,7 +20,7 @@ from itertools import cycle
 from typing import Dict, List, Literal, Optional
 from urllib.parse import urljoin, urlparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import requests
 import re
@@ -31,11 +31,20 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 import httpx
 import uuid
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 
 from daveharness import (
+    ApprovalDecision,
     DEFAULT_ERROR_BUDGET,
     DEFAULT_STEP_LIMIT,
     InMemoryPendingCallStore,
+    InMemoryRunStore,
+    Harness,
+    NoopEventSink,
+    RunBudget,
+    RunRequest,
+    TERMINAL_RUN_STATUSES,
     ToolDefinition,
     ToolRegistry,
     resume_executor_loop,
@@ -50,6 +59,7 @@ from project_context import (
     component_quotas,
     estimate_tokens as estimate_project_tokens,
 )
+from davellm_shell import ShellProcessRunner, prepare_shell_command
 
 # ============================================================
 # CONSTANTS
@@ -169,6 +179,7 @@ def _load_model_context_windows() -> Dict[str, int]:
 TOOLS_ENABLED = _env_flag("DAVE_ENABLE_TOOLS")
 SHELL_TOOL_ENABLED = _env_flag("DAVE_ENABLE_SHELL_TOOL")
 TOOL_ROOTS = _load_tool_roots()
+SHELL_RUNNER = ShellProcessRunner(TOOL_ROOTS)
 MODEL_CONTEXT_WINDOWS = _load_model_context_windows()
 
 def track_model_failure(model_id: str, error_type: str):
@@ -1255,35 +1266,27 @@ def tool_system_info(params: Dict) -> ToolResult:
     except Exception as e:
         return ToolResult(tool="system.info", status="error", result="", error=str(e))
 
-def tool_shell_exec(params: Dict) -> ToolResult:
+def tool_shell_exec(params: Dict, context=None):
     """Execute shell command (restricted whitelist only)."""
+    if not SHELL_TOOL_ENABLED:
+        return ToolResult(
+            tool="shell.exec",
+            status="error",
+            result="",
+            error="shell.exec is disabled. Set DAVE_ENABLE_SHELL_TOOL=true to enable it.",
+        )
+    if context is not None:
+        return SHELL_RUNNER.execute(params, context)
     try:
-        if not SHELL_TOOL_ENABLED:
-            return ToolResult(
-                tool="shell.exec",
-                status="error",
-                result="",
-                error="shell.exec is disabled. Set DAVE_ENABLE_SHELL_TOOL=true to enable it.",
-            )
-        cmd = params.get("command", "")
-        if not cmd:
-            return ToolResult(tool="shell.exec", status="error", result="", error="Missing command")
-        
-        # Whitelist safe commands only
-        safe_commands = ["echo", "date", "pwd", "ls", "wc", "head", "tail"]
-        first_cmd = cmd.split()[0] if cmd.split() else ""
-        
-        if first_cmd not in safe_commands:
-            return ToolResult(tool="shell.exec", status="error", result="", error=f"Command not whitelisted: {first_cmd}")
-        
-        # Execute with timeout — use shlex to avoid shell injection
-        import shlex
+        argv, cwd = prepare_shell_command(str(params.get("command", "")), TOOL_ROOTS)
         result = subprocess.run(
-            shlex.split(cmd),
+            argv,
             shell=False,
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
+            cwd=cwd,
+            start_new_session=True,
         )
         
         output = result.stdout if result.returncode == 0 else result.stderr
@@ -1298,6 +1301,9 @@ def tool_shell_exec(params: Dict) -> ToolResult:
 
 ASYNC_TOOL_HANDLER_ALLOWLIST = frozenset({"web.fetch"})
 TOOL_REGISTRY = ToolRegistry(
+    async_handler_allowlist=ASYNC_TOOL_HANDLER_ALLOWLIST,
+)
+HARNESS_REGISTRY = ToolRegistry(
     async_handler_allowlist=ASYNC_TOOL_HANDLER_ALLOWLIST,
 )
 PENDING_CALL_STORE = InMemoryPendingCallStore()
@@ -1417,9 +1423,76 @@ def register_builtin_tools() -> None:
         )
     for definition in definitions:
         TOOL_REGISTRY.register(definition)
+        HARNESS_REGISTRY.register(
+            replace(definition, context_handler=True)
+            if definition.name == "shell.exec" else definition
+        )
 
 
 register_builtin_tools()
+
+
+@dataclass(frozen=True)
+class HostRunBinding:
+    user_id: str
+    node_url: str
+    model: str
+    max_tokens: int
+    temperature: float
+    project_id: Optional[str]
+    brain_revision: Optional[int]
+    brain_digest: Optional[str]
+    context_budget: dict
+
+
+HOST_RUN_BINDINGS: dict[str, HostRunBinding] = {}
+HOST_RUN_CONTEXT: ContextVar[HostRunBinding | None] = ContextVar(
+    "davellm_harness_run", default=None,
+)
+HOST_RUN_TASKS: set[asyncio.Task] = set()
+MAX_ACTIVE_HARNESS_RUNS = 4
+MAX_HARNESS_INPUT_BYTES = 1_000_000
+MAX_HARNESS_MODEL_RESPONSE_BYTES = 1_000_000
+HARNESS_STORE_HEADROOM_BYTES = 4_000_000
+HARNESS_STORE = InMemoryRunStore(max_runs=32, max_bytes=268_435_456, ttl_seconds=3600)
+HARNESS_STORE.add_remove_listener(lambda run_id: HOST_RUN_BINDINGS.pop(run_id, None))
+
+
+async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dict:
+    """Use the node/model captured for this run, including after approval resume."""
+    binding = HOST_RUN_CONTEXT.get()
+    if binding is None:
+        raise RuntimeError("Run model binding is unavailable")
+    payload = {
+        "model": binding.model,
+        "messages": messages,
+        "tools": schemas,
+        "tool_choice": "auto",
+        "max_tokens": binding.max_tokens,
+        "temperature": binding.temperature,
+        "stream": False,
+    }
+    async with httpx.AsyncClient(timeout=120) as client:
+        async with client.stream(
+            "POST", f"{binding.node_url}/v1/chat/completions", json=payload,
+            headers={"Accept-Encoding": "identity"},
+        ) as response:
+            response.raise_for_status()
+            body = bytearray()
+            async for chunk in response.aiter_raw(chunk_size=65_536):
+                if len(body) + len(chunk) > MAX_HARNESS_MODEL_RESPONSE_BYTES:
+                    raise ValueError("Model response exceeds the tool run byte limit")
+                body.extend(chunk)
+        return json.loads(body)
+
+
+HARNESS = Harness(
+    registry=HARNESS_REGISTRY,
+    invoke_model=invoke_harness_model,
+    store=HARNESS_STORE,
+    runner=SHELL_RUNNER,
+    event_sink=NoopEventSink(),
+)
 
 # ============================================================
 # MEMORY STORAGE
@@ -1626,6 +1699,7 @@ def build_project_messages_for_node(
     query: str,
     system_prompt: str,
     history: List[dict],
+    capture_brain: bool = False,
 ) -> tuple[List[dict], dict]:
     """Assemble the P4 order and reserve exact room for all four components."""
     if not project_id:
@@ -1642,7 +1716,11 @@ def build_project_messages_for_node(
         - safety_margin
         - non_project_tokens
     )
-    assembled = PROJECT_CONTEXT.build_context_messages(
+    assemble = (
+        PROJECT_CONTEXT.capture_run_context if capture_brain
+        else PROJECT_CONTEXT.build_context_messages
+    )
+    assembled = assemble(
         project_id,
         query=query,
         available_tokens=available_project_tokens,
@@ -1651,6 +1729,7 @@ def build_project_messages_for_node(
         build_messages_for_node(system_prompt, history, assembled["messages"]),
         {
             **assembled["budget"],
+            **({"brain_revision": assembled["brain_revision"], "brain_digest": assembled["brain_digest"]} if capture_brain else {}),
             "model_context_window": context_window,
             "output_reserve": max(1, int(output_reserve or 2048)),
             "safety_margin": safety_margin,
@@ -1931,6 +2010,32 @@ class AgentResumeRequest(BaseModel):
     call_id: str = Field(min_length=1, max_length=256)
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     decision: Literal["approve", "deny"]
+
+
+class LifecycleRunRequest(BaseModel):
+    messages: List[Dict]
+    node_id: str = Field(min_length=1, max_length=128)
+    model: str = Field(min_length=1, max_length=128)
+    project_id: Optional[str] = Field(default=None, max_length=128)
+    conversation_id: Optional[str] = Field(default=None, max_length=128)
+    max_tokens: int = Field(default=2048, ge=1, le=262_144)
+    temperature: float = Field(default=0.7, ge=0, le=2)
+    step_limit: int = Field(default=8, ge=1, le=32)
+    error_budget: int = Field(default=2, ge=1, le=8)
+
+    @field_validator("messages")
+    @classmethod
+    def validate_messages(cls, value: List[Dict]) -> List[Dict]:
+        return AgentRunRequest.validate_messages(value)
+
+
+class LifecycleDecisionRequest(BaseModel):
+    call_id: str = Field(min_length=1, max_length=256)
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    definition_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    permission: str = Field(min_length=1, max_length=80)
+    nonce: str = Field(min_length=1, max_length=128)
+    decision: Literal["approve", "reject"]
 
 
 BRAIN_COMPACTION_QUEUE: asyncio.Queue[str] = asyncio.Queue()
@@ -2817,6 +2922,209 @@ async def resume_agent_endpoint(
         pending_store=PENDING_CALL_STORE,
     )
     return outcome.to_dict()
+
+
+def _lifecycle_run(run_id: str, user_id: str):
+    result = HARNESS.snapshot(run_id)
+    binding = HOST_RUN_BINDINGS.get(run_id)
+    if binding is None or binding.user_id != user_id:
+        if result.reason_code == "run_expired":
+            raise HTTPException(410, "Run expired")
+        raise HTTPException(404, "Run not found")
+    return result, binding
+
+
+def _lifecycle_response(run_id: str, result, binding: HostRunBinding) -> dict:
+    return {
+        "run_id": run_id,
+        "status": result.status,
+        "reason_code": result.reason_code,
+        "snapshot": result.snapshot.to_dict() if result.snapshot else None,
+        "context": {
+            "project_id": binding.project_id,
+            "brain_revision": binding.brain_revision,
+            "brain_digest": binding.brain_digest,
+            "budget": binding.context_budget,
+        },
+    }
+
+
+async def _start_harness_run(request: RunRequest, binding: HostRunBinding) -> None:
+    token = HOST_RUN_CONTEXT.set(binding)
+    try:
+        await HARNESS.start(request)
+    finally:
+        HOST_RUN_CONTEXT.reset(token)
+
+
+@app.post("/tools/agent/runs")
+async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_current_user)):
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    if len(HOST_RUN_TASKS) >= MAX_ACTIVE_HARNESS_RUNS:
+        raise HTTPException(429, "Too many active tool runs")
+    if (HARNESS_STORE.run_count >= HARNESS_STORE.max_runs or
+            HARNESS_STORE.stored_bytes > HARNESS_STORE.max_bytes - HARNESS_STORE_HEADROOM_BYTES):
+        raise HTTPException(503, "Tool run ledger is at capacity")
+    node = get_node_by_id(req.node_id)
+    inventory = MODEL_INVENTORY.get(node.id)
+    if inventory is None:
+        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
+    if req.model not in inventory:
+        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    messages = req.messages
+    project_id = req.project_id
+    context_budget: dict = {}
+    project = get_project(project_id, user_id) if project_id else {}
+    conversation: dict = {}
+    if req.conversation_id:
+        assert_convo_owner(req.conversation_id, user_id)
+        stored = CONVERSATIONS[req.conversation_id]
+        if stored.get("project_id") != project_id:
+            raise HTTPException(409, "Run project must match the attached conversation project")
+        conversation = dict(stored)
+    if project_id or req.conversation_id:
+        history = prepare_history_for_prompt([
+            dict(item) for item in messages if item.get("role") != "system"
+        ])
+        system_prompt = resolve_conversation_system_prompt(
+            conversation or {"session_override": "", "instruction_mode": "layered"}, project,
+        )
+        messages = build_messages_for_node(system_prompt, history)
+    if project_id:
+        query = next((str(item.get("content") or "") for item in reversed(history) if item.get("role") == "user"), "")
+        try:
+            messages, context_budget = build_project_messages_for_node(
+                project_id=project_id, project=project, model_id=req.model,
+                output_reserve=req.max_tokens, query=query,
+                system_prompt=system_prompt, history=history,
+                capture_brain=True,
+            )
+        except ProjectContextError as exc:
+            raise context_http_error(exc)
+    run_id = f"run_{uuid.uuid4().hex}"
+    binding = HostRunBinding(
+        user_id, node.url, req.model, req.max_tokens, req.temperature,
+        project_id, context_budget.get("brain_revision"),
+        context_budget.get("brain_digest"), context_budget,
+    )
+    try:
+        request = RunRequest.create(
+            messages, run_id=run_id, model_id=req.model,
+            budget=RunBudget(model_steps=req.step_limit, errors=req.error_budget),
+            deadline_at=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            allowed_permissions=tuple(sorted({
+                item["permission"] for item in HARNESS_REGISTRY.public_catalog().values()
+            })),
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if len(request.messages_json.encode("utf-8")) > MAX_HARNESS_INPUT_BYTES:
+        raise HTTPException(413, "Tool run input is too large")
+    HOST_RUN_BINDINGS[run_id] = binding
+    task = asyncio.create_task(_start_harness_run(request, binding))
+    HOST_RUN_TASKS.add(task)
+    task.add_done_callback(HOST_RUN_TASKS.discard)
+    await asyncio.sleep(0)
+    if task.done() and task.exception() is not None:
+        HOST_RUN_BINDINGS.pop(run_id, None)
+        raise HTTPException(500, "Run could not be started")
+    result, _ = _lifecycle_run(run_id, user_id)
+    return _lifecycle_response(run_id, result, binding)
+
+
+@app.get("/tools/agent/runs/{run_id}")
+def get_agent_run(run_id: str, user_id: str = Depends(get_current_user)):
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    result, binding = _lifecycle_run(run_id, user_id)
+    return _lifecycle_response(run_id, result, binding)
+
+
+@app.get("/tools/agent/runs/{run_id}/events")
+async def get_agent_run_events(
+    run_id: str, request: Request, after: int = 0, stream: bool = False,
+    user_id: str = Depends(get_current_user),
+):
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    _lifecycle_run(run_id, user_id)
+    cursor_text = request.headers.get("last-event-id")
+    if cursor_text:
+        try:
+            after = max(after, int(cursor_text))
+        except ValueError as exc:
+            raise HTTPException(400, "Invalid event cursor") from exc
+    if after < 0:
+        raise HTTPException(400, "Invalid event cursor")
+    if not stream:
+        return {
+            "run_id": run_id,
+            "events": [event.to_dict() for event in HARNESS.events(run_id, after=after)],
+        }
+
+    async def frames():
+        cursor = after
+        while True:
+            if await request.is_disconnected():
+                return
+            for event in HARNESS.events(run_id, after=cursor):
+                cursor = event.sequence
+                yield f"id: {cursor}\nevent: {event.kind}\ndata: {json.dumps(event.to_dict(), separators=(',', ':'))}\n\n"
+                if event.kind == "terminal":
+                    return
+            result = HARNESS.snapshot(run_id)
+            if result.snapshot is None or result.status in TERMINAL_RUN_STATUSES:
+                return
+            await asyncio.sleep(0.2)
+
+    return StreamingResponse(frames(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/tools/agent/runs/{run_id}/decisions")
+async def decide_agent_run(
+    run_id: str, req: LifecycleDecisionRequest,
+    user_id: str = Depends(get_current_user),
+):
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    result, binding = _lifecycle_run(run_id, user_id)
+    pending = result.snapshot.pending_call if result.snapshot else None
+    if result.status != "approval_required" or pending is None:
+        raise HTTPException(409, "Run has no pending approval")
+    if (
+        req.call_id != pending.call_id or req.digest != pending.digest
+        or req.definition_fingerprint != pending.definition_fingerprint
+        or req.permission != pending.permission or req.nonce != pending.nonce
+    ):
+        raise HTTPException(409, "Pending call changed")
+    now = datetime.now(timezone.utc).isoformat()
+    if now >= pending.expires_at:
+        raise HTTPException(409, "Pending approval expired")
+    decision = ApprovalDecision(
+        run_id=run_id, call_id=req.call_id, digest=req.digest,
+        definition_fingerprint=req.definition_fingerprint,
+        permission=req.permission, nonce=req.nonce,
+        decision_id=f"decision_{uuid.uuid4().hex}", decision=req.decision,
+        issued_at=now, expires_at=pending.expires_at,
+    )
+    token = HOST_RUN_CONTEXT.set(binding)
+    try:
+        decided = await HARNESS.decide(decision)
+    finally:
+        HOST_RUN_CONTEXT.reset(token)
+    return _lifecycle_response(run_id, decided, binding)
+
+
+@app.post("/tools/agent/runs/{run_id}/cancel")
+async def cancel_agent_run(run_id: str, user_id: str = Depends(get_current_user)):
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    current, binding = _lifecycle_run(run_id, user_id)
+    if current.status == "approval_required":
+        raise HTTPException(409, "Reject the pending call to stop this run")
+    result = await HARNESS.cancel(run_id)
+    return _lifecycle_response(run_id, result, binding)
 
 @app.post("/route/decision", response_model=RouteDecisionResponse)
 def route_decision(req: RouteDecisionRequest, user_id: str = Depends(get_current_user)):
@@ -3744,6 +4052,13 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Save conversations on shutdown."""
+    for run_id in tuple(HOST_RUN_BINDINGS):
+        if HARNESS.snapshot(run_id).status not in TERMINAL_RUN_STATUSES:
+            await HARNESS.cancel(run_id)
+    for task in tuple(HOST_RUN_TASKS):
+        task.cancel()
+    if HOST_RUN_TASKS:
+        await asyncio.gather(*HOST_RUN_TASKS, return_exceptions=True)
     for task in BACKGROUND_TASKS:
         task.cancel()
     if BACKGROUND_TASKS:
