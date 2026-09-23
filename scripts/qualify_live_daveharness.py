@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -90,6 +91,15 @@ class Resources:
     tokens: int = 0
     calls: int = 0
     stopped: str | None = None
+    ledger: Path | None = None
+
+    def save(self) -> None:
+        if self.ledger is not None:
+            data = {"started_epoch": time.time() - (time.monotonic() - self.started),
+                    "tokens": self.tokens, "calls": self.calls, "stop_reason": self.stopped}
+            temporary = self.ledger.with_suffix(".tmp")
+            temporary.write_text(canonical(data) + "\n")
+            temporary.replace(self.ledger)
 
     def reserve(self, request: dict[str, Any]) -> int:
         # UTF-8 byte count plus a generous template allowance bounds prompt tokens.
@@ -102,6 +112,7 @@ class Resources:
             raise RuntimeError(self.stopped)
         self.tokens += amount
         self.calls += 1
+        self.save()
         return amount
 
     def settle(self, reserved: int, usage: dict[str, Any]) -> None:
@@ -114,6 +125,7 @@ class Resources:
             self.stopped = "token_reservation_exceeded"
             raise RuntimeError(self.stopped)
         self.tokens -= reserved - actual
+        self.save()
 
 
 def confined(root: Path, value: str) -> Path:
@@ -153,6 +165,7 @@ async def evaluate(case: dict[str, Any], directory: Path, client: httpx.AsyncCli
     approved: dict[str, Any] | None = None
     model_done = asyncio.Event()
     transcripts: list[dict[str, Any]] = []
+    transport_failures: list[dict[str, Any]] = []
 
     def read(args: dict[str, Any]) -> str:
         path = confined(directory, args["path"])
@@ -191,10 +204,20 @@ async def evaluate(case: dict[str, Any], directory: Path, client: httpx.AsyncCli
             request["tools"] = schemas
         reserved = resources.reserve(request)
         timeout = min(120, resources.wall_seconds - (time.monotonic() - resources.started))
-        async with asyncio.timeout(timeout):
-            response = await client.post("/v1/chat/completions", json=request)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            async with asyncio.timeout(timeout):
+                response = await client.post("/v1/chat/completions", json=request)
+                if response.is_error:
+                    # Synthetic requests only; redact address/path-like server diagnostics.
+                    detail = re.sub(r"https?://\S+|(?:\d{1,3}\.){3}\d{1,3}|/[\w./-]+", "[redacted]", response.text[:512])
+                    transport_failures.append({"status_code": response.status_code, "detail": detail})
+                response.raise_for_status()
+                data = response.json()
+        except (httpx.HTTPError, TimeoutError) as exc:
+            resources.stopped = "transport_" + type(exc).__name__
+            resources.save()
+            transport_failures.append({"error_type": type(exc).__name__})
+            raise
         resources.settle(reserved, data.get("usage", {}))
         message = data["choices"][0]["message"]
         normalized, error = parse_tool_calls(message)
@@ -287,6 +310,7 @@ async def evaluate(case: dict[str, Any], directory: Path, client: httpx.AsyncCli
            "terminal_events": sum(event.kind == "terminal" for event in events),
            "fault_injected": family == "cancel", "elapsed_seconds": round(time.monotonic() - started, 3)}
     (directory / "evidence.json").write_text(canonical({"case": case, "result": row, "responses": transcripts,
+                                                     "transport_failures": transport_failures,
                                                      "events": [event.to_dict() for event in events]}) + "\n")
     return row
 
@@ -331,7 +355,14 @@ async def main() -> int:
     directory = root / stamp
     directory.mkdir(mode=0o700)
     corpus = cases()
-    resources = Resources(time.monotonic())
+    ledger = root / "authorization.json"
+    if ledger.exists():
+        prior = json.loads(ledger.read_text())
+        resources = Resources(time.monotonic() - (time.time() - prior["started_epoch"]),
+                              tokens=prior["tokens"], calls=prior["calls"], ledger=ledger)
+    else:
+        resources = Resources(time.monotonic(), ledger=ledger)
+    resources.save()
     metadata = {"model": MODEL, "model_digest": DIGEST, "node_label": "walter", "started_at": stamp,
                 "corpus_sha256": hashlib.sha256(canonical(corpus).encode()).hexdigest(),
                 "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),

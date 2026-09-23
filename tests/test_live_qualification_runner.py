@@ -85,3 +85,18 @@ def test_grading_requires_schema_evidence_and_no_vacuous_completion():
     valid = dict(row, schema_valid_calls=1)
     assert grade([valid] * 500, Resources(time.monotonic()))["qualified"]
     assert not grade([dict(valid, unauthorized_effects=1)] + [valid] * 499, Resources(time.monotonic()))["qualified"]
+
+
+@pytest.mark.asyncio
+async def test_transport_failure_stops_batch_and_persists_full_reservation(tmp_path):
+    resource = Resources(time.monotonic(), ledger=tmp_path / "authorization.json")
+    def fail(_request):
+        return httpx.Response(500, json={"error": "model requires more system memory"})
+    async with httpx.AsyncClient(base_url="http://model.test", transport=httpx.MockTransport(fail)) as client:
+        row = await evaluate(cases()[0], tmp_path / "case", client, resource)
+    assert row["status"] == "model_error"
+    assert resource.stopped == "transport_HTTPStatusError"
+    saved = json.loads(resource.ledger.read_text())
+    assert saved["tokens"] == resource.tokens > 0 and saved["calls"] == 1
+    evidence = json.loads((tmp_path / "case/evidence.json").read_text())
+    assert evidence["transport_failures"][0]["status_code"] == 500
