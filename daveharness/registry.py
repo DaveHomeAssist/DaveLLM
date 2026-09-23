@@ -10,6 +10,7 @@ import json
 import marshal
 import math
 import threading
+import uuid
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Collection, cast
 
@@ -142,6 +143,7 @@ class ToolRegistry:
         self._registration_revisions: dict[str, int] = {}
         self._fingerprints: dict[str, str] = {}
         self._lock = threading.RLock()
+        self.instance_id = uuid.uuid4().hex
         self._async_handler_allowlist = frozenset(async_handler_allowlist)
 
     def register(self, definition: ToolDefinition) -> None:

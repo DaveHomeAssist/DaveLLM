@@ -36,8 +36,14 @@ from .registry import (
     ToolRegistry,
 )
 from .schema import SchemaValidationError, validate_json_schema
+from .state import (
+    ApprovalDecision, PendingToolCall, RunSnapshot, RUN_STATE_VERSION,
+    RUN_STATUSES, TERMINAL_RUN_STATUSES, transition_run,
+)
+from .state_engine import RunCommandResult, SnapshotCAS, decide_run, resume_run
 
 __all__ = [
+    "ApprovalDecision",
     "CONTRACT_VERSION",
     "ContractDecodeError",
     "DEFAULT_ERROR_BUDGET",
@@ -58,18 +64,28 @@ __all__ = [
     "ParsedToolCall",
     "SchemaValidationError",
     "RunBudget",
+    "RunCommandResult",
+    "RunSnapshot",
+    "RUN_STATE_VERSION",
+    "RUN_STATUSES",
+    "TERMINAL_RUN_STATUSES",
     "RunPolicyContext",
     "ToolDefinition",
     "ToolExecution",
     "ToolHandler",
     "ToolRegistry",
     "ToolPolicy",
+    "PendingToolCall",
+    "SnapshotCAS",
+    "decide_run",
     "decode_contract",
     "encode_contract",
     "parse_tool_calls",
     "resume_executor_loop",
+    "resume_run",
     "run_executor_loop",
     "run_tool",
     "utc_timestamp",
+    "transition_run",
     "validate_json_schema",
 ]

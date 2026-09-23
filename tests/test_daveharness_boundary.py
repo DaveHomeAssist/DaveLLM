@@ -28,8 +28,9 @@ def _definition(*, schema=None, handler=None, approval_required=True):
 
 
 def test_public_api_and_legacy_compatibility_exports_are_stable():
-    assert daveharness.__version__ == "0.4.0"
+    assert daveharness.__version__ == "0.5.0"
     expected = {
+        "ApprovalDecision",
         "CONTRACT_VERSION",
         "ContractDecodeError",
         "DEFAULT_ERROR_BUDGET",
@@ -43,11 +44,18 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "ModelInvoker",
         "KNOWN_PERMISSIONS",
         "PENDING_CALL_TTL_SECONDS",
+        "PendingToolCall",
         "PendingCall",
         "PendingCallClaim",
         "PendingCallStore",
         "PolicyDecision",
         "ParsedToolCall",
+        "RUN_STATE_VERSION",
+        "RUN_STATUSES",
+        "TERMINAL_RUN_STATUSES",
+        "RunCommandResult",
+        "RunSnapshot",
+        "SnapshotCAS",
         "SchemaValidationError",
         "RunBudget",
         "RunPolicyContext",
@@ -58,12 +66,15 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "ToolPolicy",
         "__version__",
         "decode_contract",
+        "decide_run",
         "encode_contract",
         "parse_tool_calls",
         "resume_executor_loop",
+        "resume_run",
         "run_executor_loop",
         "run_tool",
         "utc_timestamp",
+        "transition_run",
         "validate_json_schema",
     }
     assert set(daveharness.__all__) == expected
@@ -227,6 +238,8 @@ def test_executor_package_has_no_davellm_runtime_dependencies():
         "policy.py",
         "registry.py",
         "schema.py",
+        "state.py",
+        "state_engine.py",
     }
 
     forbidden_imports = {
