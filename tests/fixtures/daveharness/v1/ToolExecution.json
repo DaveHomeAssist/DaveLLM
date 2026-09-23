@@ -1,0 +1,1 @@
+{"contract_type":"ToolExecution","contract_version":1,"payload":{"call_id":"call_3","completed_at":"2026-09-23T09:00:01+00:00","duration_ms":1.25,"error":null,"name":"echo","result":"ready","started_at":"2026-09-23T09:00:00+00:00","status":"success","termination":"completed"}}

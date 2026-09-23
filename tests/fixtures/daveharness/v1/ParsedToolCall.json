@@ -1,0 +1,1 @@
+{"contract_type":"ParsedToolCall","contract_version":1,"payload":{"arguments":{"nested":[1,true,{"text":"é"}]},"call_id":"call_1","name":"echo"}}

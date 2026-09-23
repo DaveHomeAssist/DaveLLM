@@ -6,7 +6,7 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
-**Current:** DaveLLM `2.1.0`, DaveHarness `0.2.0`
+**Current:** DaveLLM `2.1.0`, DaveHarness `0.3.0`
 
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
@@ -31,7 +31,7 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.2.0` owns the generic registry, schema validation, tool-call parsing, execution result, exact-call pending store, and bounded loop.
+- `daveharness 0.3.0` owns the generic registry, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, and versioned leaf-contract serializer.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
 - Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.
@@ -41,7 +41,7 @@ The `1.0.0` contract requires all of the following:
 - Tool results preserve existing status values and add `termination`: `completed`, `deadline_abandoned`, `denied`, or `error`.
 - Synchronous handlers run through `asyncio.to_thread`; `deadline_abandoned` stops waiting but cannot terminate the worker thread.
 - DaveLLM already has an authenticated SSE reader for chat, but the agent-run endpoint does not stream a run ledger.
-- Repository validation currently covers compilation, 71 Python tests, JavaScript and shell syntax, npm dependency checks, version consistency, documentation contracts, and whitespace.
+- Repository validation covers compilation, Python tests, strict DaveHarness typing, JavaScript and shell syntax, npm dependency checks, version consistency, documentation contracts, and whitespace.
 
 ### Evidence-supported inferences
 
@@ -113,7 +113,7 @@ DaveHarness owns decisions about how a run advances. DaveLLM owns whether a requ
 
 ## 5. Proposed interface contracts
 
-These are target `1.0.0` interfaces. DaveHarness `0.2.0` provides a deliberately smaller `PendingCall`, `PendingCallStore`, and `resume_executor_loop` compatibility milestone; the richer serializable contracts below do not exist until their numbered work packages are implemented.
+These are target `1.0.0` interfaces. DaveHarness `0.2.0` provided the smaller `PendingCall`, `PendingCallStore`, and `resume_executor_loop` compatibility milestone. H1 `0.3.0` adds versioned serialization only for existing leaf values; budgets remain H2 work and `RunSnapshot` plus resumable lifecycle state remain H3 work.
 
 | Interface | Required contract | Failure contract |
 |---|---|---|
@@ -174,7 +174,7 @@ Only `approval_required` may resume. Only `running` may enter `cancelling`. Ever
 |---|---:|---|---|
 | H0 | `0.1.0` | Remains `2.1.0` | Completed extraction baseline |
 | Execution semantics | `0.2.0` | Remains `2.1.0` | Completed sync-first, honest termination, and exact-call compatibility milestone |
-| H1 | `0.3.0` | None | Internal contract decomposition |
+| H1 | `0.3.0` | None | Completed leaf-contract decomposition and versioned serialization |
 | H2 | `0.4.0` | None | Additive policy and budget contracts |
 | H3 | `0.5.0` | None | Generalized serializable state and exact-call approval API |
 | H4 | `0.6.0` | None | Additive cancellation and deadline API |
@@ -226,12 +226,12 @@ This compatibility milestone was intentionally narrower than the future lifecycl
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
-| 7 | Split `executor.py` internally into `contracts.py`, `registry.py`, `schema.py`, `parser.py`, and `engine.py` while preserving package exports. | Existing tests pass without caller changes; code-move diff is behavior-neutral. | Medium | Revert module split | Ready |
-| 8 | Define immutable typed values for budgets, parsed calls, pending calls, tool executions, outcomes, and snapshots. | Construction and equality tests cover every field and default. | Medium | New types are additive | Ready |
-| 9 | Add deterministic `to_dict` and `from_dict` round trips with defensive copies at every boundary. | Golden serialized fixtures round-trip byte-for-byte after canonical JSON encoding. | Medium | Keep legacy serializers | Ready |
-| 10 | Add `CONTRACT_VERSION = 1` and reject unknown schema versions before state is trusted. | Forward-version fixtures fail closed without executing a model or tool. | Low | Version check can be reverted | Ready |
-| 11 | Add and pin the currently supported `mypy` release as a development-only dependency, enable strict checking for `daveharness/`, and add the CI gate. | Python 3.12 CI reports no package type errors; runtime dependencies remain unchanged. | Low | Remove development gate | Ready |
-| 12 | Expand public-API, import-boundary, constructor-validation, round-trip, and golden-shape tests. | Targeted contract suite and full repository suite pass. | Low | Test-only revert | Ready |
+| 7 | Split `executor.py` internally into `contracts.py`, `registry.py`, `schema.py`, `parser.py`, and `engine.py` while retaining `executor.py` and root `tool_executor.py` compatibility exports. | Existing executor and boundary tests pass without caller changes. | Medium | Revert module split | Completed |
+| 8 | Keep frozen typed values for parsed calls, pending calls, tool executions, and outcomes; validate construction and own nested JSON copies. Generalized budgets belong to H2; `RunSnapshot` belongs to H3. | Constructor, equality, and defensive-copy tests cover existing leaf values. | Medium | New validation can be reverted | Completed |
+| 9 | Add separate deterministic `encode_contract` and `decode_contract` round trips; preserve legacy `ExecutorOutcome.to_dict()` and HTTP response dictionaries. | Version-one golden fixtures round-trip byte-for-byte after canonical JSON encoding. | Medium | Keep legacy serializers | Completed |
+| 10 | Add `CONTRACT_VERSION = 1` and reject unknown versions, types, and fields before constructing a leaf value. | Forward-version fixtures fail closed before value construction. | Low | Version check can be reverted | Completed |
+| 11 | Pin `mypy==2.3.1` as a development-only dependency, enable Python 3.12 strict checking for `daveharness/`, and add the CI gate. | Python 3.12 type check reports no package errors; runtime dependencies remain unchanged. | Low | Remove development gate | Completed |
+| 12 | Expand public-API, import-boundary, constructor-validation, round-trip, and golden-shape tests. | Targeted contract suite and full repository suite pass. | Low | Test-only revert | Completed |
 
 ### H2: centralize policy and budgets, `0.4.0`
 
@@ -411,7 +411,7 @@ When H1 introduces the approved development checks, strict typing, supported-Pyt
 ```text
 H0 complete
    -> 0.2.0 execution semantics complete
-   -> H1 contracts
+   -> H1 0.3.0 leaf contracts complete
    -> H2 policy and budgets
    -> H3 state and exact approval
    -> H4 deadlines and cancellation
@@ -424,4 +424,4 @@ H0 complete
 
 Do not implement H7 before H3 through H6 are stable: an HTTP or UI layer built on an unsettled state machine would create duplicate lifecycle logic. Do not claim `1.0.0` before H9 live qualification; deterministic tests prove engineering behavior, not model-specific reliability. Do not combine all remaining phases into one change. Each phase must finish its own test, commit, push, CI, and documentation gates before the next phase begins.
 
-The next executable package is **H1: make contracts explicit and serializable at `0.3.0`**. It is bounded to internal module decomposition, typed immutable values, contract versioning, strict package typing, and regression tests; it must not add endpoints, UI, persistence, live runtime actions, or new tool behavior.
+The next package is **H2: centralize policy and budgets at `0.4.0`**. H2 owns the generalized immutable budget contract. H3 owns `RunSnapshot`, transitions, and resumable lifecycle state. H1's serializer is deliberately limited to `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome`; it does not serialize handlers, continuations, registries, run state, or storage.

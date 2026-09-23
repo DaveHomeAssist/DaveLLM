@@ -32,6 +32,9 @@ jobs:
       - name: Tests
         run: python -m pytest -q
 
+      - name: DaveHarness strict types
+        run: python -m mypy daveharness
+
       - name: JavaScript syntax check
         run: node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
 

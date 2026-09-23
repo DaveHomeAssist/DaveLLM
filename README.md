@@ -12,7 +12,7 @@ DaveLLM is an Electron desktop client backed by a FastAPI router. The router dis
 | [CLAUDE.md](CLAUDE.md) | Maintainer architecture, trust boundaries, and repository constraints. |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Placeholder-only launch, health, inventory, persistence, and troubleshooting runbook. |
 | [DaveHarness boundary and versioning decision](docs/decisions/0001-daveharness-boundary-and-versioning.md) | Implemented product ownership, package seam, SemVer authority, and revisit triggers. |
-| [DaveHarness implementation plan](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md) | Authoritative 60-action roadmap from the original in-process `0.1.0` boundary through shipped `0.2.0` execution semantics to a qualified `1.0.0` contract. |
+| [DaveHarness implementation plan](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md) | Authoritative 60-action roadmap from the original in-process `0.1.0` boundary through shipped `0.2.0` execution semantics and `0.3.0` leaf contracts to a qualified `1.0.0` contract. |
 | [dave-llm-feature-analysis-2026-03-25.md](dave-llm-feature-analysis-2026-03-25.md) | Dated feature-status analysis with explicit verification boundaries. |
 | [docs/EXECUTABLE_PROMPT_SERIES.md](docs/EXECUTABLE_PROMPT_SERIES.md) | P0 through P8 decision, plan, implementation, and review contracts. |
 | [Public landing page](https://davehomeassist.github.io/DaveLLM/) | Published product overview and quickstart; not the desktop runtime static root. |
@@ -111,7 +111,9 @@ Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and 
 
 The tool registry publishes one JSON schema per active tool. `POST /tools/agent/run` sends the current schemas to Ollama on every bounded model step, validates arguments, logs call and result timing, returns the complete transcript, stops after eight steps by default, and pauses before tools marked as requiring approval. The pending response includes a `run_id` plus exact-call metadata. `POST /tools/agent/resume` accepts that run ID, call ID, SHA-256 argument digest, and an `approve` or `deny` decision for up to 300 seconds. Approval executes the stored canonical arguments without replaying the paused model step; denial records an operator-denied tool result and continues.
 
-The generic registry and bounded-loop implementation lives in the in-process `daveharness` package at version `0.2.0`. DaveLLM imports that public API and retains concrete tools, authentication, Ollama transport, persistence, and HTTP routes in `app.py`. Root `tool_executor.py` is a compatibility re-export for existing imports; new code must import `daveharness`.
+The generic registry and bounded-loop implementation lives in the in-process `daveharness` package at version `0.3.0`. DaveLLM imports that public API and retains concrete tools, authentication, Ollama transport, persistence, and HTTP routes in `app.py`. Root `tool_executor.py` and `daveharness/executor.py` remain compatibility re-exports; new code should import `daveharness`.
+
+DaveHarness `0.3.0` adds `CONTRACT_VERSION = 1` and the separate `encode_contract`/`decode_contract` envelope for `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome`. The envelope has exactly `contract_version`, `contract_type`, and `payload`; canonical JSON uses sorted keys, compact separators, and UTF-8 without ASCII escaping. Unknown versions, types, fields, invalid timestamps, non-finite numbers, and non-JSON nested values are rejected. `ExecutorOutcome.to_dict()` and `/tools/agent/*` responses keep their existing fields. Generalized budgets and `RunSnapshot` remain later roadmap phases.
 
 Tool handlers are synchronous by default. Coroutine handlers require both `async_handler=True` and a host-supplied name allowlist; DaveLLM currently permits only `web.fetch`. Definitions declare `cancellation` as `bounded` or `abandon`, and write or approval-required tools cannot use `abandon`. Existing tool status strings are unchanged. The additive `termination` field is `completed`, `deadline_abandoned`, `denied`, or `error`; `deadline_abandoned` means the response deadline elapsed and the underlying synchronous worker may still be running. Pending calls live only in the current process and do not survive restart.
 
@@ -155,12 +157,15 @@ Suggestion preferences use the versioned `davellm_anticipation_v1` local-storage
 
 ## Validation
 
+Install `requirements-dev.txt` in the project virtual environment before running these checks.
+
 ```bash
 source venv/bin/activate
 python -m py_compile app.py
 python -m py_compile project_context.py scripts/project_context_cli.py
 python -m py_compile tool_executor.py
 python -m compileall -q daveharness
+python -m mypy daveharness
 python -m pytest -q
 node --check static/app.js
 node --check static/anticipation.js

@@ -3,7 +3,7 @@
 | Field | Current value |
 |---|---|
 | Product | DaveLLM |
-| Status | Implemented local application with in-process DaveHarness `0.2.0` boundary |
+| Status | Implemented local application with in-process DaveHarness `0.3.0` boundary |
 | Owner and primary operator | Dave Robertson |
 | Canonical repository | `DaveHomeAssist/DaveLLM` |
 | Application version | DaveLLM `2.1.0`, sourced from root `VERSION` |
@@ -45,11 +45,11 @@ The product is intended for one high-bandwidth technical operator moving between
 
 DaveLLM owns the Electron/browser experience, FastAPI HTTP and authentication boundary, Ollama node/model integration, projects and BRAIN, persistence, dictation, and product-specific tool implementations. DaveHarness owns the tool registry, schemas, validation, permissions, approvals, bounded execution loop, timing, terminal states, and transcripts. It receives model and tool implementations through interfaces and must not read DaveLLM persistence, environment, HTTP, or UI state directly.
 
-The generic implementation lives in `daveharness/executor.py` and is exposed through an explicit package API. Root `tool_executor.py` remains a compatibility re-export for legacy callers. Duplicate tool registration is rejected, and the registry snapshots security-relevant definition data so caller-owned schema mutation cannot alter registered behavior. First-party handlers are synchronous except for explicitly opted-in, allowlisted `web.fetch`; every definition declares whether a missed deadline is bounded by its handler or must be treated as abandoned.
+The generic implementation lives in `daveharness/contracts.py`, `registry.py`, `schema.py`, `parser.py`, and `engine.py`, and is exposed through an explicit package API. `daveharness/executor.py` and root `tool_executor.py` remain compatibility re-exports for legacy callers. Duplicate tool registration is rejected, and the registry snapshots security-relevant definition data so caller-owned schema mutation cannot alter registered behavior. First-party handlers are synchronous except for explicitly opted-in, allowlisted `web.fetch`; every definition declares whether a missed deadline is bounded by its handler or must be treated as abandoned.
 
 The complete options, tradeoffs, version policy, consequences, and revisit triggers are recorded in [`docs/decisions/0001-daveharness-boundary-and-versioning.md`](docs/decisions/0001-daveharness-boundary-and-versioning.md).
 
-The authoritative path from the original `0.1.0` extraction through the shipped `0.2.0` execution-semantics milestone to an in-process, qualified `1.0.0` contract is recorded in [`docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md`](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md). It defines the component boundaries, proposed interfaces, sixty implementation actions, compatibility and security invariants, version milestones, failure modes, and release gates.
+The authoritative path from the original `0.1.0` extraction through the shipped `0.2.0` execution-semantics and `0.3.0` leaf-contract milestones to an in-process, qualified `1.0.0` contract is recorded in [`docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md`](docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md). It defines the component boundaries, proposed interfaces, sixty implementation actions, compatibility and security invariants, version milestones, failure modes, and release gates.
 
 The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 
@@ -340,7 +340,7 @@ The optional dictation installer adds `whisper-cpp` and a checksum-verified Engl
 
 Root `VERSION` is the canonical DaveLLM Semantic Version. FastAPI metadata, startup output, `GET /health`, `package.json`, and the root `package-lock.json` entry must match it. Release tags use `vMAJOR.MINOR.PATCH`. Documentation-only changes do not require a version increment.
 
-The in-repository `daveharness` package is versioned independently at `0.2.0`. It is an internal importable package, not a published distribution, service, repository, CLI, or remote protocol. Future package changes follow independent SemVer while DaveLLM retains its own root `VERSION`.
+The in-repository `daveharness` package is versioned independently at `0.3.0`. It is an internal importable package, not a published distribution, service, repository, CLI, or remote protocol. Future package changes follow independent SemVer while DaveLLM retains its own root `VERSION`.
 
 ## 13. Quality and acceptance criteria
 
@@ -371,14 +371,15 @@ git diff --check
 
 ## 14. Current implementation snapshot
 
-As of 2026-09-02:
+Updated 2026-09-23; the 2026-09-02 observations below remain historical:
 
 - The prior `2.1.0` stabilization at commit `845e7db` included the Instructions exact-effective scroll repair and authenticated local microphone dictation repair; CI and GitHub Pages passed for that commit.
 - The public documentation artifact is `https://davehomeassist.github.io/DaveLLM/`.
 - The local DaveLLM process was stopped during this specification review; no claim of live node, inventory, model, or dictation availability is made by this snapshot.
 - The product version is unified at `2.1.0` through root `VERSION`; runtime and package mirrors are regression-tested.
-- The DaveHarness library boundary is implemented in-process at `0.2.0`, with the legacy root import preserved as a compatibility shim.
+- The DaveHarness library boundary is implemented in-process at `0.3.0`, with the legacy root import preserved as a compatibility shim.
 - DaveHarness `0.2.0` adds enforced sync-first handler registration, explicit cancellation declarations, honest termination metadata, and single-use exact-call approval/resume while DaveLLM remains `2.1.0`.
+- DaveHarness `0.3.0` splits the internal modules and adds version-one serialization for four existing leaf contracts while keeping DaveLLM `2.1.0` and its endpoint response fields unchanged.
 
 ## 15. Known limits and open decisions
 

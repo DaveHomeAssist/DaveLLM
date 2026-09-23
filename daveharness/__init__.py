@@ -2,6 +2,8 @@
 
 from ._version import __version__
 from .executor import (
+    CONTRACT_VERSION,
+    ContractDecodeError,
     DEFAULT_ERROR_BUDGET,
     DEFAULT_MODEL_TIMEOUT_SECONDS,
     DEFAULT_PENDING_CALL_STORE,
@@ -21,6 +23,8 @@ from .executor import (
     ToolExecution,
     ToolHandler,
     ToolRegistry,
+    decode_contract,
+    encode_contract,
     parse_tool_calls,
     resume_executor_loop,
     run_executor_loop,
@@ -30,6 +34,8 @@ from .executor import (
 )
 
 __all__ = [
+    "CONTRACT_VERSION",
+    "ContractDecodeError",
     "DEFAULT_ERROR_BUDGET",
     "DEFAULT_MODEL_TIMEOUT_SECONDS",
     "DEFAULT_PENDING_CALL_STORE",
@@ -50,6 +56,8 @@ __all__ = [
     "ToolHandler",
     "ToolRegistry",
     "__version__",
+    "decode_contract",
+    "encode_contract",
     "parse_tool_calls",
     "resume_executor_loop",
     "run_executor_loop",
