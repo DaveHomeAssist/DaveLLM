@@ -1,0 +1,11 @@
+# DaveHarness 0.7.0 event contract
+
+`RunEvent` is a version 1, metadata-only value. It has a run ID, sequence, kind, step, optional call and tool identifiers, status, reason code, UTC timestamp, optional duration, and optional input/output byte counts. It has no prompt, argument, result, path, URL, error text, or arbitrary payload field. Unknown versions and fields fail to decode.
+
+Pass an `EventJournal` to `resume_run`, `decide_run`, or `cancel_run` through the optional `events` argument. Each successful snapshot compare-and-swap allocates its event sequence numbers in `RunSnapshot.event_cursor`, then records those committed events. A failed compare-and-swap emits no event. Existing callers that omit `events` keep their prior snapshot and execution behavior. The H6 facade will own the journal and the store together.
+
+The journal accepts an optional asynchronous `EventSink.emit(event)`; the default sink does nothing. Delivery runs after commit and never authorizes a tool, retries an effect, or changes a terminal result. `await journal.flush()` waits for queued delivery in tests and orderly host shutdown. `sink_failures`, `dropped_delivery`, and `record_failures` expose failures without logging exception text. `sink_failure(run_id)` returns one safe local diagnostic per run, separate from the durable CAS cursor. A host can poll `events(run_id, after=cursor)` if delivery fails.
+
+Retention defaults to 1,000 events and 1 MiB per run. Overflow retains the first event, newest events, and terminal event when they fit, with one truncation marker. At a count limit below three, those priorities take precedence over a marker because all three cannot fit. At a byte limit too small to hold all three, the terminal and latest event take precedence. The minimum byte limit is 512 bytes. `forget(run_id)` lets a host remove events when it evicts the corresponding run; H6 adds bounded run ownership.
+
+Both events and existing tool logs use the same safe identifier extraction. Ordinary short identifiers remain readable; identifiers containing URLs, paths, or secret-like names become stable digests. Reason codes and statuses come from fixed allowlists. Logs report argument count, not argument keys or values. Byte counts describe size only and do not retain the underlying bodies.

@@ -2,6 +2,7 @@
 
 from ._version import __version__
 from .budgets import RunBudget
+from .events import EVENT_VERSION, EventJournal, EventSink, NoopEventSink, RunEvent
 from .executor import (
     ApprovalDecision,
     CancellationToken,
@@ -68,6 +69,11 @@ __all__ = [
     "DEFAULT_TOOL_REGISTRY",
     "DEFAULT_TOOL_TIMEOUT_SECONDS",
     "ExecutorOutcome",
+    "EVENT_VERSION",
+    "EventJournal",
+    "EventSink",
+    "NoopEventSink",
+    "RunEvent",
     "ExecutionContext",
     "InMemoryPendingCallStore",
     "ModelInvoker",

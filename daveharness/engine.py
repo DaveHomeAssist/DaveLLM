@@ -19,6 +19,7 @@ from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence, cast
 
 from .budgets import RunBudget
 from .contracts import ExecutorOutcome, ParsedToolCall, PendingCall, ToolExecution
+from .events import safe_identifier, safe_status
 from .parser import parse_tool_calls
 from .policy import RunPolicyContext, ToolPolicy
 from .registry import DEFAULT_TOOL_REGISTRY, ToolDefinition, ToolRegistry
@@ -90,10 +91,10 @@ def _log_tool_result(execution: ToolExecution) -> None:
         json.dumps(
             {
                 "event": "tool_result",
-                "call_id": execution.call_id,
-                "tool": execution.name,
-                "status": execution.status,
-                "termination": execution.termination,
+                "call_id": safe_identifier(execution.call_id),
+                "tool": safe_identifier(execution.name),
+                "status": safe_status(execution.status),
+                "termination": safe_identifier(execution.termination),
                 "timestamp": execution.completed_at,
                 "duration_ms": execution.duration_ms,
             }
@@ -127,10 +128,10 @@ async def run_tool(
         json.dumps(
             {
                 "event": "tool_call",
-                "call_id": resolved_call_id,
-                "tool": name,
+                "call_id": safe_identifier(resolved_call_id),
+                "tool": safe_identifier(name),
                 "timestamp": started_at,
-                "argument_keys": sorted(args) if isinstance(args, dict) else [],
+                "argument_count": len(args) if isinstance(args, dict) else 0,
             }
         )
     )

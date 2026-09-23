@@ -6,7 +6,7 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
-**Current:** DaveLLM `2.1.0`, DaveHarness `0.6.0`
+**Current:** DaveLLM `2.1.0`, DaveHarness `0.7.0`
 
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
@@ -31,7 +31,7 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.6.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, and opt-in cancellation/deadline contracts.
+- `daveharness 0.7.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, serializable run-state engine, opt-in cancellation/deadline contracts, and metadata-only lifecycle events.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
 - Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.
@@ -178,7 +178,7 @@ Only `approval_required` may resume. Only `running` may enter `cancelling`. Ever
 | H2 | `0.4.0` | None | Completed additive policy and budget contracts |
 | H3 | `0.5.0` | None | Completed generalized serializable state and exact-call approval API |
 | H4 | `0.6.0` | None | Completed additive cancellation and deadline API |
-| H5 | `0.7.0` | None | Additive event and observability API |
+| H5 | `0.7.0` | None | Completed additive event and observability API |
 | H6 | `0.8.0` | None | Instance-owned facade and host protocols |
 | H7 | `0.9.0` | Prepare DaveLLM `2.2.0` capability | Additive DaveLLM lifecycle endpoints and UI integration |
 | H8 | `1.0.0-rc.1` | Release candidate validation | Security, compatibility, load, and model evaluation |
@@ -270,12 +270,12 @@ This compatibility milestone was intentionally narrower than the future lifecycl
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
-| 31 | Define versioned `RunEvent` values with run ID, sequence, kind, step, call ID, tool name, status, reason code, timestamp, duration, and safe size metadata. | Golden fixtures cover every event kind and omit sensitive bodies. | Medium | Additive event type | Ready |
-| 32 | Add an injected async `EventSink` plus a no-op default. | Existing callers behave identically without a sink. | Low | Remove optional injection | Ready |
-| 33 | Emit events for creation, model start/result, parse repair, policy decision, approval, tool start/result, cancellation, budget stop, and terminal outcome. | Event-order tests match state transitions exactly. | Medium | Sink can be disabled | Ready |
-| 34 | Centralize redaction and safe metadata extraction for logs and events. | Secret, path, URL, prompt, argument, and result canaries never appear in captured logs or default events. | High | Keep metadata-only fallback | Ready |
-| 35 | Bound retained events by count and byte budget while preserving the first event, latest events, and terminal event. | Overflow tests produce one explicit truncation event and bounded memory use. | Medium | Limits can be raised | Ready |
-| 36 | Make sink failure observable but non-authorizing and non-repeating. | A failing sink cannot execute a call twice or conceal the final outcome. | Medium | No-op sink fallback | Ready |
+| 31 | Define versioned `RunEvent` values with run ID, sequence, kind, step, call ID, tool name, status, reason code, timestamp, duration, and safe size metadata. | Golden fixtures cover every event kind and omit sensitive bodies. | Medium | Additive event type | Completed |
+| 32 | Add an injected async `EventSink` plus a no-op default. | Existing callers behave identically without a sink. | Low | Remove optional injection | Completed |
+| 33 | Emit events for creation, model start/result, parse repair, policy decision, approval, tool start/result, cancellation, budget stop, and terminal outcome. | Event-order tests match state transitions exactly. | Medium | Sink can be disabled | Completed |
+| 34 | Centralize redaction and safe metadata extraction for logs and events. | Secret, path, URL, prompt, argument, and result canaries never appear in captured logs or default events. | High | Keep metadata-only fallback | Completed |
+| 35 | Bound retained events by count and byte budget while preserving the first event, latest events, and terminal event. | Overflow tests produce one explicit truncation event and bounded memory use. | Medium | Limits can be raised | Completed |
+| 36 | Make sink failure observable but non-authorizing and non-repeating. | A failing sink cannot execute a call twice or conceal the final outcome. | Medium | No-op sink fallback | Completed |
 
 ### H6: provide an instance-owned host facade, `0.8.0`
 
