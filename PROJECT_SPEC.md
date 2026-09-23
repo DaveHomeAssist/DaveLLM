@@ -3,7 +3,7 @@
 | Field | Current value |
 |---|---|
 | Product | DaveLLM |
-| Status | Implemented local application with in-process DaveHarness `0.4.0` boundary |
+| Status | Implemented local application with in-process DaveHarness `0.5.0` boundary |
 | Owner and primary operator | Dave Robertson |
 | Canonical repository | `DaveHomeAssist/DaveLLM` |
 | Application version | DaveLLM `2.1.0`, sourced from root `VERSION` |
@@ -340,7 +340,7 @@ The optional dictation installer adds `whisper-cpp` and a checksum-verified Engl
 
 Root `VERSION` is the canonical DaveLLM Semantic Version. FastAPI metadata, startup output, `GET /health`, `package.json`, and the root `package-lock.json` entry must match it. Release tags use `vMAJOR.MINOR.PATCH`. Documentation-only changes do not require a version increment.
 
-The in-repository `daveharness` package is versioned independently at `0.4.0`. It is an internal importable package, not a published distribution, service, repository, CLI, or remote protocol. Future package changes follow independent SemVer while DaveLLM retains its own root `VERSION`.
+The in-repository `daveharness` package is versioned independently at `0.5.0`. It is an internal importable package, not a published distribution, service, repository, CLI, or remote protocol. Future package changes follow independent SemVer while DaveLLM retains its own root `VERSION`.
 
 ## 13. Quality and acceptance criteria
 
@@ -377,10 +377,11 @@ Updated 2026-09-23; the 2026-09-02 observations below remain historical:
 - The public documentation artifact is `https://davehomeassist.github.io/DaveLLM/`.
 - The local DaveLLM process was stopped during this specification review; no claim of live node, inventory, model, or dictation availability is made by this snapshot.
 - The product version is unified at `2.1.0` through root `VERSION`; runtime and package mirrors are regression-tested.
-- The DaveHarness library boundary is implemented in-process at `0.4.0`, with the legacy root import preserved as a compatibility shim.
+- The DaveHarness library boundary is implemented in-process at `0.5.0`, with the legacy root import preserved as a compatibility shim.
 - DaveHarness `0.2.0` adds enforced sync-first handler registration, explicit cancellation declarations, honest termination metadata, and single-use exact-call approval/resume while DaveLLM remains `2.1.0`.
 - DaveHarness `0.3.0` splits the internal modules and adds version-one serialization for four existing leaf contracts while keeping DaveLLM `2.1.0` and its endpoint response fields unchanged.
 - DaveHarness `0.4.0` adds policy decisions, definition fingerprints, and immutable lifecycle budgets. Legacy endpoint fields and their step/error limits remain unchanged.
+- DaveHarness `0.5.0` adds serializable run snapshots, exact approval decisions, and compare-and-swap resume operations. DaveLLM's existing routes continue using the legacy adapter until H7.
 
 ## 15. Known limits and open decisions
 

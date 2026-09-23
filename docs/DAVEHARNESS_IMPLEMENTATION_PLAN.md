@@ -6,7 +6,7 @@
 
 **Baseline:** DaveLLM `2.1.0`, DaveHarness `0.1.0`, commit `b680e69aa27ecc3f3ed0f72eb1f5d4169911e2d2`
 
-**Current:** DaveLLM `2.1.0`, DaveHarness `0.4.0`
+**Current:** DaveLLM `2.1.0`, DaveHarness `0.5.0`
 
 **Target:** DaveHarness `1.0.0` integrated with DaveLLM through one in-process boundary
 
@@ -31,7 +31,7 @@ The `1.0.0` contract requires all of the following:
 
 ### Verified current facts
 
-- `daveharness 0.4.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, and versioned leaf-contract serializer.
+- `daveharness 0.5.0` owns the generic registry, policy decisions, immutable budgets, definition fingerprints, schema validation, tool-call parsing, execution result, exact-call pending store, bounded loop, versioned leaf-contract serializer, and the new serializable run-state engine.
 - `app.py` imports the package API and retains all concrete handlers, roots, authentication, Ollama calls, persistence, and routes.
 - `ToolRegistry` rejects duplicate names and snapshots caller-owned definitions and nested schema data.
 - Tool definitions are synchronous by default. A coroutine requires explicit opt-in and a registry-supplied name allowlist; DaveLLM permits only `web.fetch`.
@@ -113,7 +113,7 @@ DaveHarness owns decisions about how a run advances. DaveLLM owns whether a requ
 
 ## 5. Proposed interface contracts
 
-These are target `1.0.0` interfaces. DaveHarness `0.2.0` provided the smaller `PendingCall`, `PendingCallStore`, and `resume_executor_loop` compatibility milestone. H1 `0.3.0` added versioned serialization only for existing leaf values; H2 `0.4.0` adds policy, fingerprints, and budget values; `RunSnapshot` plus resumable lifecycle state remain H3 work.
+These are target `1.0.0` interfaces. DaveHarness `0.2.0` provided the smaller `PendingCall`, `PendingCallStore`, and `resume_executor_loop` compatibility milestone. H1 `0.3.0` added versioned serialization only for existing leaf values; H2 `0.4.0` added policy, fingerprints, and budget values; H3 `0.5.0` adds `RunSnapshot`, exact decisions, and serializable resume operations. H4 through H9 complete cancellation, events, facade, host integration, and qualification.
 
 | Interface | Required contract | Failure contract |
 |---|---|---|
@@ -176,7 +176,7 @@ Only `approval_required` may resume. Only `running` may enter `cancelling`. Ever
 | Execution semantics | `0.2.0` | Remains `2.1.0` | Completed sync-first, honest termination, and exact-call compatibility milestone |
 | H1 | `0.3.0` | None | Completed leaf-contract decomposition and versioned serialization |
 | H2 | `0.4.0` | None | Completed additive policy and budget contracts |
-| H3 | `0.5.0` | None | Generalized serializable state and exact-call approval API |
+| H3 | `0.5.0` | None | Completed generalized serializable state and exact-call approval API |
 | H4 | `0.6.0` | None | Additive cancellation and deadline API |
 | H5 | `0.7.0` | None | Additive event and observability API |
 | H6 | `0.8.0` | None | Instance-owned facade and host protocols |
@@ -248,12 +248,12 @@ This compatibility milestone was intentionally narrower than the future lifecycl
 
 | ID | Action and target | Acceptance evidence | Risk | Reversibility | Readiness |
 |---:|---|---|---|---|---|
-| 19 | Implement `RunSnapshot` with run ID, contract version, optimistic version, status, transcript, counters, deadlines, pending call, executed-call ledger, and event cursor. | Snapshot fixtures cover every legal status and reject incomplete state. | High | New API is additive | Ready |
-| 20 | Implement one transition function for all legal run-state changes. | Exhaustive transition tests reject illegal resume, double terminal, and backwards transitions. | High | Existing loop remains adapter | Ready |
-| 21 | Extend the current pending-call record with contract version, definition fingerprint, permission, and serializable state. | A changed argument, tool, permission, or schema invalidates the pending call across a store round trip. | High | Current in-memory continuation remains | Ready |
-| 22 | Add an exact `ApprovalDecision` contract with approve, reject, expiry, and single-use identity. | Broad, expired, mismatched, and replayed decisions never execute. | High | Existing per-run approvals remain on legacy API | Ready |
-| 23 | Generalize the current `resume_executor_loop` path into serializable `resume` and `decide` engine operations. | Model invocation count remains unchanged during approval; the exact tool executes once after a store round trip. | High | Current in-memory continuation remains | Ready |
-| 24 | Add serialization, process-boundary simulation, optimistic-conflict, approval, rejection, expiry, replay, revocation, and definition-change tests. | Targeted state suite passes under repeated and concurrent decision attempts. | High | Test-only revert | Ready |
+| 19 | Implement `RunSnapshot` with run ID, contract version, optimistic version, status, transcript, counters, deadlines, pending call, executed-call ledger, and event cursor. | Snapshot fixtures cover every legal status and reject incomplete state. | High | New API is additive | Completed |
+| 20 | Implement one transition function for all legal run-state changes. | Exhaustive transition tests reject illegal resume, double terminal, and backwards transitions. | High | Existing loop remains adapter | Completed |
+| 21 | Extend the current pending-call record with contract version, definition fingerprint, permission, and serializable state. | A changed argument, tool, permission, or schema invalidates the pending call across a store round trip. | High | Current in-memory continuation remains | Completed |
+| 22 | Add an exact `ApprovalDecision` contract with approve, reject, expiry, and single-use identity. | Broad, expired, mismatched, and replayed decisions never execute. | High | Existing per-run approvals remain on legacy API | Completed |
+| 23 | Generalize the current `resume_executor_loop` path into serializable `resume` and `decide` engine operations. | Model invocation count remains unchanged during approval; the exact tool executes once after a store round trip. | High | Current in-memory continuation remains | Completed |
+| 24 | Add serialization, process-boundary simulation, optimistic-conflict, approval, rejection, expiry, replay, revocation, and definition-change tests. | Targeted state suite passes under repeated and concurrent decision attempts. | High | Test-only revert | Completed |
 
 ### H4: add cooperative cancellation and absolute deadlines, `0.6.0`
 
@@ -413,7 +413,7 @@ H0 complete
    -> 0.2.0 execution semantics complete
    -> H1 0.3.0 leaf contracts complete
    -> H2 0.4.0 policy and budgets complete
-   -> H3 state and exact approval
+   -> H3 0.5.0 state and exact approval complete
    -> H4 deadlines and cancellation
    -> H5 events
    -> H6 facade and host protocols
@@ -424,4 +424,4 @@ H0 complete
 
 Do not implement H7 before H3 through H6 are stable: an HTTP or UI layer built on an unsettled state machine would create duplicate lifecycle logic. Do not claim `1.0.0` before H9 live qualification; deterministic tests prove engineering behavior, not model-specific reliability. Do not combine all remaining phases into one change. Each phase must finish its own test, commit, push, CI, and documentation gates before the next phase begins.
 
-The next package is **H3: generalize resumable run state and exact-call approval at `0.5.0`**. H3 owns `RunSnapshot`, transitions, and resumable lifecycle state. H1's serializer is deliberately limited to `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome`; it does not serialize handlers, continuations, registries, run state, or storage. H2's new ceilings are opt-in until the lifecycle facade; legacy routes retain their shipped limits and fields.
+The next package is **H4: cooperative cancellation and absolute deadlines at `0.6.0`**. H3 owns `RunSnapshot`, transitions, and resumable lifecycle state. H1's serializer remains limited to `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome`; H3 state uses its own versioned dictionaries. H2's new ceilings are opt-in until the lifecycle facade; legacy routes retain their shipped limits and fields.
