@@ -22,6 +22,7 @@ from .contracts import ExecutorOutcome, ParsedToolCall, PendingCall, ToolExecuti
 from .parser import parse_tool_calls
 from .policy import RunPolicyContext, ToolPolicy
 from .registry import DEFAULT_TOOL_REGISTRY, ToolDefinition, ToolRegistry
+from .runtime import CancellableToolRunner, ExecutionContext
 from .schema import SchemaValidationError, validate_json_schema
 
 LOGGER = logging.getLogger("dave_llm.tools")
@@ -84,6 +85,22 @@ async def _invoke_handler(
     return await asyncio.to_thread(definition.handler, args)
 
 
+def _log_tool_result(execution: ToolExecution) -> None:
+    LOGGER.info(
+        json.dumps(
+            {
+                "event": "tool_result",
+                "call_id": execution.call_id,
+                "tool": execution.name,
+                "status": execution.status,
+                "termination": execution.termination,
+                "timestamp": execution.completed_at,
+                "duration_ms": execution.duration_ms,
+            }
+        )
+    )
+
+
 async def run_tool(
     name: str,
     args: dict[str, Any],
@@ -97,6 +114,9 @@ async def run_tool(
     expected_permission: str | None = None,
     expected_registration_revision: int | None = None,
     output_bytes: int | None = None,
+    execution_context: ExecutionContext | None = None,
+    runner: CancellableToolRunner | None = None,
+    log_result: bool = True,
 ) -> ToolExecution:
     """Validate and run one registered tool, returning errors instead of raising."""
     resolved_call_id = call_id or f"call_{uuid.uuid4().hex}"
@@ -157,9 +177,13 @@ async def run_tool(
             if current_definition is None:
                 raise _ToolGateError("revoked", "definition_changed")
             definition = current_definition
-            timeout = timeout_seconds or definition.timeout_seconds
+            timeout = timeout_seconds if timeout_seconds is not None else definition.timeout_seconds
+            if definition.context_handler and (execution_context is None or runner is None):
+                raise _ToolGateError("denied", "context_runner_required")
             raw_result = await asyncio.wait_for(
-                _invoke_handler(definition, args),
+                runner.invoke(definition, args, execution_context)
+                if definition.context_handler and runner is not None and execution_context is not None
+                else _invoke_handler(definition, args),
                 timeout=timeout,
             )
             if hasattr(raw_result, "model_dump"):
@@ -241,19 +265,8 @@ async def run_tool(
             started_monotonic=started_monotonic,
         )
 
-    LOGGER.info(
-        json.dumps(
-            {
-                "event": "tool_result",
-                "call_id": execution.call_id,
-                "tool": execution.name,
-                "status": execution.status,
-                "termination": execution.termination,
-                "timestamp": execution.completed_at,
-                "duration_ms": execution.duration_ms,
-            }
-        )
-    )
+    if log_result:
+        _log_tool_result(execution)
     return execution
 
 def _canonical_json(value: Any) -> str:

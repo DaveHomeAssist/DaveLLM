@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from .budgets import RunBudget
@@ -244,7 +244,7 @@ class RunSnapshot:
             raise ValueError("pending call requires approval_required")
         if type(self.model_inflight) is not bool:
             raise ValueError("model_inflight must be a boolean")
-        if self.model_inflight and (self.status != "running" or self.steps < 1):
+        if self.model_inflight and (self.status not in {"running", "cancelling"} or self.steps < 1):
             raise ValueError("model invocation must be reserved in running state")
         if self.status == "created" and (
             self.steps or self.errors or self.tool_calls or self.executed_call_ids
@@ -262,7 +262,7 @@ class RunSnapshot:
             raise ValueError("completed run must finish model and tool work")
         if self.pending_call is not None and self.pending_call.call_id in self.executed_call_ids:
             raise ValueError("pending call is already reserved")
-        if self.inflight_call_id is not None and (self.status != "running" or self.inflight_call_id not in self.executed_call_ids):
+        if self.inflight_call_id is not None and (self.status not in {"running", "cancelling"} or self.inflight_call_id not in self.executed_call_ids):
             raise ValueError("in-flight call must be reserved in running state")
         if len(set(self.executed_call_ids)) != len(self.executed_call_ids):
             raise ValueError("executed call IDs must be unique")
@@ -296,12 +296,17 @@ class RunSnapshot:
         budget: RunBudget | None = None, deadline_at: str | None = None,
         allowed_permissions: tuple[str, ...] = (),
     ) -> RunSnapshot:
+        effective_budget = budget or RunBudget()
+        if effective_budget.total_wall_seconds is not None:
+            budget_deadline = _timestamp(created_at) + timedelta(seconds=effective_budget.total_wall_seconds)
+            if deadline_at is None or _timestamp(deadline_at) > budget_deadline:
+                deadline_at = budget_deadline.isoformat()
         return cls(
             run_id=run_id, status="created", optimistic_version=1,
             transcript_json=_canonical(transcript), steps=0, errors=0, tool_calls=0,
             created_at=created_at, updated_at=created_at, deadline_at=deadline_at,
             pending_call=None, executed_call_ids=(), event_cursor=0,
-            budget=budget or RunBudget(), allowed_permissions=allowed_permissions,
+            budget=effective_budget, allowed_permissions=allowed_permissions,
             queued_calls_json="[]",
         )
 

@@ -36,14 +36,22 @@ from .registry import (
     ToolRegistry,
 )
 from .schema import SchemaValidationError, validate_json_schema
+from .runtime import (
+    CancellationToken, CancellableToolRunner, CooperativeToolRunner,
+    ExecutionContext, OperationController, absolute_deadline,
+    remaining_wall_seconds,
+)
 from .state import (
     ApprovalDecision, PendingToolCall, RunSnapshot, RUN_STATE_VERSION,
     RUN_STATUSES, TERMINAL_RUN_STATUSES, transition_run,
 )
-from .state_engine import RunCommandResult, SnapshotCAS, decide_run, resume_run
+from .state_engine import RunCommandResult, SnapshotCAS, cancel_run, decide_run, resume_run
 
 __all__ = [
     "ApprovalDecision",
+    "CancellationToken",
+    "CancellableToolRunner",
+    "CooperativeToolRunner",
     "CONTRACT_VERSION",
     "ContractDecodeError",
     "DEFAULT_ERROR_BUDGET",
@@ -53,8 +61,10 @@ __all__ = [
     "DEFAULT_TOOL_REGISTRY",
     "DEFAULT_TOOL_TIMEOUT_SECONDS",
     "ExecutorOutcome",
+    "ExecutionContext",
     "InMemoryPendingCallStore",
     "ModelInvoker",
+    "OperationController",
     "KNOWN_PERMISSIONS",
     "PENDING_CALL_TTL_SECONDS",
     "PendingCall",
@@ -77,12 +87,15 @@ __all__ = [
     "ToolPolicy",
     "PendingToolCall",
     "SnapshotCAS",
+    "absolute_deadline",
+    "cancel_run",
     "decide_run",
     "decode_contract",
     "encode_contract",
     "parse_tool_calls",
     "resume_executor_loop",
     "resume_run",
+    "remaining_wall_seconds",
     "run_executor_loop",
     "run_tool",
     "utc_timestamp",

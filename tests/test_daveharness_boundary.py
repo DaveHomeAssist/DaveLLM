@@ -28,9 +28,12 @@ def _definition(*, schema=None, handler=None, approval_required=True):
 
 
 def test_public_api_and_legacy_compatibility_exports_are_stable():
-    assert daveharness.__version__ == "0.5.0"
+    assert daveharness.__version__ == "0.6.0"
     expected = {
         "ApprovalDecision",
+        "CancellationToken",
+        "CancellableToolRunner",
+        "CooperativeToolRunner",
         "CONTRACT_VERSION",
         "ContractDecodeError",
         "DEFAULT_ERROR_BUDGET",
@@ -40,8 +43,10 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "DEFAULT_TOOL_REGISTRY",
         "DEFAULT_TOOL_TIMEOUT_SECONDS",
         "ExecutorOutcome",
+        "ExecutionContext",
         "InMemoryPendingCallStore",
         "ModelInvoker",
+        "OperationController",
         "KNOWN_PERMISSIONS",
         "PENDING_CALL_TTL_SECONDS",
         "PendingToolCall",
@@ -56,6 +61,8 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "RunCommandResult",
         "RunSnapshot",
         "SnapshotCAS",
+        "absolute_deadline",
+        "cancel_run",
         "SchemaValidationError",
         "RunBudget",
         "RunPolicyContext",
@@ -71,6 +78,7 @@ def test_public_api_and_legacy_compatibility_exports_are_stable():
         "parse_tool_calls",
         "resume_executor_loop",
         "resume_run",
+        "remaining_wall_seconds",
         "run_executor_loop",
         "run_tool",
         "utc_timestamp",
@@ -237,6 +245,7 @@ def test_executor_package_has_no_davellm_runtime_dependencies():
         "parser.py",
         "policy.py",
         "registry.py",
+        "runtime.py",
         "schema.py",
         "state.py",
         "state_engine.py",

@@ -17,7 +17,7 @@ from typing import Any, Awaitable, Callable, Collection, cast
 DEFAULT_TOOL_TIMEOUT_SECONDS = 10.0
 VALID_CANCELLATION_MODES = frozenset({"bounded", "abandon"})
 
-ToolHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
+ToolHandler = Callable[..., Any | Awaitable[Any]]
 
 
 def _stable_handler_value(value: Any) -> Any:
@@ -91,6 +91,7 @@ class ToolDefinition:
     cancellation: str = "abandon"
     async_handler: bool = False
     handler_version: str = ""
+    context_handler: bool = False
 
     def fingerprint(self) -> str:
         """Digest the declared effect boundary, including handler code provenance."""
@@ -103,6 +104,7 @@ class ToolDefinition:
             "timeout_seconds": self.timeout_seconds,
             "cancellation": self.cancellation,
             "async_handler": self.async_handler,
+            "context_handler": self.context_handler,
             "handler": _handler_provenance(self.handler, self.handler_version),
         }
         canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -177,6 +179,11 @@ class ToolRegistry:
             raise ValueError(
                 f"Coroutine tool '{definition.name}' is not in the async handler allowlist"
             )
+        if definition.context_handler:
+            try:
+                inspect.signature(definition.handler).bind({}, object())
+            except (TypeError, ValueError) as exc:
+                raise ValueError("context handler must accept arguments and context") from exc
         with self._lock:
             if definition.name in self._definitions:
                 raise ValueError(f"Tool '{definition.name}' is already registered")
@@ -201,6 +208,7 @@ class ToolRegistry:
             cancellation=definition.cancellation,
             async_handler=definition.async_handler,
             handler_version=definition.handler_version,
+            context_handler=definition.context_handler,
         )
 
     def revoke(self, name: str) -> bool:
