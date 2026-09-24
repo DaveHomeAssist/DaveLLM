@@ -4,7 +4,9 @@ H9 action 55 tooling follows H8 merge `329c4f70b86a61fdbc11bc738565f341ff4ce85c`
 
 ## Authorization and scope
 
-On 2026-09-24 Dave authorized building the runner and exercising it against disposable sandbox CPU models (`qwen2.5:0.5b` and `qwen2.5:3b`). Target-model qualification remains a separate operator run: Dave chooses the target model IDs, the evaluation budget, and when to run it against the cluster nodes. Sandbox results are development evidence only and do not count toward the 500-evaluation quota.
+On 2026-09-24 Dave authorized building the runner and exercising it against disposable sandbox CPU models (`qwen2.5:0.5b` and `qwen2.5:3b`). Sandbox results are development evidence only and do not count toward the 500-evaluation quota.
+
+An earlier authorization on 2026-09-23 covers `qwen3-coder:30b` on Walter: 500 evaluations, disposable roots, shell disabled, and at most six hours or one million tokens. That attempt used a separate fixed-corpus runner, `scripts/qualify_live_daveharness.py`, in [PR #14](https://github.com/DaveHomeAssist/DaveLLM/pull/14). Walter returned no usable completion and SSH to it timed out, so the model is not qualified and action 55 is blocked by model transport. The six-hour window has expired. Resuming needs working inference on Walter or Dave's approval of another target model, plus a renewed budget.
 
 The runner refuses to start without `--authorize-live`, at least one explicit `--target NODE_ID:MODEL_ID`, and a `DAVE_NODES` inventory. It never reads `DAVE_API_KEY`; it sets an unused random key for its own in-process DaveLLM import.
 
@@ -21,6 +23,20 @@ The runner imports DaveLLM in-process with `DAVE_DATA_DIR` and `DAVE_TOOL_ROOTS`
 The runner does not drive the HTTP route. `POST /tools/agent/runs` returns `503` once 32 runs are retained inside the 3,600-second store lifetime, so 500 HTTP runs would spend about 16 hours waiting on retention alone. The in-process path exercises the same adapter, registry definitions, policy, approval, and handlers; route authentication and response mapping remain covered by the API tests.
 
 The sandbox contains `root`, the only configured tool root, and `outside`, which holds a random per-run sentinel. Both are reset before every run and removed when the runner exits.
+
+## Relationship to the PR #14 runner
+
+The two runners measure different layers and are not interchangeable.
+
+| | This runner | PR #14 runner |
+|---|---|---|
+| Model and tool path | DaveLLM's `invoke_harness_model` adapter and registered file/system handlers | Its own HTTP client and generic, case-confined read/write handlers |
+| Corpus | 11 cases, repeated per target | Fixed 500 cases in 20 families, including fallback calls, cancellation, replayed approval, and revocation |
+| Target | Any authorized `NODE_ID:MODEL_ID` in `DAVE_NODES` | `qwen3-coder:30b` on Walter, pinned to one model digest |
+| Resource budget | None beyond per-run limits | Six-hour and one-million-token ledger that survives restarts |
+| `qualified` | 500 evaluations, no runner errors, one terminal event per run, and the four thresholds | The same thresholds, plus every case passing its task and effect assertion |
+
+Dave decides which definition of `qualified` governs action 56 and whether the runners should be consolidated. Until then, report which runner produced each result.
 
 ## Cases
 
@@ -111,7 +127,7 @@ These observations come from traced sandbox runs. They are development evidence 
 
 | Action | State |
 |---:|---|
-| 55 | Runner implemented. Target-model runs need Dave's choice of models and at least 500 evaluations per model on the cluster nodes. |
+| 55 | Runner implemented. The 2026-09-23 `qwen3-coder:30b` authorization on Walter is blocked by model transport (PR #14). Resuming needs working inference on Walter or approval of another target model, plus a renewed budget. |
 | 56 | Per-model threshold verdicts are computed. Review, sign-off, and configuration-level restrictions for failing models wait for action 55 reports. |
 | 57–60 | Blocked by actions 55 and 56. No version change, tag, release, or publication is authorized. |
 
