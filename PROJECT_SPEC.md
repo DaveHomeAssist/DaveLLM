@@ -401,3 +401,5 @@ Updated 2026-09-23; the 2026-09-02 observations below remain historical:
 Update this specification in the same change whenever a release materially changes the product boundary, user journeys, API families, instruction/context order, persistence layout, security model, configuration, operational limits, or acceptance gates. Keep volatile node addresses, installed model lists, credentials, personal content, and runtime data out of this document.
 
 DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, and Python 3.12–3.14 CI. See [H8 qualification](docs/DAVEHARNESS_H8_QUALIFICATION.md). This candidate does not establish live-model qualification or human acceptance. DaveLLM remains `2.1.0`.
+
+H9 action 55 adds the authorized live-evaluation runner `scripts/evaluate_live_daveharness.py`, which runs DaveLLM's Ollama adapter and file/system tools inside disposable roots and reports the action 56 thresholds per model. See [H9 live evaluation](docs/DAVEHARNESS_H9_LIVE_EVALUATION.md). No target model is qualified yet, and DaveHarness remains `1.0.0-rc.1`.

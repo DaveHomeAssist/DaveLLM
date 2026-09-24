@@ -187,3 +187,5 @@ Runtime UI files are under `static/`; only that directory is mounted at `/`. The
 `package.json` pins Electron `^44.0.0`, upgraded on 2026-08-26 to resolve the prior high-severity advisory set. Keep Electron on a supported major and rerun `npm audit` after dependency changes.
 
 DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, and Python 3.12–3.14 CI. See [H8 qualification](docs/DAVEHARNESS_H8_QUALIFICATION.md). This candidate does not establish live-model qualification or human acceptance. DaveLLM remains `2.1.0`.
+
+H9 action 55 adds the authorized live-evaluation runner `scripts/evaluate_live_daveharness.py`, which runs DaveLLM's Ollama adapter and file/system tools inside disposable roots and reports the action 56 thresholds per model. See [H9 live evaluation](docs/DAVEHARNESS_H9_LIVE_EVALUATION.md). No target model is qualified yet, and DaveHarness remains `1.0.0-rc.1`.
