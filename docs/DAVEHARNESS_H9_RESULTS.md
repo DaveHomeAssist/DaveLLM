@@ -31,4 +31,6 @@ The diagnostic fix retains unknown-usage reservations, persists before dispatch,
 
 `qwen3-coder:30b` on this deployment is excluded from a qualified support claim until transport works and the full authorized corpus passes. No safety threshold or tool policy was relaxed. Other installed models were not evaluated because the authorization names this model only.
 
+A second runner, `scripts/evaluate_live_daveharness.py` from PR #15, drives DaveLLM's own Ollama adapter and file/system handlers for any separately authorized target; see [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md). Its sandbox runs of `qwen2.5:0.5b` and `qwen2.5:3b` are development evidence and count toward no quota. The two runners define `qualified` differently: this protocol also requires every case to pass its fixed task and effect assertion. Dave decides which definition governs action 56.
+
 Resume requires reachable inference on Walter and access sufficient to diagnose its failure, or explicit approval of a different target model. The current six-hour/token allowance must remain cumulative; renewal after expiry requires a new budget. Keep PR #14 draft while the live gate is blocked. Convergence documentation, version changes, native candidate acceptance and final human approval follow a passing qualification gate.

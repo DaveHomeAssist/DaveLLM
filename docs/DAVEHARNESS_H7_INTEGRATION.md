@@ -22,7 +22,7 @@ The run ledger appears in the desktop and browser UI only when `/tools` is avail
 
 Admission allows at most four active runs and 32 retained run records. A new run is rejected when the ledger reaches its count or byte ceiling, so creating another run cannot evict an active record. Input and model responses are each limited to one million serialized bytes; the default run wall budget is five minutes. The host store has a 256 MiB ceiling and a four million byte admission reserve for the next snapshot.
 
-The lifecycle facade uses its own host registry snapshot so `shell.exec` can opt into a stoppable process runner while legacy routes keep their handler contract. Shell commands are parsed without a shell, restricted to the safe command list, resolved into a configured root, and run in a process group. Cancellation acknowledges only after the process group exits. Model and tool events contain bounded metadata and redacted identifiers, never prompt or tool argument bodies.
+The lifecycle facade uses its own host registry snapshot so `shell.exec` can opt into a stoppable process runner while legacy routes keep their handler contract. Shell commands are parsed without a shell, restricted to the safe command list, resolved into a configured root, and run in a process group. Cancellation acknowledges only after the process group exits. On Linux, a killed member that is a zombie waiting for a slow reaper, such as a container PID 1, counts as exited because it can never run again; elsewhere, the group must be gone. Model and tool events contain bounded metadata and redacted identifiers, never prompt or tool argument bodies.
 
 ## Verification and rollback
 
