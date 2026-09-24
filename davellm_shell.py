@@ -15,6 +15,8 @@ from daveharness import CancellableToolRunner, ExecutionContext, ToolDefinition
 
 SAFE_COMMANDS = frozenset({"echo", "date", "pwd", "ls", "wc", "head", "tail"})
 SHELL_OUTPUT_LIMIT = 2_000
+_PROC = Path("/proc")
+_EXITED_STATES = frozenset("ZX")
 
 
 def prepare_shell_command(command: str, roots: list[Path]) -> tuple[list[str], Path]:
@@ -65,6 +67,67 @@ def prepare_shell_command(command: str, roots: list[Path]) -> tuple[list[str], P
     if number_next:
         raise ValueError("Missing count argument")
     return result, cwd
+
+
+def _stat_fields(path: Path) -> list[str]:
+    """Return /proc stat fields after the parenthesized command name."""
+    text = path.read_text(errors="replace")
+    return text[text.rindex(")") + 1:].split()
+
+
+def _proc_shows_every_process() -> bool:
+    """Trust /proc only when it is this PID namespace's and hides no process."""
+    try:
+        if os.readlink(_PROC / "self") != str(os.getpid()):
+            return False
+        mounts = (_PROC / "self" / "mounts").read_text().splitlines()
+    except OSError:
+        return False
+    restricted: bool | None = None
+    for line in mounts:
+        fields = line.split()
+        if len(fields) > 3 and fields[1] == "/proc" and fields[2] == "proc":
+            restricted = any(
+                option.startswith("hidepid=") and option not in {"hidepid=0", "hidepid=off"}
+                for option in fields[3].split(",")
+            )
+    return restricted is False
+
+
+def _only_zombies_remain(pgid: int) -> bool:
+    """Return whether every thread still in the process group has exited.
+
+    Signal 0 succeeds for zombies, which can never run again but keep their
+    group alive until their parent reaps them. A killed orphan waits for PID 1,
+    and some container init processes reap slowly. Linux /proc shows each
+    thread's state; anything other than zombie or dead, including
+    uninterruptible sleep, still counts as running. Without a complete /proc,
+    as on macOS, answer False so signal 0 stays authoritative.
+    """
+    if not _proc_shows_every_process():
+        return False
+    states: set[str] = set()
+    try:
+        for name in os.listdir(_PROC):
+            if not name.isdecimal():
+                continue
+            member = _PROC / name
+            try:
+                fields = _stat_fields(member / "stat")
+                if fields[2] != str(pgid):
+                    continue
+                states.add(fields[0])
+                tids = os.listdir(member / "task")
+            except (FileNotFoundError, ProcessLookupError):
+                continue  # reaped during the scan
+            for tid in tids:
+                try:
+                    states.add(_stat_fields(member / "task" / tid / "stat")[0])
+                except (FileNotFoundError, ProcessLookupError):
+                    continue  # thread exited during the scan
+    except (OSError, ValueError, IndexError):
+        return False
+    return bool(states) and states <= _EXITED_STATES
 
 
 class ShellProcessRunner(CancellableToolRunner):
@@ -191,6 +254,8 @@ class ShellProcessRunner(CancellableToolRunner):
             try:
                 os.killpg(process.pid, 0)
             except ProcessLookupError:
+                break
+            if await asyncio.to_thread(_only_zombies_remain, process.pid):
                 break
             await asyncio.sleep(0.02)
         else:
