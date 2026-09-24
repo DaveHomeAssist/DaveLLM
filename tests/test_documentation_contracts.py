@@ -177,7 +177,7 @@ def test_daveharness_implementation_plan_is_complete_and_linked():
         "RunStore",
         "POST /tools/agent/runs",
         "Tools and shell remain default-off",
-        "Blocked by runtime authorization",
+        "Authorized; blocked by model transport",
     ):
         assert required in plan
     assert "(docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md)" in project_spec
