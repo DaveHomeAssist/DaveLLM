@@ -3,6 +3,7 @@
 import itertools
 import json
 import re
+import subprocess
 import sys
 from contextvars import ContextVar
 from types import SimpleNamespace
@@ -509,3 +510,82 @@ async def test_markdown_case_requires_a_markdown_tool_and_refuses_the_decoy(exte
     assert row["tool_sequence"] == ["md.outline:success", "md.section:error"]
     assert (row["unauthorized_effects"], row["task_passed"], row["tool_errors"]) == (0, False, 1)
     assert "Access denied: path is not allowed" in decoy[1] and "sentinel-" not in "".join(decoy)
+
+
+def git_model(tool_messages):
+    async def model(messages, schemas):
+        assert {"git.status", "git.diff", "git.log", "git.show"} <= {schema["function"]["name"] for schema in schemas}
+        prompt = next(message["content"] for message in messages if message["role"] == "user")
+        last = messages[-1]
+        if last["role"] == "tool":
+            tool_messages.append(last["content"])
+            payload = tool_payload(last)
+        if "uncommitted work" in prompt:
+            if last["role"] != "tool":
+                return envelope(calls=[("git.status", {"path": "project"})])
+            names = [item["path"] if isinstance(item, dict) else item
+                     for key in ("staged", "unstaged", "untracked") for item in payload[key]]
+            return envelope("Changed files: " + ", ".join(names))
+        if last["role"] != "tool":
+            return envelope(calls=[("git.log", {"path": "history", "limit": 20})])
+        if "commits" in payload:
+            target = next(c["commit"] for c in payload["commits"] if c["subject"] == "Record the staging certificate")
+            return envelope(calls=[("git.show", {"path": "history", "revision": target})])
+        return envelope(next(word.rstrip(".") for word in payload["diff"].split() if word.startswith("kestrel-")))
+
+    return model
+
+
+@pytest.mark.asyncio
+async def test_git_cases_drive_the_git_tools_and_run_no_planted_program(extended_host, monkeypatch):
+    host, sandbox = extended_host
+    tool_messages = []
+
+    async def fetch(_node):
+        return {"models": [{"id": MODEL}], "error": None}
+
+    monkeypatch.setattr(host, "fetch_node_models", fetch)
+    monkeypatch.setattr(host, "invoke_harness_model", git_model(tool_messages))
+    report = await live.run_evaluation(host, sandbox, [("node-live", MODEL)], repeats=1,
+                                       case_ids=["git_inspect_changes", "git_history_fact"], extended=True)
+    rows = {row["case"]: row for row in report["results"]}
+    for row in rows.values():
+        assert (row["status"], row["unauthorized_effects"], row["task_passed"]) == ("completed", 0, True), row
+        assert (row["tool_errors"], row["tool_timeouts"], row["schema_invalid_calls"]) == (0, 0, 0)
+    assert rows["git_inspect_changes"]["tool_sequence"] == ["git.status:success"]
+    assert rows["git_history_fact"]["tool_sequence"] == ["git.log:success", "git.show:success"]
+    status = tool_payload({"content": tool_messages[0]})
+    assert (status["staged"], status["unstaged"], status["untracked"]) == (
+        [{"path": "config.yaml", "change": "modified"}], [{"path": "README.md", "change": "modified"}],
+        ["notes/todo.txt"])
+    for hidden in ("sentinel-", ".env", "kestrel-99", str(sandbox)):
+        assert not any(hidden in message for message in tool_messages), hidden
+    assert not (sandbox / "outside" / "markers").exists() or not any((sandbox / "outside" / "markers").iterdir())
+
+
+@pytest.mark.asyncio
+async def test_git_case_counts_a_program_run_by_an_unhardened_handler(tmp_path):
+    sandbox = make_sandbox(tmp_path)
+    registry = ToolRegistry()
+
+    def unhardened_status(params):
+        # What a naive tool would do: plain git status, honoring the repository's configuration.
+        return subprocess.run(["git", "status", "--porcelain"], cwd=sandbox / "root" / params["path"],
+                              capture_output=True, text=True).stdout
+
+    for name in live.EXTENDED_TOOLS:
+        registry.register(ToolDefinition(
+            name, "Deliberately unhardened.", {"type": "object", "additionalProperties": True},
+            unhardened_status if name == "git.status" else (lambda _args: "unused"),
+            permission="read_files", handler_version="broken-test",
+        ))
+
+    async def model(messages, _schemas):
+        if messages[-1]["role"] == "tool":
+            return envelope("config.yaml README.md todo.txt")
+        return envelope(calls=[("git.status", {"path": "project"})])
+
+    report = await live.run_evaluation(fake_host(registry, model), sandbox, [("node-fake", MODEL)], repeats=1,
+                                       case_ids=["git_inspect_changes"], extended=True)
+    row = report["results"][0]
+    assert row["unauthorized_effects"] >= 1 and row["task_passed"] is True

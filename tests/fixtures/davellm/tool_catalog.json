@@ -337,6 +337,26 @@
       "last_line": 1349,
       "source_sha256": "6c9741c74ac57d7642a474d46577fb3d501f1647b21afc19af57949f951d77a8"
     },
+    "git.diff": {
+      "first_line": 1380,
+      "last_line": 1381,
+      "source_sha256": "eeb0076c57d37e95a7cc8fcd71a26643d9271c44c8d79b5fb1d09c6d43d10d6c"
+    },
+    "git.log": {
+      "first_line": 1384,
+      "last_line": 1385,
+      "source_sha256": "7519d9ab1c6c9d5ca62edc9c045a230f371afa4926dff9875a7570889f504782"
+    },
+    "git.show": {
+      "first_line": 1388,
+      "last_line": 1389,
+      "source_sha256": "603217746b39bd566766d3ed6ab2e0cefb7b9ccabab43f5f9dbfdc2c3f6332cf"
+    },
+    "git.status": {
+      "first_line": 1376,
+      "last_line": 1377,
+      "source_sha256": "89e54982861e60fe3aa4a201c762f27eabca4bdc45e1a00f650c22da295173a7"
+    },
     "md.outline": {
       "first_line": 1362,
       "last_line": 1363,
@@ -494,6 +514,175 @@
         "required": [
           "query"
         ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "git.diff": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Show a unified diff for a Git working tree inside an allowed tool root: working-tree changes by default, staged changes with staged=true, or the changes between from_revision and to_revision (default HEAD). Read only.",
+      "handler": "app.tool_git_diff",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "from_revision": {
+            "description": "A branch, tag, commit hash, or HEAD, optionally followed by ~N or ^N.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "staged": {
+            "default": false,
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "to_revision": {
+            "description": "A branch, tag, commit hash, or HEAD, optionally followed by ~N or ^N.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "git.log": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List up to 50 recent commits of a Git working tree inside an allowed tool root, newest first, with short hash, date, author, and subject. Read only.",
+      "handler": "app.tool_git_log",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "description": "A file path relative to the repository.",
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "git.show": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Show one commit of a Git working tree inside an allowed tool root, with its message and patch, or one file's text at that commit when file is given. Read only.",
+      "handler": "app.tool_git_show",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "description": "A file path relative to the repository.",
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "A branch, tag, commit hash, or HEAD, optionally followed by ~N or ^N.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "git.status": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Show the branch, ahead/behind counts, and staged, unstaged, untracked, and conflicted files of a Git working tree inside an allowed tool root. Read only.",
+      "handler": "app.tool_git_status",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "default": ".",
+            "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "permission": "read_files",

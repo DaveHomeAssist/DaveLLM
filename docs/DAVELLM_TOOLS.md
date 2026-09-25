@@ -1,6 +1,6 @@
 # DaveLLM tools
 
-DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, and the Markdown tools added in PR-03.
+DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, and the read-only Git tools added in PR-04.
 
 ## Settings
 
@@ -9,7 +9,7 @@ DaveLLM offers tools to Ollama models through the in-process DaveHarness registr
 | `DAVE_ENABLE_TOOLS` | `false` | Turns on the tool registry and the tool routes. Nothing below works without it. |
 | `DAVE_TOOL_ROOTS` | `[]` | JSON array of absolute folders. Every file tool stays inside these roots. |
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | Second opt-in for `shell.exec`. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, and `md.section`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, and `git.show`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
 
 ```bash
 export DAVE_ENABLE_TOOLS=true
@@ -34,7 +34,7 @@ These tools are unchanged by the extended tools. `file.read` still returns at mo
 
 ## Extended file tools
 
-All five extended tools, including the Markdown tools below, are read-only: permission `read_files`, no approval, synchronous handlers, bounded cancellation, and a 10-second timeout. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
+All nine extended tools, including the Markdown and Git tools below, are read-only: permission `read_files`, no approval, synchronous handlers, bounded cancellation, and a 10-second timeout. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
 
 ### `file.list`
 
@@ -133,6 +133,105 @@ When `max_headings` or the result budget ends the list early, `truncated` is `tr
 
 **Limits and continuation.** At most 400 lines are returned, and fewer when the result budget is reached first. Lines longer than 2,000 characters are cut and listed in `cut_lines`, as in `file.read_lines`, and also set `truncated`. When the section continues past the returned lines, `next_start_line` is the next line to read. Call `file.read_lines` with that `start_line` and stop at `content_end_line`; `md.section` has no paging of its own.
 
+## Git tools
+
+`git.status`, `git.diff`, `git.log`, and `git.show` give read-only awareness of a Git working tree inside a tool root. Their implementation is `davellm_git.py`. There is no tool that commits, stages, switches branches, fetches, or runs arbitrary Git arguments, and none is planned in this set.
+
+Every tool takes `path`, a folder inside the working tree (default `.`, the tool root). The result's `path` is the repository's top folder relative to the tool root. File paths inside results are relative to the repository.
+
+### `git.status`
+
+| Argument | Type | Default |
+|---|---|---|
+| `path` | string | `.` |
+
+The result has `branch` (`null` when detached), `detached`, `commit` (12 characters), `upstream`, `ahead` and `behind` (`null` without an upstream), and four lists: `staged` and `unstaged` (each entry has `path` and `change`: `modified`, `added`, `deleted`, `type_changed`, …), `untracked` (paths), and `conflicted`. `counts` gives each list's full length. Each list holds at most 100 entries, and `truncated` says when anything was left out. Renames show as a deletion and an addition. Status comes from Git's machine-readable porcelain v2 output and never takes a lock or writes the index.
+
+### `git.diff`
+
+| Argument | Type | Default | Meaning |
+|---|---|---|---|
+| `path` | string | `.` | |
+| `staged` | boolean | `false` | `true` compares the index with `HEAD` |
+| `from_revision` | string | none | Compare two commits instead |
+| `to_revision` | string | `HEAD` | Needs `from_revision` |
+
+The three modes are working tree against the index (the default), staged, and revisions. `staged` and `from_revision` cannot be combined. The result has `mode`, a unified `diff`, and `truncated`; revision diffs also give `from_revision`, `to_revision`, `from_commit`, and `to_commit`. Untracked files do not appear; use `git.status`.
+
+### `git.log`
+
+| Argument | Type | Default | Bounds |
+|---|---|---|---|
+| `path` | string | `.` | |
+| `limit` | integer | `20` | 1–50 |
+| `file` | string | none | Only commits that touched this repository path |
+
+Commits start at `HEAD`, newest first. Each has `commit` (short hash), `date` (ISO 8601), `author` (name only, never an e-mail address), and `subject`. Bodies, signatures, notes, and decorations are left out. `truncated` means older commits exist. A repository with no commits returns an empty list.
+
+### `git.show`
+
+| Argument | Type | Default |
+|---|---|---|
+| `path` | string | `.` |
+| `revision` | string | required |
+| `file` | string | none |
+
+Without `file`, the result is the commit's `commit`, `date`, `author`, `parents`, `subject`, `body` (at most 2,000 characters, with `body_truncated`), and its patch in `diff`. A merge shows Git's combined diff. With `file`, the result is that file's text at the commit instead: `lines` (at most 400, long lines cut as in `file.read_lines`), `line_count`, `total_lines`, and `truncated`. There is no paging for historical files. An annotated tag is shown as the commit it points to.
+
+### Revisions
+
+A revision is `HEAD`, a branch or tag name, or a full or abbreviated commit hash, optionally followed by `~N` or `^N` suffixes, such as `main~2` or `HEAD^2`. At most 128 characters are accepted: letters, digits, `.`, `_`, `-`, `/`, `~`, and `^`, and each name part must start with a letter, digit, or `_`. Refused forms include:
+
+- anything starting with `-`, so a revision can never be read as a Git option;
+- ranges (`a..b`, `a...b`), reflog and upstream forms (`@{...}`), peeling (`^{...}`), and `rev:path`;
+- searches (`:/text`), whitespace, and shell characters.
+
+A revision that passes is resolved with `git rev-parse --verify --end-of-options <revision>^{commit}`. Every later command gets only the resulting commit hash. File paths are checked separately: they must be relative to the repository, without `..`, a leading `-` or `:`, backslashes, or control characters. They are passed after `--` as literal pathspecs.
+
+### Protected paths in Git output
+
+The protected-path patterns apply inside repositories too:
+
+- `git.status` never lists a protected path.
+- Patches from `git.diff` and `git.show` leave protected files out.
+- `git.log` and `git.show` refuse a protected `file` with "Access denied: path is not allowed".
+- Commit subjects and bodies are not filtered.
+
+### Limits
+
+| Limit | Value |
+|---|---|
+| Patch text | 40,000 bytes, cut at a line end, plus the 48 KiB result budget |
+| Status entries | 100 per list |
+| Commits | 50 per call |
+| Git output read | 1 MiB per Git process, which is then stopped |
+| Time | 8 seconds per tool call for all its Git processes together, below the 10-second tool timeout |
+
+### Why arbitrary Git arguments are not supported
+
+Git options can write files (`--output`), run programs (`--ext-diff`, `--textconv`, `--upload-pack`, `-c`), reach the network, or change which repository is read (`--git-dir`, `--work-tree`). Every one of those would have to be recognized and blocked, and a new Git version can add more. The tools instead take a few typed arguments and build every Git command themselves.
+
+### Hardened runner
+
+A repository's own configuration can name programs that Git runs during ordinary reads. Every Git process therefore starts in `run_git`, the one runner:
+
+- **No shell.** Git runs directly from an argument list, with stdin closed, in its own process group. A timeout or an output cap kills the whole group.
+- **Clean environment.** Nothing is inherited from the DaveLLM process. System and global Git configuration are ignored, prompts are disabled, and the pager is `cat`.
+- **No locks.** `--no-optional-locks` means status never takes a lock or writes the index.
+- **No network.** `GIT_ALLOW_PROTOCOL` refuses every protocol, overriding repository settings, and lazy fetching from promisor remotes is disabled.
+- **Forced configuration.** `GIT_CONFIG_*` overrides disable, whatever the repository says: `core.fsmonitor`, hooks (`core.hooksPath` is `/dev/null`), credential helpers and `core.askPass`, attribute and exclude files outside the repository, signature verification (`log.showSignature`), mail maps, submodule recursion and summaries, and implicit bare repositories.
+- **Filters.** Every clean, smudge, and process filter the repository configures is overridden with an empty command, so filters never run.
+- **Diff programs.** Every diff-producing command also passes `--no-ext-diff` and `--no-textconv`, so external diff programs, diff drivers, and text converters never run.
+
+### Repository admission
+
+- **Path.** The requested folder must pass the extended path boundary: containment, anchoring, and the protected-path denylist.
+- **Discovery.** Git may search upward for the repository no further than the tool root, never into the folder above it.
+- **Locations.** The working tree, Git directory, common directory, and object store must all resolve inside a tool root and outside protected folders. A `.git` file or symlink that points elsewhere is refused. So is a `core.worktree` that moves the working tree elsewhere, because then the requested folder is not a working tree.
+- **Alternate object stores** are refused, because they would let a repository read objects from outside the roots.
+- **Pinned locations.** After admission every command gets the admitted Git directory and working tree explicitly, so Git does not search again.
+- **Ownership.** A repository owned by another user is refused ("Repository is owned by another user"), keeping Git's own `safe.directory` protection.
+
 ## Paths
 
 - **Input.** An absolute path must be inside a tool root. A relative path is anchored at the tool root when exactly one root is configured. With several roots, relative paths are refused with "Use an absolute path when several tool roots are configured".
@@ -173,10 +272,19 @@ Listings read names and metadata, never file contents, so they do not use this p
 | `Heading not found` | `md.section` found no heading with that text |
 | `Heading must contain text` | The `md.section` heading is only whitespace |
 | `File has more than 20,000 headings` | Too many headings for the Markdown tools |
+| `Not a Git working tree` | The folder is not inside a Git working tree within the tool root |
+| `Repository is owned by another user` | Git's ownership check refused the repository |
+| `Repository layout is not supported` | The repository uses alternate object stores |
+| `Invalid revision` | The revision does not follow the grammar above |
+| `Revision not found` | No commit has that name |
+| `Use a file path relative to the repository` | A Git `file` argument is absolute, escapes, or is malformed |
+| `File not found at that revision` / `Path is not a file at that revision` | `git.show` with `file` |
+| `Use staged or revisions, not both` / `to_revision needs from_revision` | Conflicting `git.diff` arguments |
+| `Git timed out` / `Git command failed` / `Git 2.32 or newer is not available` | Git did not finish, failed, or is missing |
 | `File tool failed` | Any other failure; details stay out of the model's view |
 
 Every result is kept under 48 KiB, below DaveHarness's 64 KiB per-result budget. When the limit is reached, the page ends early and says so through `truncated`, `next_cursor`, or `next_start_line`.
 
 ## Evaluation
 
-`scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs four extra cases: discovery, long-document paging, a blocked instruction, and Markdown section navigation. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).
+`scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs six extra cases: discovery, long-document paging, a blocked instruction, Markdown section navigation, Git change inspection, and Git history. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).

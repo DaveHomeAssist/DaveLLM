@@ -1367,11 +1367,51 @@ def tool_md_section(params: Dict) -> ToolResult:
     return _run_extended_file_tool("md.section", markdown_section, params)
 
 
+from davellm_git import (  # PR-04 read-only Git tools, kept below the PR-03 handlers
+    FILE_MAX_CHARS as GIT_FILE_MAX_CHARS, LOG_DEFAULT_COMMITS, LOG_MAX_COMMITS, REVISION_MAX_CHARS,
+    git_diff, git_log, git_show, git_status,
+)
+
+
+def tool_git_status(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("git.status", git_status, params)
+
+
+def tool_git_diff(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("git.diff", git_diff, params)
+
+
+def tool_git_log(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("git.log", git_log, params)
+
+
+def tool_git_show(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("git.show", git_show, params)
+
+
 EXTENDED_PATH_SCHEMA = {
     "type": "string",
     "minLength": 1,
     "maxLength": 4096,
     "description": "Relative to the tool root, or absolute inside it.",
+}
+
+
+GIT_REPOSITORY_SCHEMA = {
+    **EXTENDED_PATH_SCHEMA,
+    "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+}
+GIT_REVISION_SCHEMA = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": REVISION_MAX_CHARS,
+    "description": "A branch, tag, commit hash, or HEAD, optionally followed by ~N or ^N.",
+}
+GIT_FILE_SCHEMA = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": GIT_FILE_MAX_CHARS,
+    "description": "A file path relative to the repository.",
 }
 
 
@@ -1381,7 +1421,7 @@ def _optional(schema: Dict) -> Dict:
 
 
 def extended_tool_definitions() -> List[ToolDefinition]:
-    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: read-only discovery, search, paged reads, and Markdown."""
+    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: read-only discovery, search, paged reads, Markdown, and Git."""
     return [
         ToolDefinition(
             name="file.list",
@@ -1508,6 +1548,84 @@ def extended_tool_definitions() -> List[ToolDefinition]:
                 "additionalProperties": False,
             },
             handler=tool_md_section,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="git.status",
+            description=(
+                "Show the branch, ahead/behind counts, and staged, unstaged, untracked, and conflicted "
+                "files of a Git working tree inside an allowed tool root. Read only."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {"path": _optional({**GIT_REPOSITORY_SCHEMA, "default": "."})},
+                "additionalProperties": False,
+            },
+            handler=tool_git_status,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="git.diff",
+            description=(
+                "Show a unified diff for a Git working tree inside an allowed tool root: working-tree "
+                "changes by default, staged changes with staged=true, or the changes between "
+                "from_revision and to_revision (default HEAD). Read only."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": _optional({**GIT_REPOSITORY_SCHEMA, "default": "."}),
+                    "staged": _optional({"type": "boolean", "default": False}),
+                    "from_revision": _optional(GIT_REVISION_SCHEMA),
+                    "to_revision": _optional(GIT_REVISION_SCHEMA),
+                },
+                "additionalProperties": False,
+            },
+            handler=tool_git_diff,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="git.log",
+            description=(
+                f"List up to {LOG_MAX_COMMITS} recent commits of a Git working tree inside an allowed tool "
+                "root, newest first, with short hash, date, author, and subject. Read only."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": _optional({**GIT_REPOSITORY_SCHEMA, "default": "."}),
+                    "limit": _optional({
+                        "type": "integer", "minimum": 1, "maximum": LOG_MAX_COMMITS,
+                        "default": LOG_DEFAULT_COMMITS,
+                    }),
+                    "file": _optional(GIT_FILE_SCHEMA),
+                },
+                "additionalProperties": False,
+            },
+            handler=tool_git_log,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="git.show",
+            description=(
+                "Show one commit of a Git working tree inside an allowed tool root, with its message and "
+                "patch, or one file's text at that commit when file is given. Read only."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": _optional({**GIT_REPOSITORY_SCHEMA, "default": "."}),
+                    "revision": GIT_REVISION_SCHEMA,
+                    "file": _optional(GIT_FILE_SCHEMA),
+                },
+                "required": ["revision"],
+                "additionalProperties": False,
+            },
+            handler=tool_git_show,
             permission="read_files",
             cancellation="bounded",
         ),

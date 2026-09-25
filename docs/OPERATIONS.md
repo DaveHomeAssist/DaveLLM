@@ -34,7 +34,7 @@ Tools stay off unless configured. Every file tool is confined to the listed abso
 ```bash
 export DAVE_ENABLE_TOOLS=true
 export DAVE_TOOL_ROOTS='["/absolute/path/to/project"]'
-export DAVE_ENABLE_EXTENDED_TOOLS=true   # optional: file.list, file.search, file.read_lines, md.outline, md.section
+export DAVE_ENABLE_EXTENDED_TOOLS=true   # optional: file, Markdown, and read-only Git tools
 ```
 
 `DAVE_ENABLE_SHELL_TOOL=true` separately enables `shell.exec`. See [DaveLLM tools](DAVELLM_TOOLS.md) for arguments, limits, and protected paths.
