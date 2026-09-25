@@ -183,7 +183,7 @@ def test_list_shows_an_ordinary_directory_with_entry_details(extended, hostile_t
                       "size": hostile_tree.at("README.md").stat().st_size, "modified": readme["modified"]}
     assert readme["modified"].endswith("+00:00")
     assert {entry["type"] for entry in result["entries"][1:]} == {"directory"}
-    assert "size" not in result["entries"][1]
+    assert all(set(entry) == {"path", "name", "type"} for entry in result["entries"][1:])
     assert (result["truncated"], result["next_cursor"], result["depth_limited"]) == (False, None, True)
 
 
@@ -268,7 +268,7 @@ def test_list_omits_ignored_folders_secrets_and_unsafe_symlinks(extended, hostil
         assert secret not in listed and not [item for item in listed if item.startswith(secret + "/")]
     links = ok(router, "file.list", path="links")
     assert [(entry["path"], entry["type"]) for entry in links["entries"]] == [(INTERNAL_LINK, "symlink")]
-    assert "size" not in links["entries"][0]
+    assert set(links["entries"][0]) == {"path", "name", "type"}
 
 
 def test_list_symlink_loops_return_promptly(extended, hostile_tree):
@@ -447,19 +447,45 @@ def remove_secrets(tree):
         tree.at(link).unlink()
 
 
+def age_directories(root, seconds=3_600):
+    """Backdate every folder so a later child change is visible at one-second resolution."""
+    moment = time.time() - seconds
+    for folder in [root, *(path for path in root.rglob("*") if path.is_dir() and not path.is_symlink())]:
+        os.utime(folder, (moment, moment), follow_symlinks=False)
+
+
 def test_secret_existence_cannot_be_inferred_from_results(extended, hostile_tree):
     router = extended()
+    age_directories(hostile_tree.root)
     probes = [("file.search", {"query": query}) for query in ("e", "sentinel", "x", "ssh")]
-    probes += [("file.list", {"depth": depth, "max_entries": size}) for depth in (1, 2, 3) for size in (3, 500)]
-    probes += [("file.list", {"path": directory, "depth": 1}) for directory in ("certs", "config", "keys", "links")]
-    with_secrets = [ok(router, name, **arguments) for name, arguments in probes]
+    probes += [("file.list", {"depth": depth, "max_entries": size}) for depth in (0, 1, 2, 3) for size in (3, 500)]
+    probes += [("file.list", {"path": directory, "depth": depth})
+               for directory in ("certs", "config", "keys", "links", "docs/nested") for depth in (0, 1)]
+    with_secrets = [run(router, name, **arguments) for name, arguments in probes]
     remove_secrets(hostile_tree)
-    without = [ok(router, name, **arguments) for name, arguments in probes]
-    for before, after in zip(with_secrets, without):
-        for entries in (before.get("entries", []), after.get("entries", [])):
-            for entry in entries:
-                entry.pop("modified", None)  # removing a child changes its folder's mtime
-        assert before == after
+    without = [run(router, name, **arguments) for name, arguments in probes]
+    assert all(execution.status == "success" for execution in with_secrets + without)
+    # The complete returned payloads, byte for byte: nothing is dropped or normalized.
+    assert [execution.result for execution in with_secrets] == [execution.result for execution in without]
+
+
+def test_listing_is_identical_after_a_hidden_secret_is_removed(extended, tmp_path):
+    root = (tmp_path / "box-root").resolve()
+    box = root / "box"
+    box.mkdir(parents=True)
+    (box / "ordinary.txt").write_text("ordinary\n")
+    secret = box / ".env"
+    secret.write_text("TOKEN=1\n")
+    an_hour_ago = time.time() - 3_600
+    for folder in (root, box):
+        os.utime(folder, (an_hour_ago, an_hour_ago))
+    router = extended(root)
+    probes = [{"path": "box"}, {"path": "box", "depth": 0}, {"depth": 2}, {"depth": 0}]
+    before = [run(router, "file.list", **arguments).result for arguments in probes]
+    secret.unlink()
+    assert box.stat().st_mtime != an_hour_ago  # the folder's own timestamp did change on disk
+    assert [run(router, "file.list", **arguments).result for arguments in probes] == before
+    assert [entry["path"] for entry in json.loads(before[0])["entries"]] == ["box/ordinary.txt"]
 
 
 def test_search_output_stays_within_the_result_budget(extended, hostile_tree):

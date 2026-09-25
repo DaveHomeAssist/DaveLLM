@@ -577,11 +577,17 @@ _TYPE_NAMES = {"file": "file", "dir": "directory", "symlink": "symlink", "other"
 
 
 def _list_entry(display: str, name: str, kind: str, size: int | None, modified: float | None) -> dict[str, Any]:
+    """Only regular files carry size and modification time.
+
+    A directory's mtime changes whenever any child is added or removed,
+    including a hidden secret, so returning it would reveal that secret.
+    """
     entry: dict[str, Any] = {"path": display, "name": name, "type": _TYPE_NAMES[kind]}
-    if size is not None:
-        entry["size"] = size
-    if modified is not None:
-        entry["modified"] = datetime.fromtimestamp(modified, timezone.utc).isoformat(timespec="seconds")
+    if kind == "file":
+        if size is not None:
+            entry["size"] = size
+        if modified is not None:
+            entry["modified"] = datetime.fromtimestamp(modified, timezone.utc).isoformat(timespec="seconds")
     return entry
 
 
