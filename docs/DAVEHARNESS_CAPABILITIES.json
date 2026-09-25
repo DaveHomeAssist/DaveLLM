@@ -1,0 +1,1292 @@
+{
+  "constants": {
+    "daveharness.contracts": {
+      "CONTRACT_VERSION": 1
+    },
+    "daveharness.engine": {
+      "DEFAULT_ERROR_BUDGET": 2,
+      "DEFAULT_MODEL_TIMEOUT_SECONDS": 120.0,
+      "DEFAULT_STEP_LIMIT": 8,
+      "PENDING_CALL_TTL_SECONDS": 300
+    },
+    "daveharness.events": {
+      "EVENT_KINDS": [
+        "approval_decision",
+        "approval_required",
+        "budget_stop",
+        "cancellation_requested",
+        "created",
+        "model_result",
+        "model_start",
+        "parse_repair",
+        "policy_decision",
+        "run_started",
+        "sink_failed",
+        "terminal",
+        "tool_result",
+        "tool_start",
+        "truncated"
+      ],
+      "EVENT_VERSION": 1
+    },
+    "daveharness.policy": {
+      "KNOWN_PERMISSIONS": [
+        "execute_process",
+        "public_network",
+        "read",
+        "read_files",
+        "read_system",
+        "write",
+        "write_files"
+      ]
+    },
+    "daveharness.registry": {
+      "DEFAULT_TOOL_TIMEOUT_SECONDS": 10.0,
+      "VALID_CANCELLATION_MODES": [
+        "abandon",
+        "bounded"
+      ]
+    },
+    "daveharness.state": {
+      "RUN_STATE_VERSION": 1,
+      "RUN_STATUSES": [
+        "approval_rejected",
+        "approval_required",
+        "budget_exceeded",
+        "cancellation_failed",
+        "cancelled",
+        "cancelling",
+        "completed",
+        "created",
+        "error_budget",
+        "model_error",
+        "model_timeout",
+        "run_conflict",
+        "run_expired",
+        "running",
+        "step_limit"
+      ],
+      "TERMINAL_RUN_STATUSES": [
+        "approval_rejected",
+        "budget_exceeded",
+        "cancellation_failed",
+        "cancelled",
+        "completed",
+        "error_budget",
+        "model_error",
+        "model_timeout",
+        "run_conflict",
+        "run_expired",
+        "step_limit"
+      ]
+    },
+    "davellm_files": {
+      "AMBIGUOUS_RELATIVE_PATH": "Use an absolute path when several tool roots are configured",
+      "BINARY_SNIFF_BYTES": 8192,
+      "CURSOR_VERSION": "c1",
+      "DEFAULT_IGNORED_DIRS": [
+        ".git",
+        ".trash",
+        "__pycache__",
+        "node_modules",
+        "venv"
+      ],
+      "FILE_NOT_FOUND": "File not found",
+      "LIST_DEFAULT_DEPTH": 1,
+      "LIST_DEFAULT_ENTRIES": 100,
+      "LIST_MAX_DEPTH": 3,
+      "LIST_MAX_ENTRIES": 500,
+      "LIST_SCAN_LIMIT": 10000,
+      "MULTILINE_QUERY": "Query must be a single line",
+      "NOT_A_FILE_OR_DIRECTORY": "Path is not a file or directory",
+      "NOT_A_REGULAR_FILE": "Path is not a regular file",
+      "NOT_TEXT": "File is not UTF-8 text",
+      "OUTPUT_BUDGET_BYTES": 49152,
+      "PATH_NOT_ALLOWED": "Access denied: path is not allowed",
+      "PATH_NOT_FOUND": "Path not found",
+      "READ_DEFAULT_LINES": 200,
+      "READ_MAX_FILE_BYTES": 10485760,
+      "READ_MAX_LINES": 400,
+      "READ_MAX_LINE_CHARS": 2000,
+      "READ_MAX_START_LINE": 10000000,
+      "SEARCH_DEFAULT_MATCHES": 50,
+      "SEARCH_LINE_CHARS": 300,
+      "SEARCH_MAX_DEPTH": 32,
+      "SEARCH_MAX_FILES": 2000,
+      "SEARCH_MAX_FILE_BYTES": 1048576,
+      "SEARCH_MAX_MATCHES": 200,
+      "SEARCH_MAX_QUERY_CHARS": 200,
+      "SEARCH_SCAN_LIMIT": 20000,
+      "SECRET_DIR_NAMES": [
+        ".aws",
+        ".gnupg",
+        ".ssh"
+      ],
+      "SECRET_NAME_PATTERNS": [
+        ".env",
+        ".env.*",
+        "*.pem",
+        "*.key",
+        "id_rsa",
+        "id_rsa*",
+        "*.p12"
+      ],
+      "UNREADABLE": "File could not be read"
+    },
+    "davellm_git": {
+      "DIFF_SAFETY": [
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--ignore-submodules=all"
+      ],
+      "FILE_MAX_CHARS": 1024,
+      "FILE_NOT_AT_REVISION": "File not found at that revision",
+      "FILTER_COMMANDS": [
+        "clean",
+        "smudge",
+        "process"
+      ],
+      "FIXED_CONFIG": [
+        [
+          "core.fsmonitor",
+          "false"
+        ],
+        [
+          "core.hooksPath",
+          "/dev/null"
+        ],
+        [
+          "core.pager",
+          "cat"
+        ],
+        [
+          "core.askPass",
+          ""
+        ],
+        [
+          "credential.helper",
+          ""
+        ],
+        [
+          "core.attributesFile",
+          "/dev/null"
+        ],
+        [
+          "core.excludesFile",
+          "/dev/null"
+        ],
+        [
+          "core.untrackedCache",
+          "false"
+        ],
+        [
+          "core.quotePath",
+          "false"
+        ],
+        [
+          "log.showSignature",
+          "false"
+        ],
+        [
+          "log.mailmap",
+          "false"
+        ],
+        [
+          "status.submoduleSummary",
+          "false"
+        ],
+        [
+          "diff.submodule",
+          "short"
+        ],
+        [
+          "submodule.recurse",
+          "false"
+        ],
+        [
+          "safe.bareRepository",
+          "explicit"
+        ],
+        [
+          "protocol.allow",
+          "never"
+        ],
+        [
+          "color.ui",
+          "false"
+        ],
+        [
+          "gc.auto",
+          "0"
+        ],
+        [
+          "maintenance.auto",
+          "false"
+        ]
+      ],
+      "GIT_CAPTURE_BYTES": 1048576,
+      "GIT_FAILED": "Git command failed",
+      "GIT_STDERR_BYTES": 65536,
+      "GIT_TIMED_OUT": "Git timed out",
+      "GIT_TIMEOUT_SECONDS": 8.0,
+      "GIT_UNAVAILABLE": "Git 2.32 or newer is not available",
+      "GLOBAL_OPTIONS": [
+        "--no-pager",
+        "--no-optional-locks",
+        "--no-replace-objects"
+      ],
+      "INVALID_FILE": "Use a file path relative to the repository",
+      "INVALID_REVISION": "Invalid revision",
+      "LOG_DEFAULT_COMMITS": 20,
+      "LOG_MAX_COMMITS": 50,
+      "MIN_GIT_VERSION": [
+        2,
+        32
+      ],
+      "MODE_CONFLICT": "Use staged or revisions, not both",
+      "NOT_A_FILE_AT_REVISION": "Path is not a file at that revision",
+      "NOT_A_WORK_TREE": "Not a Git working tree",
+      "PATCH_MAX_BYTES": 40000,
+      "REVISION_MAX_CHARS": 128,
+      "REVISION_NOT_FOUND": "Revision not found",
+      "SHOW_BODY_CHARS": 2000,
+      "STATUS_MAX_ENTRIES": 100,
+      "TEXT_FIELD_CHARS": 300,
+      "TO_WITHOUT_FROM": "to_revision needs from_revision",
+      "UNSUPPORTED_REPOSITORY": "Repository layout is not supported",
+      "UNTRUSTED_REPOSITORY": "Repository is owned by another user"
+    },
+    "davellm_markdown": {
+      "EMPTY_HEADING": "Heading must contain text",
+      "HEADING_NOT_FOUND": "Heading not found",
+      "HEADING_TEXT_CHARS": 300,
+      "MARKDOWN_MAX_HEADINGS": 20000,
+      "OUTLINE_DEFAULT_HEADINGS": 200,
+      "OUTLINE_MAX_HEADINGS": 500,
+      "SECTION_MAX_HEADING_CHARS": 500,
+      "SECTION_MAX_LINES": 400,
+      "TOO_MANY_HEADINGS": "File has more than 20,000 headings"
+    },
+    "davellm_native_tools": {
+      "ARTIFACT_DEFAULT_ENTRIES": 20,
+      "ARTIFACT_ID_MAX_CHARS": 100,
+      "ARTIFACT_MAX_CHARS": 30000,
+      "ARTIFACT_MAX_ENTRIES": 50,
+      "ARTIFACT_NOT_FOUND": "Artifact not found",
+      "BRAIN_MAX_CHARS": 30000,
+      "BRAIN_UNAVAILABLE": "The BRAIN revision captured for this run is not available",
+      "CHAT_ROLES": [
+        "assistant",
+        "user"
+      ],
+      "EMPTY_QUERY": "Query must contain text",
+      "NATIVE_TOOL_FAILED": "Native tool failed",
+      "NODE_MAX_MODELS": 50,
+      "NOTEPAD_MAX_CHARS": 20000,
+      "PROJECT_RUN_REQUIRED": "This tool requires a project-scoped run",
+      "PROJECT_UNAVAILABLE": "The project for this run is not available",
+      "RUN_REQUIRED": "This tool requires a DaveLLM run",
+      "SEARCH_DEFAULT_RESULTS": 5,
+      "SEARCH_MAX_QUERY_CHARS": 200,
+      "SEARCH_MAX_RESULTS": 10,
+      "SNIPPET_CHARS": 300,
+      "TITLE_CHARS": 200
+    },
+    "davellm_shell": {
+      "SAFE_COMMANDS": [
+        "date",
+        "echo",
+        "head",
+        "ls",
+        "pwd",
+        "tail",
+        "wc"
+      ],
+      "SHELL_OUTPUT_LIMIT": 2000
+    }
+  },
+  "flags": {
+    "DAVE_ENABLE_EXTENDED_TOOLS": {
+      "default": false,
+      "description": "Registers the extended read-only tools. Honored only with DAVE_ENABLE_TOOLS.",
+      "tools": [
+        "chat.search",
+        "cluster.status",
+        "file.list",
+        "file.read_lines",
+        "file.search",
+        "git.diff",
+        "git.log",
+        "git.show",
+        "git.status",
+        "md.outline",
+        "md.section",
+        "project.artifacts",
+        "project.brain.read",
+        "project.notepad.read"
+      ]
+    },
+    "DAVE_ENABLE_SHELL_TOOL": {
+      "default": false,
+      "description": "Registers shell.exec. Execution still needs DAVE_ENABLE_TOOLS.",
+      "tools": [
+        "shell.exec"
+      ]
+    },
+    "DAVE_ENABLE_TOOLS": {
+      "default": false,
+      "description": "Turns on tool execution and the core tools.",
+      "tools": [
+        "file.append",
+        "file.read",
+        "file.write",
+        "system.info",
+        "web.fetch"
+      ]
+    },
+    "DAVE_TOOL_ROOTS": {
+      "default": [],
+      "description": "JSON array of absolute folders that file and Git tools may use.",
+      "tools": []
+    }
+  },
+  "generated_by": "scripts/generate_capabilities_manifest.py",
+  "host": {
+    "async_handler_allowlist": [
+      "web.fetch"
+    ],
+    "harness_store": {
+      "max_bytes": 268435456,
+      "max_runs": 32,
+      "ttl_seconds": 3600
+    },
+    "harness_store_headroom_bytes": 4000000,
+    "max_active_harness_runs": 4,
+    "max_harness_input_bytes": 1000000,
+    "max_harness_model_response_bytes": 1000000
+  },
+  "manifest_version": 1,
+  "routes": [
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "list_available_tools",
+      "methods": [
+        "GET"
+      ],
+      "path": "/tools"
+    },
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "resume_agent_endpoint",
+      "methods": [
+        "POST"
+      ],
+      "path": "/tools/agent/resume"
+    },
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "run_agent_endpoint",
+      "methods": [
+        "POST"
+      ],
+      "path": "/tools/agent/run"
+    },
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "create_agent_run",
+      "methods": [
+        "POST"
+      ],
+      "path": "/tools/agent/runs"
+    },
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "get_agent_run",
+      "methods": [
+        "GET"
+      ],
+      "path": "/tools/agent/runs/{run_id}"
+    },
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "cancel_agent_run",
+      "methods": [
+        "POST"
+      ],
+      "path": "/tools/agent/runs/{run_id}/cancel"
+    },
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "decide_agent_run",
+      "methods": [
+        "POST"
+      ],
+      "path": "/tools/agent/runs/{run_id}/decisions"
+    },
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "get_agent_run_events",
+      "methods": [
+        "GET"
+      ],
+      "path": "/tools/agent/runs/{run_id}/events"
+    },
+    {
+      "authentication": "X-API-Key",
+      "endpoint": "execute_tool_endpoint",
+      "methods": [
+        "POST"
+      ],
+      "path": "/tools/execute"
+    }
+  ],
+  "runs": {
+    "budget": {
+      "errors": 2,
+      "event_count": 1000,
+      "model_steps": 8,
+      "tool_calls": 32,
+      "tool_output_bytes": 65536,
+      "total_wall_seconds": 300.0,
+      "transcript_bytes": 2097152
+    },
+    "decision_request": {
+      "call_id": {
+        "max_length": 256,
+        "min_length": 1,
+        "required": true
+      },
+      "decision": {
+        "enum": [
+          "approve",
+          "reject"
+        ],
+        "required": true
+      },
+      "definition_fingerprint": {
+        "pattern": "^[0-9a-f]{64}$",
+        "required": true
+      },
+      "digest": {
+        "pattern": "^[0-9a-f]{64}$",
+        "required": true
+      },
+      "nonce": {
+        "max_length": 128,
+        "min_length": 1,
+        "required": true
+      },
+      "permission": {
+        "max_length": 80,
+        "min_length": 1,
+        "required": true
+      }
+    },
+    "legacy_budget": {
+      "errors": 2,
+      "event_count": null,
+      "model_steps": 8,
+      "tool_calls": null,
+      "tool_output_bytes": null,
+      "total_wall_seconds": null,
+      "transcript_bytes": null
+    },
+    "lifecycle_request": {
+      "conversation_id": {
+        "default": null,
+        "max_length": 128,
+        "required": false
+      },
+      "error_budget": {
+        "default": 2,
+        "ge": 1,
+        "le": 8,
+        "required": false
+      },
+      "max_tokens": {
+        "default": 2048,
+        "ge": 1,
+        "le": 262144,
+        "required": false
+      },
+      "messages": {
+        "required": true
+      },
+      "model": {
+        "max_length": 128,
+        "min_length": 1,
+        "required": true
+      },
+      "node_id": {
+        "max_length": 128,
+        "min_length": 1,
+        "required": true
+      },
+      "project_id": {
+        "default": null,
+        "max_length": 128,
+        "required": false
+      },
+      "step_limit": {
+        "default": 8,
+        "ge": 1,
+        "le": 32,
+        "required": false
+      },
+      "temperature": {
+        "default": 0.7,
+        "ge": 0,
+        "le": 2,
+        "required": false
+      }
+    },
+    "payload_limits": {
+      "max_bytes": 16777216,
+      "max_depth": 32,
+      "max_nodes": 100000
+    }
+  },
+  "tools": {
+    "chat.search": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Search your own earlier DaveLLM conversations and return short matching snippets.",
+      "family": "chat",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_results": {
+            "default": 5,
+            "maximum": 10,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "cluster.status": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Show which configured DaveLLM nodes are reachable and which models they are known to serve.",
+      "family": "cluster",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "permission": "read_system",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "file.append": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Append UTF-8 text inside an allowed tool root.",
+      "family": "file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "permission": "write_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "file.list": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List files and folders inside an allowed tool root, sorted by name, with paging. Paths are shown relative to the tool root.",
+      "family": "file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "next_cursor from the previous page of the same request.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "depth": {
+            "default": 1,
+            "description": "0 describes the path itself; 1 lists its direct children.",
+            "maximum": 3,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_entries": {
+            "default": 100,
+            "maximum": 500,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "file.read": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a UTF-8 text file inside an allowed tool root.",
+      "family": "file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "file.read_lines": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read up to 400 numbered lines from a UTF-8 text file inside an allowed tool root. Lines start at 1; use next_start_line to continue.",
+      "family": "file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_lines": {
+            "default": 200,
+            "maximum": 400,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "start_line": {
+            "default": 1,
+            "maximum": 10000000,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "file.search": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Find lines containing literal text in UTF-8 files inside an allowed tool root. Binary files and files over 1 MiB are skipped.",
+      "family": "file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "case_sensitive": {
+            "default": false,
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "max_matches": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "file.write": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Write UTF-8 text inside an allowed tool root.",
+      "family": "file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "permission": "write_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "git.diff": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Show a unified diff for a Git working tree inside an allowed tool root: working-tree changes by default, staged changes with staged=true, or the changes between from_revision and to_revision (default HEAD). Read only.",
+      "family": "git",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "from_revision": {
+            "description": "A branch, tag, commit hash, or HEAD, optionally followed by ~N or ^N.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "staged": {
+            "default": false,
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "to_revision": {
+            "description": "A branch, tag, commit hash, or HEAD, optionally followed by ~N or ^N.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "git.log": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List up to 50 recent commits of a Git working tree inside an allowed tool root, newest first, with short hash, date, author, and subject. Read only.",
+      "family": "git",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "description": "A file path relative to the repository.",
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "git.show": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Show one commit of a Git working tree inside an allowed tool root, with its message and patch, or one file's text at that commit when file is given. Read only.",
+      "family": "git",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "description": "A file path relative to the repository.",
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "A branch, tag, commit hash, or HEAD, optionally followed by ~N or ^N.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "git.status": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Show the branch, ahead/behind counts, and staged, unstaged, untracked, and conflicted files of a Git working tree inside an allowed tool root. Read only.",
+      "family": "git",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "default": ".",
+            "description": "A Git working tree folder, relative to the tool root or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "md.outline": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List the headings of a Markdown file inside an allowed tool root, in order, with their levels and line numbers. Headings inside code fences are ignored.",
+      "family": "md",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_headings": {
+            "default": 200,
+            "maximum": 500,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "md.section": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read the lines under one heading of a Markdown file inside an allowed tool root, up to 400 lines. The heading must match exactly, ignoring case; use next_start_line with file.read_lines to continue a long section.",
+      "family": "md",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "heading": {
+            "description": "The heading text, without the leading # marks.",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "include_subsections": {
+            "default": true,
+            "description": "false stops at the first subheading.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "heading"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "project.artifacts": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List the saved artifacts of the project this run belongs to, or read one artifact's text by passing its identifier as artifact.",
+      "family": "project",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "description": "An artifact identifier from the list; omit it to list.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_entries": {
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "project.brain.read": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read the BRAIN (pinned, active, and recent project memory) of the project this run belongs to, as it was when the run started.",
+      "family": "project",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "permission": "read",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "project.notepad.read": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read the plain-text notepad of the project this run belongs to.",
+      "family": "project",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "permission": "read",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "shell.exec": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": true,
+      "description": "Execute one command from the fixed safe-command allowlist.",
+      "family": "shell",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_SHELL_TOOL"
+      ],
+      "timeout_seconds": 6
+    },
+    "system.info": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded operating system and Python runtime information.",
+      "family": "system",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "all",
+              "platform",
+              "platform_version",
+              "python_version",
+              "processor"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_system",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "web.fetch": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Fetch a bounded public HTTP or HTTPS text response.",
+      "family": "web",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    }
+  },
+  "versions": {
+    "daveharness": "1.0.0-rc.1",
+    "davellm": "2.1.0"
+  }
+}
