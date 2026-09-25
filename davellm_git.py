@@ -59,6 +59,7 @@ FILE_MAX_CHARS = 1_024
 TEXT_FIELD_CHARS = 300
 SHOW_BODY_CHARS = 2_000
 ALTERNATES_MAX_BYTES = 65_536  # a real alternates file is a few lines
+GIT_DIR_MAX_ENTRIES = 100_000  # entries checked for links in the Git directory before it is refused
 MIN_GIT_VERSION = (2, 32)
 
 NOT_A_WORK_TREE = "Not a Git working tree"
@@ -280,9 +281,11 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
         raise FileToolError(NOT_A_WORK_TREE)
     top, git_dir, common_dir, objects = (_real(item) for item in fields[1:5])
     for location in (top, git_dir, common_dir, objects):
+        # The same answer as a folder that is not a repository, so a .git file or
+        # symlink never reveals whether something outside is a Git directory.
         if not _inside(location, roots) or has_secret_component(location):
-            raise PathNotAllowed()
-    if _names_alternates(objects):
+            raise FileToolError(NOT_A_WORK_TREE)
+    if not _free_of_links(git_dir, common_dir, objects) or _names_alternates(objects):
         raise FileToolError(UNSUPPORTED_REPOSITORY)
     # From here on Git uses exactly the admitted locations and never discovers others.
     located = {"GIT_DIR": str(git_dir), "GIT_WORK_TREE": str(top)}
@@ -314,7 +317,38 @@ def _names_alternates(objects: Path) -> bool:
         return str(exc) != FILE_NOT_FOUND
     except OSError:  # includes PathNotAllowed
         return True
-    return any(line.strip() and not line.startswith(b"#") for line in data.splitlines())
+    # Git splits on LF only and skips just empty and comment lines; a line of
+    # spaces or a carriage return is a relative path to Git, so it counts here too.
+    return any(line and not line.startswith(b"#") for line in data.split(b"\n"))
+
+
+def _free_of_links(*directories: Path) -> bool:
+    """Whether the Git directories hold only plain folders and regular files.
+
+    Git follows symlinks inside its own directory (refs, packed-refs, packs,
+    loose objects, the index), so a link planted there could read another
+    repository from outside the roots. The walk never follows a link, skips
+    ``hooks`` (hooks never run), and gives up after GIT_DIR_MAX_ENTRIES entries.
+    """
+    tops = {folder for folder in directories
+            if not any(folder != other and folder.is_relative_to(other) for other in directories)}
+    pending, seen = sorted(tops), 0
+    try:
+        while pending:
+            folder = pending.pop()
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    seen += 1
+                    if seen > GIT_DIR_MAX_ENTRIES or entry.is_symlink():
+                        return False
+                    if entry.is_dir(follow_symlinks=False):
+                        if not (folder in tops and entry.name == "hooks"):
+                            pending.append(Path(entry.path))
+                    elif not entry.is_file(follow_symlinks=False):
+                        return False
+    except OSError:
+        return False
+    return True
 
 
 def _filter_overrides(listing: bytes) -> list[tuple[str, str]]:

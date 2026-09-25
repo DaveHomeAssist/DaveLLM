@@ -26,7 +26,7 @@ from davellm_git import (
     NOT_A_FILE_AT_REVISION, NOT_A_WORK_TREE, REVISION_NOT_FOUND, TO_WITHOUT_FROM, UNSUPPORTED_REPOSITORY,
     UNTRUSTED_REPOSITORY, check_revision,
 )
-from hostile_git import SECRET_TEXT, UNIQUE_FACT
+from hostile_git import SECRET_TEXT, UNIQUE_FACT, _Builder
 from tool_contract import PathToolContract, assert_path_contract, run_path_contract
 
 
@@ -153,7 +153,7 @@ def test_repository_outside_the_root_is_rejected(router, extended, hostile_git):
 
 def test_git_directory_outside_the_root_is_rejected(router):  # 4
     for name, extra in (("git.status", {}), ("git.log", {}), ("git.show", {"revision": "HEAD"})):
-        refused(router, name, PATH_NOT_ALLOWED, path="symgit", **extra)  # .git is a symlink to outside
+        refused(router, name, NOT_A_WORK_TREE, path="symgit", **extra)  # .git is a symlink to outside
         # core.worktree points outside, so the folder inside the root is not the working tree.
         refused(router, name, NOT_A_WORK_TREE, path="escaped", **extra)
 
@@ -161,7 +161,7 @@ def test_git_directory_outside_the_root_is_rejected(router):  # 4
 def test_dot_git_file_pointing_outside_is_rejected(router, hostile_git):  # 5
     assert (hostile_git.at("linked") / ".git").is_file()
     for name, extra in (("git.status", {}), ("git.diff", {}), ("git.show", {"revision": "HEAD"})):
-        refused(router, name, PATH_NOT_ALLOWED, path="linked", **extra)
+        refused(router, name, NOT_A_WORK_TREE, path="linked", **extra)
 
 
 def test_symlinked_repository_escape_is_rejected(router):  # 6
@@ -218,6 +218,95 @@ def test_symlinked_alternates_are_refused_the_same_way_whatever_they_point_at(
     info.unlink()
     info.symlink_to(hostile_git.outside / "missing-info", target_is_directory=True)
     refused(router, "git.status", UNSUPPORTED_REPOSITORY, path="repo")
+
+
+@pytest.mark.parametrize("line", [b" ", b"\t", b"\r", b"\x0b"], ids=["space", "tab", "cr", "vt"])
+def test_alternates_lines_that_only_look_blank_are_alternates(router, hostile_git, line):
+    """Security re-review R-1: Git splits alternates on LF only, so these are relative paths to it."""
+    alternates_file(hostile_git).write_bytes(b"# a comment\n\n" + line + b"\n")
+    refused(router, "git.log", UNSUPPORTED_REPOSITORY, path="repo")
+
+
+ALL_FOUR = (("git.status", {}), ("git.diff", {}), ("git.log", {}), ("git.show", {"revision": "HEAD"}))
+OUTSIDE_FACT = "outside history sentinel"
+
+
+def small_repo(hostile_git, name):
+    builder = _Builder(hostile_git.base)
+    repo = builder.init(hostile_git.at(name))
+    builder.commit(repo, "Inside", {"inside.txt": "inside\n"})
+    return builder, repo / ".git"
+
+
+def test_links_inside_the_git_directory_are_refused(router, hostile_git):
+    """Security re-review R-2: Git follows links inside its own directory.
+
+    Packed refs and a pack directory linked to another repository once let
+    git.log and git.show return that repository's history.
+    """
+    builder = _Builder(hostile_git.base)
+    private = builder.init(hostile_git.outside / "private")
+    private_head = builder.commit(private, "private history", {"private.txt": OUTSIDE_FACT + "\n"})
+    builder.git(private, "repack", "-adq")
+    builder.git(private, "pack-refs", "--all")
+
+    _, packed = small_repo(hostile_git, "packed-link")
+    (packed / "refs" / "heads" / "main").unlink()
+    (packed / "packed-refs").unlink(missing_ok=True)
+    (packed / "packed-refs").symlink_to(private / ".git" / "packed-refs")
+    shutil.rmtree(packed / "objects" / "pack")
+    (packed / "objects" / "pack").symlink_to(private / ".git" / "objects" / "pack", target_is_directory=True)
+
+    _, loose = small_repo(hostile_git, "loose-link")
+    object_dir = loose / "objects" / private_head[:2]
+    object_dir.mkdir(exist_ok=True)
+    (object_dir / private_head[2:]).symlink_to(hostile_git.outside / "private.object")
+
+    _, ref = small_repo(hostile_git, "ref-link")
+    (ref / "refs" / "heads" / "other").symlink_to(private / ".git" / "refs" / "heads")
+
+    _, index = small_repo(hostile_git, "index-link")
+    (index / "index").unlink()
+    (index / "index").symlink_to(hostile_git.outside / "missing-index")
+
+    _, pipe = small_repo(hostile_git, "pipe-in-git")
+    os.mkfifo(pipe / "description.pipe")
+
+    for name in ("packed-link", "loose-link", "ref-link", "index-link", "pipe-in-git"):
+        for tool, extra in ALL_FOUR:
+            execution = run(router, tool, path=name, **extra)
+            assert (execution.status, execution.error) == ("error", UNSUPPORTED_REPOSITORY), (name, tool)
+            assert OUTSIDE_FACT not in execution.result
+
+
+def test_links_in_hooks_are_ignored_and_huge_git_directories_are_refused(router, hostile_git, monkeypatch):
+    _, hooked = small_repo(hostile_git, "hooked")
+    (hooked / "hooks" / "pre-commit").symlink_to(hostile_git.outside / "hook-script")
+    assert ok(router, "git.status", path="hooked")["path"] == "hooked"
+    monkeypatch.setattr(davellm_git, "GIT_DIR_MAX_ENTRIES", 5)
+    refused(router, "git.status", UNSUPPORTED_REPOSITORY, path="hooked")
+
+
+def test_pointers_outside_the_root_answer_like_a_plain_folder(router, hostile_git):
+    """Security re-review R-3: the answer must not depend on what is outside the root.
+
+    A .git file or symlink aimed at an outside Git directory once gave a
+    different message from one aimed at a plain or missing folder.
+    """
+    plain = hostile_git.outside / "plain-folder"
+    plain.mkdir()
+    destinations = (hostile_git.outside / "linked.git", hostile_git.outside / "symgit-src" / ".git", plain,
+                    hostile_git.outside / "missing")
+    for number, destination in enumerate(destinations):
+        pointer = hostile_git.at(f"pointer-{number}")
+        pointer.mkdir()
+        (pointer / ".git").write_text(f"gitdir: {destination}\n")
+        linked = hostile_git.at(f"linked-{number}")
+        linked.mkdir()
+        (linked / ".git").symlink_to(destination, target_is_directory=True)
+        for path in (pointer.name, linked.name):
+            for tool, extra in ALL_FOUR:
+                refused(router, tool, NOT_A_WORK_TREE, path=path, **extra)
 
 
 def test_special_file_alternates_are_refused_without_blocking(router, hostile_git):

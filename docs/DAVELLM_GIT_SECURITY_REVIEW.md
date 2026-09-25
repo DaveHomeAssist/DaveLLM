@@ -8,7 +8,8 @@ This records the independent security review of the PR-04 Git tools (`git.status
 | Scope | `davellm_git.py` as merged in PR-04, plus the shared path and read helpers it uses from `davellm_files.py` |
 | Environment | Git 2.43.0, Python 3.11.15, Linux |
 | First verdict | **Failed**: one medium and one low finding, both on the same line |
-| Status | Both findings are fixed in the change that adds this file |
+| Re-review verdict | **Failed**: the first fix held, and four findings from the original PR-04 code were new: two high and two low |
+| Status | G-1, G-2, R-1, R-2, and R-3 are fixed in the change that adds this file. R-4 is accepted and documented below. |
 
 ## Properties tested
 
@@ -25,6 +26,10 @@ This records the independent security review of the PR-04 Git tools (`git.status
 |---|---|---|---|---|
 | G-1 | 6, bounds | Medium | `open_repository`, the alternates check | Fixed |
 | G-2 | 3, disclosure | Low | the same line | Fixed |
+| R-1 | 3, disclosure | High | the alternates line rule | Fixed |
+| R-2 | 3, disclosure | High | admission checked four locations but not what was inside them | Fixed |
+| R-3 | 3, disclosure | Low | the location check's message | Fixed |
+| R-4 | 3, disclosure | Low | `include.path` read during discovery | Accepted |
 
 ### G-1: unbounded read through a symlinked alternates file
 
@@ -52,6 +57,53 @@ Three tests in `tests/test_git_tools.py` cover the fix. Each one fails on the co
 - `test_comment_only_alternates_are_admitted_and_oversized_ones_refused`
 - `test_symlinked_alternates_are_refused_the_same_way_whatever_they_point_at`: an existing target, a missing target, and a missing parent folder, across all four tools, plus an `objects/info` folder that links to an existing or a missing folder. It runs with both read strategies.
 - `test_special_file_alternates_are_refused_without_blocking`: a named pipe. The test releases a stuck reader, so a regression fails the test instead of hanging the suite.
+
+## Re-review
+
+The same reviewer then tried to break the fix. It checked both read strategies, with each attempt in a child process under a 2 GiB memory cap and a 15-second timeout. The fix held:
+
+- **Targets tried:** `/dev/zero`, `/dev/stdin`, a character device, a named pipe, a folder, a 20 GiB sparse file, a file one byte over the limit, and symlinked or special `info` entries. All were refused within 6 ms.
+- **Timing:** symlinks to existing and missing targets took the same time over 3,000 runs each.
+
+The reviewer then asked whether Git itself could still reach outside the roots after admission. It could, in ways that were already in PR-04:
+
+### R-1: alternates lines that only look blank
+
+The check skipped any line that was empty after `strip()`. Git splits alternates on line feeds only and skips just empty and comment lines. A line holding a space, tab, carriage return, or vertical tab is therefore a relative path to Git. When that path was a symlink to another repository's objects, `git.show` returned that repository's file contents.
+
+**Fix:** a line counts as an alternate unless it is empty or starts with `#`, exactly as Git reads it.
+
+### R-2: links inside the Git directory
+
+Admission resolved the working tree, Git directory, common directory, and object store, but Git follows symlinks inside them. With `packed-refs` and `objects/pack` linked to an outside repository, `git.log` and `git.show` returned that repository's history and files. This needed only the outside repository's path. The test fixture reproduces it with plain Git.
+
+**Fix:** before any Git read, `_free_of_links` walks the Git directory, common directory, and object store without following links. It refuses the repository ("Repository layout is not supported") if any entry is a symlink or special file, or if there are more than 100,000 entries (`GIT_DIR_MAX_ENTRIES`). `hooks` is skipped, because hooks never run.
+
+### R-3: `.git` pointers revealed outside Git directories
+
+A `.git` file or symlink aimed at an outside Git directory gave "Access denied: path is not allowed". One aimed at a plain or missing folder gave "Not a Git working tree", so the difference revealed whether an outside path was a Git directory.
+
+**Fix:** every location that fails the containment or protected-folder check now gives "Not a Git working tree", the same answer as a folder that is not a repository.
+
+### R-4: `include.path` (accepted)
+
+A repository's configuration can include another file. Git reads it during discovery, before any DaveLLM check can run. An outside file that exists but is not valid configuration makes discovery fail ("Not a Git working tree"), while a missing file is ignored. That reveals whether a readable outside file exists, never what it holds.
+
+Refusing includes would not close this, because the include is read during discovery itself. Closing it would mean reimplementing Git's repository discovery before running Git. The finding is accepted as low severity and documented here. Included configuration cannot run programs or reach the network, because the forced settings and filter overrides apply to it as well.
+
+### Tests for the re-review
+
+Each test fails on the code before these fixes:
+
+- `test_alternates_lines_that_only_look_blank_are_alternates`: space, tab, carriage return, and vertical tab.
+- `test_links_inside_the_git_directory_are_refused`, across all four tools, with no outside text in any result. It covers:
+  - linked `packed-refs` plus a linked pack folder
+  - a linked loose object
+  - a linked ref
+  - a linked index
+  - a named pipe in the Git directory
+- `test_links_in_hooks_are_ignored_and_huge_git_directories_are_refused`.
+- `test_pointers_outside_the_root_answer_like_a_plain_folder`: `.git` files and symlinks aimed at outside Git directories, a plain folder, and a missing path, all answering "Not a Git working tree".
 
 ## Attempts that did not succeed
 
