@@ -27,6 +27,18 @@ Set `DAVE_DATA_DIR` to an existing writable directory when runtime data must liv
 export DAVE_DATA_DIR='/absolute/path/to/davellm-data'
 ```
 
+### Enable tools
+
+Tools stay off unless configured. Every file tool is confined to the listed absolute roots:
+
+```bash
+export DAVE_ENABLE_TOOLS=true
+export DAVE_TOOL_ROOTS='["/absolute/path/to/project"]'
+export DAVE_ENABLE_EXTENDED_TOOLS=true   # optional: file.list, file.search, file.read_lines
+```
+
+`DAVE_ENABLE_SHELL_TOOL=true` separately enables `shell.exec`. See [DaveLLM tools](DAVELLM_TOOLS.md) for arguments, limits, and protected paths.
+
 ## Launch the Electron client
 
 From the repository root:

@@ -334,9 +334,10 @@ def test_existing_file_read_is_not_covered_by_the_denylist_yet(extended, hostile
     refused(router, hostile_tree.at(".env"))
 
 
-def test_no_extended_tools_are_registered(extended):
+def test_extended_flag_adds_only_the_file_tools(extended):
     router = extended()
+    file_tools = {"file.list", "file.search", "file.read_lines"}
     assert router.EXTENDED_TOOLS_ENABLED is True
-    assert router.extended_tool_definitions() == []
+    assert {definition.name for definition in router.extended_tool_definitions()} == file_tools
     for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
-        assert sorted(registry.public_catalog()) == sorted(BASELINE["default_tools"])
+        assert sorted(set(registry.public_catalog()) - file_tools) == sorted(BASELINE["default_tools"])

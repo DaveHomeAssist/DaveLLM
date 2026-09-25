@@ -1,4 +1,4 @@
-"""DAVE_ENABLE_EXTENDED_TOOLS defaults off, needs DAVE_ENABLE_TOOLS, and adds no tools yet."""
+"""DAVE_ENABLE_EXTENDED_TOOLS defaults off, needs DAVE_ENABLE_TOOLS, and adds only the extended tools."""
 
 import json
 from pathlib import Path
@@ -12,6 +12,7 @@ BASELINE = json.loads(
     (Path(__file__).parent / "fixtures" / "davellm" / "tool_catalog.json").read_text()
 )
 SHELL_TOOL = "shell.exec"
+EXTENDED_TOOLS = {"file.list", "file.search", "file.read_lines"}
 
 
 def boundary(registry):
@@ -114,11 +115,16 @@ def test_flag_off_preserves_the_qualified_catalog_exactly(load, shell):
 
 
 @pytest.mark.parametrize("shell", [False, True])
-def test_flag_on_adds_no_tools_in_this_release(load, shell):
+def test_flag_on_adds_only_the_extended_tools(load, shell):
     off, _ = load(extended="false", shell=shell)
     on, _ = load(extended="true", shell=shell)
     assert on.EXTENDED_TOOLS_ENABLED is True
-    assert on.extended_tool_definitions() == []
+    assert {definition.name for definition in on.extended_tool_definitions()} == EXTENDED_TOOLS
     for registry in ("TOOL_REGISTRY", "HARNESS_REGISTRY"):
-        assert boundary(getattr(on, registry)) == expected(registry, shell=shell)
-    assert fingerprints(on) == fingerprints(off)
+        qualified = expected(registry, shell=shell)
+        catalog = boundary(getattr(on, registry))
+        assert set(catalog) - set(qualified) == EXTENDED_TOOLS
+        assert {name: catalog[name] for name in qualified} == qualified
+    enabled, disabled = fingerprints(on), fingerprints(off)
+    for registry, prints in disabled.items():
+        assert {name: enabled[registry][name] for name in prints} == prints

@@ -1311,20 +1311,144 @@ PENDING_CALL_STORE = InMemoryPendingCallStore()
 # provenance, and therefore their definition fingerprints, includes line numbers.
 EXTENDED_TOOLS_ENABLED = TOOLS_ENABLED and _env_flag("DAVE_ENABLE_EXTENDED_TOOLS")
 
-from davellm_files import admit_path  # imported here, below the handlers, for the same reason
+from davellm_files import (  # imported here, below the handlers, for the same reason
+    LIST_DEFAULT_DEPTH, LIST_DEFAULT_ENTRIES, LIST_MAX_DEPTH, LIST_MAX_ENTRIES, READ_DEFAULT_LINES,
+    READ_MAX_LINES, READ_MAX_START_LINE, SEARCH_DEFAULT_MATCHES, SEARCH_MAX_MATCHES,
+    SEARCH_MAX_QUERY_CHARS, AmbiguousRelativePath, FileToolError, PathNotAllowed, admit_path,
+    anchor_path, encode_result, list_files, read_lines, search_files,
+)
+
+EXTENDED_TOOL_FAILURE = "File tool failed"
 
 
 def resolve_extended_tool_path(path: str) -> Path:
-    """The only path entry point for extended tools: containment plus the secret denylist.
+    """The only path entry point for extended tools: anchoring, containment, and the secret denylist.
 
-    The qualified built-in tools keep calling resolve_tool_path directly.
+    A relative path is anchored at the single tool root. The qualified built-in
+    tools keep calling resolve_tool_path directly.
     """
-    return admit_path(path, resolve_tool_path)
+    return admit_path(anchor_path(path, TOOL_ROOTS), resolve_tool_path)
+
+
+def _run_extended_file_tool(name: str, implementation, params: Dict) -> ToolResult:
+    """Only fixed, path-free messages reach the model; OS error text never does."""
+    try:
+        payload = implementation(params, resolve=resolve_extended_tool_path, roots=TOOL_ROOTS)
+    except (PathNotAllowed, AmbiguousRelativePath, FileToolError) as exc:
+        return ToolResult(tool=name, status="error", result="", error=str(exc))
+    except Exception:
+        return ToolResult(tool=name, status="error", result="", error=EXTENDED_TOOL_FAILURE)
+    return ToolResult(tool=name, status="success", result=encode_result(payload))
+
+
+def tool_file_list(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("file.list", list_files, params)
+
+
+def tool_file_search(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("file.search", search_files, params)
+
+
+def tool_file_read_lines(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("file.read_lines", read_lines, params)
+
+
+EXTENDED_PATH_SCHEMA = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 4096,
+    "description": "Relative to the tool root, or absolute inside it.",
+}
+
+
+def _optional(schema: Dict) -> Dict:
+    """Optional fields also accept null, meaning the default; small models often send it."""
+    return {**schema, "type": [schema["type"], "null"]}
 
 
 def extended_tool_definitions() -> List[ToolDefinition]:
-    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS; none are defined yet."""
-    return []
+    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: read-only discovery, search, and paged reads."""
+    return [
+        ToolDefinition(
+            name="file.list",
+            description=(
+                "List files and folders inside an allowed tool root, sorted by name, with paging. "
+                "Paths are shown relative to the tool root."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": _optional({**EXTENDED_PATH_SCHEMA, "default": "."}),
+                    "depth": _optional({
+                        "type": "integer", "minimum": 0, "maximum": LIST_MAX_DEPTH,
+                        "default": LIST_DEFAULT_DEPTH,
+                        "description": "0 describes the path itself; 1 lists its direct children.",
+                    }),
+                    "max_entries": _optional({
+                        "type": "integer", "minimum": 1, "maximum": LIST_MAX_ENTRIES,
+                        "default": LIST_DEFAULT_ENTRIES,
+                    }),
+                    "cursor": _optional({
+                        "type": "string", "minLength": 1, "maxLength": 64,
+                        "description": "next_cursor from the previous page of the same request.",
+                    }),
+                },
+                "additionalProperties": False,
+            },
+            handler=tool_file_list,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="file.search",
+            description=(
+                "Find lines containing literal text in UTF-8 files inside an allowed tool root. "
+                "Binary files and files over 1 MiB are skipped."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "minLength": 1, "maxLength": SEARCH_MAX_QUERY_CHARS},
+                    "path": _optional({**EXTENDED_PATH_SCHEMA, "default": "."}),
+                    "case_sensitive": _optional({"type": "boolean", "default": False}),
+                    "max_matches": _optional({
+                        "type": "integer", "minimum": 1, "maximum": SEARCH_MAX_MATCHES,
+                        "default": SEARCH_DEFAULT_MATCHES,
+                    }),
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            handler=tool_file_search,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="file.read_lines",
+            description=(
+                f"Read up to {READ_MAX_LINES} numbered lines from a UTF-8 text file inside an allowed "
+                "tool root. Lines start at 1; use next_start_line to continue."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": EXTENDED_PATH_SCHEMA,
+                    "start_line": _optional({
+                        "type": "integer", "minimum": 1, "maximum": READ_MAX_START_LINE, "default": 1,
+                    }),
+                    "max_lines": _optional({
+                        "type": "integer", "minimum": 1, "maximum": READ_MAX_LINES,
+                        "default": READ_DEFAULT_LINES,
+                    }),
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+            handler=tool_file_read_lines,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+    ]
 
 
 def register_builtin_tools() -> None:
