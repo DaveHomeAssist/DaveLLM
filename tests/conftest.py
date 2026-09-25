@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hostile_fs import build_hostile_tree
+from hostile_git import build_hostile_git
 
 
 TEST_API_KEY = "test-only-api-key"
@@ -17,6 +18,17 @@ TEST_NODE = {"id": "node-test", "name": "Test Ollama", "url": TEST_NODE_URL}
 def hostile_tree(tmp_path):
     """Planted secrets, escaping symlinks, and awkward files; see tests/hostile_fs.py."""
     return build_hostile_tree(tmp_path / "hostile")
+
+
+@pytest.fixture
+def hostile_git(tmp_path):
+    """Hostile Git repositories and planted programs; see tests/hostile_git.py.
+
+    Every test that uses it also proves that no planted program ever ran.
+    """
+    tree = build_hostile_git(tmp_path / "hostile-git")
+    yield tree
+    assert tree.fired() == [], f"a read-only Git tool ran planted programs: {tree.fired()}"
 
 
 @pytest.fixture

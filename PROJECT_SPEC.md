@@ -282,7 +282,7 @@ Conversation JSON and core project metadata remain compatibility stores. A full 
 | `DAVE_ENABLE_TOOLS` | No | Enables the bounded tool registry; false. |
 | `DAVE_TOOL_ROOTS` | With file tools | JSON array of explicit absolute roots. |
 | `DAVE_ENABLE_SHELL_TOOL` | No | Second opt-in for `shell.exec`; false. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | No | Opt-in for the read-only `file.list`, `file.search`, `file.read_lines`, `md.outline`, and `md.section`, honored only with `DAVE_ENABLE_TOOLS`; false. See `docs/DAVELLM_TOOLS.md`. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | No | Opt-in for the read-only `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, and `git.show`, honored only with `DAVE_ENABLE_TOOLS`; false. See `docs/DAVELLM_TOOLS.md`. |
 | `DAVE_WHISPER_BIN` | No | Alternate `whisper-cli` path. |
 | `DAVE_WHISPER_MODEL` | No | Alternate Whisper model path. |
 | `FFMPEG_BIN` | No | Alternate ffmpeg path. |

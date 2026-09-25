@@ -67,6 +67,7 @@ def test_extended_code_sits_below_every_builtin_handler(router):
         "EXTENDED_TOOLS_ENABLED": first_line(r"EXTENDED_TOOLS_ENABLED = "),
         "davellm_files import": first_line(r"from davellm_files import "),
         "davellm_markdown import": first_line(r"from davellm_markdown import "),
+        "davellm_git import": first_line(r"from davellm_git import "),
         "resolve_extended_tool_path": inspect.getsourcelines(router.resolve_extended_tool_path)[1],
         "extended_tool_definitions": inspect.getsourcelines(router.extended_tool_definitions)[1],
     }
@@ -123,3 +124,9 @@ def test_markdown_handlers_sit_below_the_pr02_handlers():
     code = BASELINE["extended_handler_code"]
     last_pr02_line = max(code[name]["last_line"] for name in ("file.list", "file.search", "file.read_lines"))
     assert min(code[name]["first_line"] for name in ("md.outline", "md.section")) > last_pr02_line
+
+
+def test_git_handlers_sit_below_the_markdown_handlers():
+    code = BASELINE["extended_handler_code"]
+    last_markdown_line = max(code[name]["last_line"] for name in ("md.outline", "md.section"))
+    assert min(code[name]["first_line"] for name in ("git.status", "git.diff", "git.log", "git.show")) > last_markdown_line

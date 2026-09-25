@@ -179,7 +179,7 @@ def test_markdown_tools_register_only_with_both_flags(extended):
     assert not MARKDOWN_TOOLS & set(extended(extended="true", tools=False).TOOL_REGISTRY.public_catalog())
     assert not MARKDOWN_TOOLS & set(extended(extended="false").TOOL_REGISTRY.public_catalog())
     router = extended()
-    assert {definition.name for definition in router.extended_tool_definitions()} == EXTENDED_TOOLS
+    assert EXTENDED_TOOLS <= {definition.name for definition in router.extended_tool_definitions()}
     for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
         assert EXTENDED_TOOLS <= set(registry.public_catalog())
 
