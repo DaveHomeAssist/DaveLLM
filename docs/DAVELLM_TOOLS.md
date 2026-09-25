@@ -45,7 +45,7 @@ All three are read-only: permission `read_files`, no approval, bounded cancellat
 | `max_entries` | integer | `100` | 1–500 per page |
 | `cursor` | string | none | `next_cursor` from the previous page of the same request |
 
-The result has `path`, `depth`, `entries`, `truncated`, `next_cursor`, `depth_limited` (a folder at the depth limit has more inside), and `limit_reached` (the listing passed 10,000 entries; narrow the path or depth). Each entry has `path`, `name`, `type` (`file`, `directory`, `symlink`, or `other`), `modified` (UTC), and `size` for files.
+The result has `path`, `depth`, `entries`, `truncated`, `next_cursor`, `depth_limited` (a folder at the depth limit has more inside), and `limit_reached` (the listing passed 10,000 entries; narrow the path or depth). Each entry has `path`, `name`, and `type` (`file`, `directory`, `symlink`, or `other`). Files also carry `size` and `modified` (UTC). Folders, symlinks, and other entries carry no timestamp, because a folder's time changes whenever a child is added or removed, including a protected one that is never shown.
 
 Entries are breadth-first and sorted by name within each folder. A cursor works only with the exact request that produced it (same path, depth, and page size) and is refused otherwise.
 
@@ -84,7 +84,7 @@ The result has `path`, `start_line`, `lines`, `line_count`, `total_lines`, `next
 Extended tools refuse and hide environment files, private keys and certificates, and SSH, AWS, and GnuPG folders. The exact patterns are `.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa`, `id_rsa*`, `*.p12`, `.ssh`, `.aws`, and `.gnupg`.
 
 - Patterns are matched case-insensitively against every part of the path, both as written and after symlinks are resolved.
-- Protected items are never listed, searched, or entered, and they do not change any count, flag, or cursor.
+- Protected items are never listed, searched, or entered, and they do not change any count, flag, cursor, or returned timestamp.
 - Asking for one directly returns "Access denied: path is not allowed". This is the same message as for a path outside the roots, so an error never reveals whether a protected file exists.
 - Symlinks that leave the root, point at a protected path, or loop are left out of listings and searches.
 

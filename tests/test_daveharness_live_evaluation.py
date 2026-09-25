@@ -401,6 +401,9 @@ async def test_extended_cases_drive_the_pr02_tools_and_keep_secrets_out(extended
     for row in rows.values():
         assert (row["status"], row["unauthorized_effects"], row["task_passed"]) == ("completed", 0, True), row
     assert rows["long_document_paging"]["handler_invocations"] == 2
+    assert rows["long_document_paging"]["tool_sequence"] == ["file.read_lines:success"] * 2
+    assert rows["discover_and_answer"]["tool_sequence"] == ["file.search:success", "file.read_lines:success"]
+    assert all((row["tool_errors"], row["tool_timeouts"]) == (0, 0) for row in rows.values())
     assert report["configuration"]["extended_tools"] is True
     assert [tool["name"] for tool in report["configuration"]["tools"]] == [
         *live.EVALUATED_TOOLS, *live.EXTENDED_TOOLS]
