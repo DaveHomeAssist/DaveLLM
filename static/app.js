@@ -3506,6 +3506,42 @@ async function toolRunRequest(path, options = {}) {
     return response.json();
 }
 
+// A readable before/after view of a pending file.edit, so an approval covers the
+// exact change. Text nodes only: the model supplies every string shown here.
+function approvalPreview(pending) {
+    const args = pending.arguments || {};
+    if (pending.tool_name !== "file.edit"
+        || typeof args.path !== "string"
+        || typeof args.old_text !== "string"
+        || typeof args.new_text !== "string") {
+        return null;
+    }
+    const count = Number.isInteger(args.expected_count) ? args.expected_count : 1;
+    const preview = document.createElement("div");
+    preview.className = "edit-preview";
+    const target = document.createElement("p");
+    target.className = "edit-preview-target";
+    target.textContent = `Edit ${args.path} · replaces ${count} ${count === 1 ? "occurrence" : "occurrences"}`;
+    preview.appendChild(target);
+    for (const [label, text, kind] of [["Before", args.old_text, "before"], ["After", args.new_text, "after"]]) {
+        const heading = document.createElement("h5");
+        heading.textContent = label;
+        preview.appendChild(heading);
+        if (text === "") {
+            const note = document.createElement("p");
+            note.className = "edit-preview-empty";
+            note.textContent = "Nothing: the text above is deleted.";
+            preview.appendChild(note);
+            continue;
+        }
+        const block = document.createElement("pre");
+        block.className = `edit-preview-${kind}`;
+        block.textContent = text;
+        preview.appendChild(block);
+    }
+    return preview;
+}
+
 function renderToolRun(run) {
     if (run.run_id !== activeToolRunId) return;
     runLedger.classList.remove("hidden");
@@ -3573,7 +3609,16 @@ function renderToolRun(run) {
             });
             actions.appendChild(button);
         }
-        runLedgerApproval.append(heading, summary, actions, argumentsBlock);
+        const preview = approvalPreview(pending);
+        if (preview) {
+            const exactArguments = document.createElement("details");
+            const exactSummary = document.createElement("summary");
+            exactSummary.textContent = "Exact arguments";
+            exactArguments.append(exactSummary, argumentsBlock);
+            runLedgerApproval.append(heading, summary, preview, actions, exactArguments);
+        } else {
+            runLedgerApproval.append(heading, summary, actions, argumentsBlock);
+        }
         heading.focus();
     }
     runLedgerStop.disabled = TERMINAL_TOOL_RUNS.has(run.status) || run.status === "approval_required";

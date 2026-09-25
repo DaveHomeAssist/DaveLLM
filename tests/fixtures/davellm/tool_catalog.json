@@ -332,6 +332,11 @@
       "last_line": 1482,
       "source_sha256": "ce74b0e9221331cb8c51c0046e0565b6b1b2b8c891e6ec4d7b039ccaed3b763e"
     },
+    "file.edit": {
+      "first_line": 1490,
+      "last_line": 1491,
+      "source_sha256": "ad77e0a45088a1d88151de0fced93be6e590ca33802a246c205e141f498a7b29"
+    },
     "file.list": {
       "first_line": 1344,
       "last_line": 1345,
@@ -442,6 +447,55 @@
         "type": "object"
       },
       "permission": "read_system",
+      "timeout_seconds": 10.0
+    },
+    "file.edit": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Replace exact text in an existing UTF-8 text file inside an allowed tool root. old_text must occur exactly expected_count times (default 1), or nothing is written. Needs the user's approval, which shows the text before and after.",
+      "handler": "app.tool_file_edit",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_count": {
+            "default": 1,
+            "description": "How many times old_text occurs; any other count refuses the edit.",
+            "maximum": 100,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "new_text": {
+            "description": "The replacement text; empty deletes old_text.",
+            "maxLength": 20000,
+            "type": "string"
+          },
+          "old_text": {
+            "description": "The exact text to replace, copied from the file.",
+            "maxLength": 20000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "old_text",
+          "new_text"
+        ],
+        "type": "object"
+      },
+      "permission": "write_files",
       "timeout_seconds": 10.0
     },
     "file.list": {

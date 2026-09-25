@@ -1482,6 +1482,15 @@ def tool_cluster_status(params: Dict) -> ToolResult:
     return _run_native_tool("cluster.status", cluster_status, params)
 
 
+from davellm_edit import (  # PR-06 approved edits, kept below the PR-05 handlers
+    EDIT_DEFAULT_REPLACEMENTS, EDIT_MAX_REPLACEMENTS, EDIT_MAX_TEXT_CHARS, edit_file,
+)
+
+
+def tool_file_edit(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("file.edit", edit_file, params)
+
+
 EXTENDED_PATH_SCHEMA = {
     "type": "string",
     "minLength": 1,
@@ -1514,7 +1523,7 @@ def _optional(schema: Dict) -> Dict:
 
 
 def extended_tool_definitions() -> List[ToolDefinition]:
-    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: read-only files, Markdown, Git, and DaveLLM's own data."""
+    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: file, Markdown, Git, and DaveLLM data reads, plus approved edits."""
     return [
         ToolDefinition(
             name="file.list",
@@ -1790,6 +1799,39 @@ def extended_tool_definitions() -> List[ToolDefinition]:
             parameters={"type": "object", "properties": {}, "additionalProperties": False},
             handler=tool_cluster_status,
             permission="read_system",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="file.edit",
+            description=(
+                "Replace exact text in an existing UTF-8 text file inside an allowed tool root. old_text must "
+                "occur exactly expected_count times (default 1), or nothing is written. Needs the user's "
+                "approval, which shows the text before and after."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": EXTENDED_PATH_SCHEMA,
+                    "old_text": {
+                        "type": "string", "minLength": 1, "maxLength": EDIT_MAX_TEXT_CHARS,
+                        "description": "The exact text to replace, copied from the file.",
+                    },
+                    "new_text": {
+                        "type": "string", "maxLength": EDIT_MAX_TEXT_CHARS,
+                        "description": "The replacement text; empty deletes old_text.",
+                    },
+                    "expected_count": _optional({
+                        "type": "integer", "minimum": 1, "maximum": EDIT_MAX_REPLACEMENTS,
+                        "default": EDIT_DEFAULT_REPLACEMENTS,
+                        "description": "How many times old_text occurs; any other count refuses the edit.",
+                    }),
+                },
+                "required": ["path", "old_text", "new_text"],
+                "additionalProperties": False,
+            },
+            handler=tool_file_edit,
+            permission="write_files",
+            approval_required=True,
             cancellation="bounded",
         ),
     ]

@@ -1,6 +1,6 @@
 # DaveLLM tools
 
-DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, and the native read tools added in PR-05.
+DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, the native read tools added in PR-05, and the approved `file.edit` added in PR-06.
 
 [DAVEHARNESS_CAPABILITIES.md](DAVEHARNESS_CAPABILITIES.md) lists every tool's full schema, flags, run budgets, host limits, routes, and tool-module constants in one place. It and its machine-readable twin, [DAVEHARNESS_CAPABILITIES.json](DAVEHARNESS_CAPABILITIES.json), are generated from the registry by `scripts/generate_capabilities_manifest.py`.
 
@@ -11,7 +11,7 @@ DaveLLM offers tools to Ollama models through the in-process DaveHarness registr
 | `DAVE_ENABLE_TOOLS` | `false` | Turns on the tool registry and the tool routes. Nothing below works without it. |
 | `DAVE_TOOL_ROOTS` | `[]` | JSON array of absolute folders. Every file tool stays inside these roots. |
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | Second opt-in for `shell.exec`. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, `git.show`, `project.notepad.read`, `project.brain.read`, `project.artifacts`, `chat.search`, and `cluster.status`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, `git.show`, `project.notepad.read`, `project.brain.read`, `project.artifacts`, `chat.search`, `cluster.status`, and `file.edit`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
 
 ```bash
 export DAVE_ENABLE_TOOLS=true
@@ -36,7 +36,7 @@ These tools are unchanged by the extended tools. `file.read` still returns at mo
 
 ## Extended file tools
 
-All fourteen extended tools, including the Markdown, Git, and native tools below, are read-only: no approval, synchronous handlers, bounded cancellation, and a 10-second timeout. The file, Markdown, and Git tools use permission `read_files`. The native tools use `read`, except `cluster.status`, which uses `read_system`. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
+Fourteen of the fifteen extended tools, including the Markdown, Git, and native tools below, are read-only: no approval, synchronous handlers, bounded cancellation, and a 10-second timeout. The fifteenth, [`file.edit`](#fileedit), is the only extended tool that writes, and every call needs the user's approval. The file, Markdown, and Git tools use permission `read_files`. The native tools use `read`, except `cluster.status`, which uses `read_system`. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
 
 ### `file.list`
 
@@ -287,6 +287,37 @@ Searches only the run user's conversations, using the same search as `GET /searc
 
 No arguments. Checks every configured node and returns `node` (its ID), `name`, `reachable`, `latency_ms`, and `models`, with at most 50 models per node. `models` is the model list DaveLLM has already loaded for that node, or `null` when it has not loaded one yet. Node URLs, IP addresses, host names, credentials, and error text are never returned, and the model cannot choose which host is contacted.
 
+## `file.edit`
+
+`file.edit` replaces exact text in an existing UTF-8 text file inside a tool root. It is the only extended tool that writes. It uses permission `write_files`, needs exact-call approval for every call, and has bounded cancellation and a 10-second timeout. Its implementation is `davellm_edit.py`.
+
+| Argument | Type | Default | Bounds |
+|---|---|---|---|
+| `path` | string | required | an existing file; relative to the tool root, or absolute inside it |
+| `old_text` | string | required | 1–20,000 characters, copied exactly from the file |
+| `new_text` | string | required | 0–20,000 characters; empty deletes `old_text` |
+| `expected_count` | integer | `1` | 1–100 |
+
+`old_text` must occur exactly `expected_count` times. Any other count refuses the edit and nothing is written, so an approval always covers exactly the change it showed. When the count matches, every occurrence is replaced. The result gives `path`, `replacements`, `first_changed_line`, `line_endings` (`lf` or `crlf`), `bytes_before`, and `bytes_after`. The file's text is never returned.
+
+### Approval
+
+The run pauses before anything is written. The approval card shows the path, how many occurrences will be replaced, the text before, and the text after. An empty replacement reads as a deletion. The exact arguments stay available under the preview. The card builds the preview with text nodes only, so markup in the file or in the model's arguments is shown as text and never rendered.
+
+Approving runs exactly the arguments shown. The count is checked again when the edit runs, not when it was requested: if the file changed in the meantime so that `old_text` no longer occurs `expected_count` times, the edit is refused and nothing is written. Rejecting writes nothing and ends the run.
+
+### How the write works
+
+- **Same admission as the reads.** The path goes through `resolve_extended_tool_path`: anchoring, containment, and the protected-path rules. A path outside the roots or a protected path is refused before the file is opened, even after approval.
+- **No symlinks.** The file's folder is opened one component at a time from `/` with `O_NOFOLLOW`, and the file is opened relative to it, the same way as the reads under [Symlink swaps](#symlink-swaps). Only an existing regular file can be edited. `file.edit` never creates files or folders.
+- **Atomic.** The new content goes to a fresh temporary file (`.davellm-edit-` plus a random name) in the same folder with the original permission bits. It is then renamed over the original, so a reader sees the old file or the new one, never a mix.
+- **Checked just before the rename.** The file is opened and read again right before the rename. If it is no longer the same file with the same bytes, the temporary file is removed and nothing is written.
+- **Line endings kept.** In a file whose every line ends with CRLF, line breaks in `old_text` and `new_text` are matched and written as CRLF. Files with mixed line endings are matched exactly as they are. A byte order mark stays in place.
+- **One name only.** A file with more than one hard link is refused, because replacing one name would leave the others unchanged.
+- **Size.** The file must be at most 10 MiB before and after the edit.
+
+The approval card lives in the browser and desktop UI for runs started with `POST /tools/agent/runs`. As with `file.write`, the legacy `POST /tools/agent/run` loop pauses on `file.edit` unless the request lists it in `approved_tools`, and the authenticated `POST /tools/execute` route runs it directly.
+
 ## Paths
 
 - **Input.** An absolute path must be inside a tool root. A relative path is anchored at the tool root when exactly one root is configured. With several roots, relative paths are refused with "Use an absolute path when several tool roots are configured".
@@ -319,9 +350,9 @@ Listings read names and metadata, never file contents, so they do not use this p
 | `Access denied: path is not allowed` | Outside the roots, protected, a symlink escape or loop, or swapped during the read |
 | `Use an absolute path when several tool roots are configured` | Relative path with several roots |
 | `Path not found` / `File not found` | Nothing exists there |
-| `Path is not a regular file` | A folder or special file where `file.read_lines` or a Markdown tool needs a file |
+| `Path is not a regular file` | A folder or special file where `file.read_lines`, a Markdown tool, or `file.edit` needs a file |
 | `File is not UTF-8 text` | Binary data or another encoding |
-| `File is larger than the 10 MiB limit` | Too large for `file.read_lines` or the Markdown tools |
+| `File is larger than the 10 MiB limit` | Too large for `file.read_lines` or the Markdown tools, or for `file.edit` before or after the edit |
 | `Query must be a single line` | The search text contains a line break |
 | `Invalid cursor`, `Cursor does not belong to this request`, `Cursor is past the end of the results` | A cursor that is malformed, reused with a different request, or too far |
 | `Heading not found` | `md.section` found no heading with that text |
@@ -341,10 +372,17 @@ Listings read names and metadata, never file contents, so they do not use this p
 | `The BRAIN revision captured for this run is not available` | The captured revision is gone or does not match |
 | `Artifact not found` | No artifact with that identifier in the run's project |
 | `Native tool failed` | Any other native-tool failure; details stay out of the model's view |
+| `old_text was not found in the file; nothing was written` | `file.edit` found no occurrence |
+| `old_text was found N times, not the expected M; nothing was written` | `file.edit` found a different count than `expected_count` |
+| `old_text and new_text are the same` | The `file.edit` would change nothing |
+| `The file changed while the edit was being prepared; nothing was written` | The file was changed, replaced, or swapped for a symlink just before the rename |
+| `File has more than one hard link` | `file.edit` refuses files with several names |
+| `The edit could not be written` | The temporary file or the rename failed; nothing was written |
+| `Editing files is not supported on this platform` | The platform lacks descriptor-relative open, rename, or unlink |
 | `File tool failed` | Any other failure; details stay out of the model's view |
 
 Every result is kept under 48 KiB, below DaveHarness's 64 KiB per-result budget. When the limit is reached, the page ends early and says so through `truncated`, `next_cursor`, or `next_start_line`.
 
 ## Evaluation
 
-`scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs nine extra cases: discovery, long-document paging, a blocked instruction, Markdown section navigation, Git change inspection, Git history, project context, chat recall, and cluster status. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).
+`scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs thirteen extra cases: discovery, long-document paging, a blocked instruction, Markdown section navigation, Git change inspection, Git history, project context, chat recall, cluster status, an approved edit, a rejected edit, an approved edit outside the root, and an injected instruction to edit. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).

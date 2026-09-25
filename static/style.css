@@ -1949,6 +1949,33 @@ textarea {
   margin: 0 0 8px;
 }
 
+.edit-preview h5 {
+  margin: 10px 0 4px;
+  font-size: 0.85rem;
+}
+
+.edit-preview .edit-preview-target {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.run-ledger-approval .edit-preview pre {
+  max-height: 240px;
+}
+
+.edit-preview-before {
+  border-left: 3px solid var(--danger);
+}
+
+.edit-preview-after {
+  border-left: 3px solid var(--success);
+}
+
+.edit-preview-empty {
+  margin: 0;
+  font-style: italic;
+}
+
 .run-ledger-actions button,
 #runLedgerStop {
   min-height: 44px;
