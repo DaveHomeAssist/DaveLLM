@@ -9,7 +9,8 @@ This records the independent security review of the PR-04 Git tools (`git.status
 | Environment | Git 2.43.0, Python 3.11.15, Linux |
 | First verdict | **Failed**: one medium and one low finding, both on the same line |
 | Re-review verdict | **Failed**: the first fix held, and four findings from the original PR-04 code were new: two high and two low |
-| Status | G-1, G-2, R-1, R-2, and R-3 are fixed in the change that adds this file. R-4 is accepted and documented below. |
+| Final verdict | **Passed**: the final pass found no confirmed vulnerability in the fixed code |
+| Status | G-1, G-2, R-1, R-2, and R-3 are fixed (PR #30, merged as `af28043`). R-4 is accepted and documented below. |
 
 ## Properties tested
 
@@ -104,6 +105,24 @@ Each test fails on the code before these fixes:
   - a named pipe in the Git directory
 - `test_links_in_hooks_are_ignored_and_huge_git_directories_are_refused`.
 - `test_pointers_outside_the_root_answer_like_a_plain_folder`: `.git` files and symlinks aimed at outside Git directories, a plain folder, and a missing path, all answering "Not a Git working tree".
+
+## Final verification
+
+The same reviewer then checked the R-1, R-2, and R-3 fixes, and checked again that G-1 and G-2 still held. The review used the code merged in PR #30, with Git 2.43.0 and Python 3.11.15, running as root. The verdict was **passed**, with no confirmed vulnerability.
+
+- **R-1:** refused lines holding a space, a tab, a carriage return, or a vertical tab, a "comment" with a leading space (a path to Git), and a real path after a comment line.
+- **R-2:** refused a linked pack folder with linked packed refs, and single linked `.pack` and `.idx` files. It also refused a linked loose object, a linked ref, a linked commit graph, a link 30 folders deep, and a named pipe anywhere in the Git directory.
+  - A link under `hooks` is ignored, because hooks never run. `hooks` itself as a link is refused.
+  - In linked worktrees, a link in the worktree's Git folder or in the shared object store is refused. A `commondir` that points outside answers "Not a Git working tree".
+- **R-3:** `.git` files and symlinks aimed at an outside Git directory, an outside plain folder, and a missing path all gave the same "Not a Git working tree". So did a `core.worktree` pointing outside. Over 2,000 runs each, the median times were 7.70 ms and 7.77 ms, with overlapping spreads.
+- **Bounds:** the link walk took 36 ms over 90,000 entries and 39 ms to refuse 130,000, far below the 8-second Git deadline. The walk is iterative, so depth cannot exhaust the stack.
+- **Ordinary repositories:** a packed repository, a worktree created with `git worktree add` and its host, and a repository with about 3,000 loose objects were all admitted.
+- **Reftable:** Git 2.43 has no reftable backend, so this was not exercised. Reftable files live inside the Git directory, so the same walk covers them.
+
+Two residuals remain by design:
+
+- **R-4:** `include.path` can still reveal whether a readable file outside the roots exists (above).
+- **Entry cap:** a Git directory with more than 100,000 entries is refused. That would be, for example, more than 100,000 loose objects with automatic packing turned off. This is uncommon because Git packs objects automatically, and the cap keeps the check fast.
 
 ## Attempts that did not succeed
 
