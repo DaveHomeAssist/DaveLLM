@@ -61,9 +61,12 @@ def test_manifest_tools_match_the_pinned_catalog():
     assert set(tools) == set(pinned)
     for name, tool in tools.items():
         assert {field: tool[field] for field in PINNED_FIELDS} == {field: pinned[name][field] for field in PINNED_FIELDS}, name
-    assert {name for name, tool in tools.items() if tool["requires_flags"][-1] == "DAVE_ENABLE_EXTENDED_TOOLS"} == set(
-        CATALOG["extended_tools"]
-    )
+    expected_flags = {
+        **{name: ["DAVE_ENABLE_TOOLS"] for name in CATALOG["default_tools"]},
+        "shell.exec": ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_SHELL_TOOL"],
+        **{name: ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_EXTENDED_TOOLS"] for name in CATALOG["extended_tools"]},
+    }
+    assert {name: tool["requires_flags"] for name, tool in tools.items()} == expected_flags
 
 
 def test_manifest_records_no_local_or_secret_values():
