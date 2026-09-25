@@ -49,14 +49,12 @@ FLAGS = {
     "DAVE_ENABLE_EXTENDED_TOOLS": "Registers the extended read-only tools. Honored only with DAVE_ENABLE_TOOLS.",
     "DAVE_TOOL_ROOTS": "JSON array of absolute folders that file and Git tools may use.",
 }
-# Each configuration adds one flag to the one before it; a tool belongs to the
-# flag of the first configuration that registers it.
-CONFIGURATIONS = (
-    ("DAVE_ENABLE_TOOLS", {"DAVE_ENABLE_TOOLS": "true"}),
-    ("DAVE_ENABLE_SHELL_TOOL", {"DAVE_ENABLE_TOOLS": "true", "DAVE_ENABLE_SHELL_TOOL": "true"}),
-    ("DAVE_ENABLE_EXTENDED_TOOLS", {"DAVE_ENABLE_TOOLS": "true", "DAVE_ENABLE_SHELL_TOOL": "true",
-                                    "DAVE_ENABLE_EXTENDED_TOOLS": "true"}),
-)
+# DAVE_ENABLE_TOOLS alone gives the core tools. Each optional flag is then turned
+# on by itself, so a tool lists only the flags it needs; turning every flag on
+# gives the full catalog.
+BASE_FLAG = "DAVE_ENABLE_TOOLS"
+OPTIONAL_FLAGS = ("DAVE_ENABLE_SHELL_TOOL", "DAVE_ENABLE_EXTENDED_TOOLS")
+ALL_FLAGS = "all"
 HOST_LIMITS = (
     "MAX_ACTIVE_HARNESS_RUNS", "MAX_HARNESS_INPUT_BYTES", "MAX_HARNESS_MODEL_RESPONSE_BYTES",
     "HARNESS_STORE_HEADROOM_BYTES",
@@ -161,21 +159,19 @@ def tool_routes(router: Any) -> list[dict[str, Any]]:
 
 
 def tool_entries(routers: dict[str, Any]) -> dict[str, Any]:
-    full = routers[CONFIGURATIONS[-1][0]]
+    full = routers[ALL_FLAGS]
     catalog = full.HARNESS_REGISTRY.public_catalog()
     if catalog != full.TOOL_REGISTRY.public_catalog():
         raise RuntimeError("TOOL_REGISTRY and HARNESS_REGISTRY publish different catalogs")
-    requires: dict[str, list[str]] = {}
-    flags: list[str] = []
-    for flag, _ in CONFIGURATIONS:
-        flags.append(flag)
-        for name in routers[flag].HARNESS_REGISTRY.public_catalog():
-            requires.setdefault(name, list(flags))
+    registered = {flag: set(routers[flag].HARNESS_REGISTRY.public_catalog()) for flag in (BASE_FLAG, *OPTIONAL_FLAGS)}
     tools = {}
     for name, metadata in catalog.items():
+        adders = [flag for flag in OPTIONAL_FLAGS if name in registered[flag]]
+        if name not in registered[BASE_FLAG] and len(adders) != 1:
+            raise RuntimeError(f"{name} is not registered by exactly one optional flag")
         tools[name] = {
             "family": name.split(".", 1)[0],
-            "requires_flags": requires[name],
+            "requires_flags": [BASE_FLAG] if name in registered[BASE_FLAG] else [BASE_FLAG, *adders],
             "context_handler": full.HARNESS_REGISTRY.get(name).context_handler,
             **metadata,
         }
@@ -191,8 +187,13 @@ def build_manifest() -> dict[str, Any]:
             "DAVE_ENABLE_EXTENDED_TOOLS": defaults.EXTENDED_TOOLS_ENABLED,
             "DAVE_TOOL_ROOTS": [str(root) for root in defaults.TOOL_ROOTS],
         }
-        routers = {flag: load_router(sandbox, flag.lower(), environment) for flag, environment in CONFIGURATIONS}
-        full = routers[CONFIGURATIONS[-1][0]]
+        base = {BASE_FLAG: "true"}
+        routers = {
+            BASE_FLAG: load_router(sandbox, BASE_FLAG.lower(), base),
+            **{flag: load_router(sandbox, flag.lower(), {**base, flag: "true"}) for flag in OPTIONAL_FLAGS},
+            ALL_FLAGS: load_router(sandbox, ALL_FLAGS, {**base, **{flag: "true" for flag in OPTIONAL_FLAGS}}),
+        }
+        full = routers[ALL_FLAGS]
         tools = tool_entries(routers)
         manifest = {
             "manifest_version": MANIFEST_VERSION,
