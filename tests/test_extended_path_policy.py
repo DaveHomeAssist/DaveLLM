@@ -337,7 +337,8 @@ def test_existing_file_read_is_not_covered_by_the_denylist_yet(extended, hostile
 def test_extended_flag_adds_only_the_extended_tools(extended):
     router = extended()
     extended_tools = {"file.list", "file.search", "file.read_lines", "md.outline", "md.section",
-                      "git.status", "git.diff", "git.log", "git.show"}
+                      "git.status", "git.diff", "git.log", "git.show",
+                      "project.notepad.read", "project.brain.read", "project.artifacts", "chat.search", "cluster.status"}
     assert router.EXTENDED_TOOLS_ENABLED is True
     assert {definition.name for definition in router.extended_tool_definitions()} == extended_tools
     for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):

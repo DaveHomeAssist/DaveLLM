@@ -542,6 +542,31 @@ class ProjectContextStore:
         response["compacted"] = True
         return response
 
+    def get_brain_revision(self, project_id: str, revision: int) -> dict[str, Any]:
+        """The stored snapshot of one BRAIN revision, exactly as it was written."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT snapshot_json FROM brain_revisions WHERE project_id = ? AND revision = ?",
+                (project_id, int(revision)),
+            ).fetchone()
+        if not row:
+            raise ProjectContextError(f"BRAIN revision {revision} was not found")
+        return json.loads(row["snapshot_json"])
+
+    @staticmethod
+    def brain_digest(project_id: str, brain: dict[str, Any]) -> str:
+        """Identity of a BRAIN's content, as bound to a run by ``capture_run_context``."""
+        identity = {
+            "project_id": project_id,
+            "pinned_text": brain["pinned_text"],
+            "active_text": brain["active_text"],
+            "recent_text": brain["recent_text"],
+            "deleted_at": brain["deleted_at"],
+        }
+        return hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+
     def list_brain_revisions(self, project_id: str) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -1187,20 +1212,10 @@ class ProjectContextStore:
             project_id, query=query, available_tokens=available_tokens,
             brain_snapshot=brain,
         )
-        identity = {
-            "project_id": project_id,
-            "pinned_text": brain["pinned_text"],
-            "active_text": brain["active_text"],
-            "recent_text": brain["recent_text"],
-            "deleted_at": brain["deleted_at"],
-        }
-        digest = hashlib.sha256(
-            json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        ).hexdigest()
         return {
             **assembled,
             "brain_revision": brain["revision"],
-            "brain_digest": digest,
+            "brain_digest": self.brain_digest(project_id, brain),
         }
 
     def homepage(self, project_id: str) -> dict[str, Any]:

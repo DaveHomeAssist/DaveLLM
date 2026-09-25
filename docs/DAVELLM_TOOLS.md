@@ -1,6 +1,6 @@
 # DaveLLM tools
 
-DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, and the read-only Git tools added in PR-04.
+DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, and the native read tools added in PR-05.
 
 ## Settings
 
@@ -9,7 +9,7 @@ DaveLLM offers tools to Ollama models through the in-process DaveHarness registr
 | `DAVE_ENABLE_TOOLS` | `false` | Turns on the tool registry and the tool routes. Nothing below works without it. |
 | `DAVE_TOOL_ROOTS` | `[]` | JSON array of absolute folders. Every file tool stays inside these roots. |
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | Second opt-in for `shell.exec`. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, and `git.show`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, `git.show`, `project.notepad.read`, `project.brain.read`, `project.artifacts`, `chat.search`, and `cluster.status`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
 
 ```bash
 export DAVE_ENABLE_TOOLS=true
@@ -34,7 +34,7 @@ These tools are unchanged by the extended tools. `file.read` still returns at mo
 
 ## Extended file tools
 
-All nine extended tools, including the Markdown and Git tools below, are read-only: permission `read_files`, no approval, synchronous handlers, bounded cancellation, and a 10-second timeout. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
+All fourteen extended tools, including the Markdown, Git, and native tools below, are read-only: no approval, synchronous handlers, bounded cancellation, and a 10-second timeout. The file, Markdown, and Git tools use permission `read_files`. The native tools use `read`, except `cluster.status`, which uses `read_system`. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
 
 ### `file.list`
 
@@ -232,6 +232,58 @@ A repository's own configuration can name programs that Git runs during ordinary
 - **Pinned locations.** After admission every command gets the admitted Git directory and working tree explicitly, so Git does not search again.
 - **Ownership.** A repository owned by another user is refused ("Repository is owned by another user"), keeping Git's own `safe.directory` protection.
 
+## Native read tools
+
+These tools let a model read DaveLLM's own information instead of guessing it:
+
+- `project.notepad.read`, `project.brain.read`, and `project.artifacts` read the run's project.
+- `chat.search` searches your earlier conversations.
+- `cluster.status` reports the configured nodes.
+
+All five are read-only and live in `davellm_native_tools.py`. They reuse the same project, BRAIN, artifact, search, and node-health services as the HTTP routes.
+
+### Scope comes from the run
+
+A tool run records who started it, which project it belongs to, and the BRAIN revision read when it started. The native tools take their scope from that record only.
+
+- **No scope arguments.** No schema has a user, project, owner, or node field, and unknown arguments are rejected, so a model cannot point a tool at another project or user.
+- **Project tools need a project run.** Without one they fail with "This tool requires a project-scoped run". They never fall back to a recent or default project.
+- **Chat search needs a run.** Without one, `chat.search` fails with "This tool requires a DaveLLM run".
+- **Same ownership check as the routes.** Every project read repeats the check the HTTP routes use. A project the run's user does not own, or one that no longer exists, gives "The project for this run is not available".
+- **Where they work.** Runs started with `POST /tools/agent/runs` carry this record. The legacy `POST /tools/agent/run` loop and `POST /tools/execute` do not, so there only `cluster.status` works.
+
+### `project.notepad.read`
+
+No arguments. Returns `project` (its name), `notepad`, `character_count`, `updated_at`, and `truncated`. At most 20,000 characters are returned. An empty notepad is a normal result.
+
+### `project.brain.read`
+
+No arguments. Returns the BRAIN as it was when the run started: `revision`, `pinned`, `active`, `recent`, `deleted`, `character_count` for each section, and `truncated`. The three sections share a 30,000-character limit, and later sections give way first.
+
+The tool reads the stored snapshot of the run's captured revision and checks it against the fingerprint taken at run start. Edits, compactions, or restores made while the run is going do not change what the run sees. If that revision is gone or no longer matches, the tool fails with "The BRAIN revision captured for this run is not available" and never falls back to the latest revision.
+
+### `project.artifacts`
+
+| Argument | Type | Default | Bounds |
+|---|---|---|---|
+| `artifact` | string | none | 1–100 characters; omit it to list |
+| `max_entries` | integer | `20` | 1–50, for listing |
+
+Listing returns `artifacts` (each with `artifact`, `title`, `kind`, `pinned`, `created_at`, `updated_at`), plus `count`, `total`, and `truncated`. Pinned artifacts come first, and archived artifacts are left out. Reading one returns its fields plus `text` (at most 30,000 characters), `character_count`, and `truncated`. An identifier that is not in the run's project gives "Artifact not found", including one from another project. Listing does not create artifacts from old conversations the way the project page can.
+
+### `chat.search`
+
+| Argument | Type | Default | Bounds |
+|---|---|---|---|
+| `query` | string | required | 1–200 characters |
+| `max_results` | integer | `5` | 1–10 |
+
+Searches only the run user's conversations, using the same search as `GET /search`. The query never changes whose conversations are searched. Only user and assistant messages are searched; system prompts, system and tool messages, and conversation instructions never appear. Each result has `conversation` (its identifier), `title`, `role`, and a `snippet` of at most 300 characters around the match.
+
+### `cluster.status`
+
+No arguments. Checks every configured node and returns `node` (its ID), `name`, `reachable`, `latency_ms`, and `models`, with at most 50 models per node. `models` is the model list DaveLLM has already loaded for that node, or `null` when it has not loaded one yet. Node URLs, IP addresses, host names, credentials, and error text are never returned, and the model cannot choose which host is contacted.
+
 ## Paths
 
 - **Input.** An absolute path must be inside a tool root. A relative path is anchored at the tool root when exactly one root is configured. With several roots, relative paths are refused with "Use an absolute path when several tool roots are configured".
@@ -281,10 +333,15 @@ Listings read names and metadata, never file contents, so they do not use this p
 | `File not found at that revision` / `Path is not a file at that revision` | `git.show` with `file` |
 | `Use staged or revisions, not both` / `to_revision needs from_revision` | Conflicting `git.diff` arguments |
 | `Git timed out` / `Git command failed` / `Git 2.32 or newer is not available` | Git did not finish, failed, or is missing |
+| `This tool requires a project-scoped run` / `This tool requires a DaveLLM run` | A native tool was called outside a suitable run |
+| `The project for this run is not available` | The run's user does not own the project, or it no longer exists |
+| `The BRAIN revision captured for this run is not available` | The captured revision is gone or does not match |
+| `Artifact not found` | No artifact with that identifier in the run's project |
+| `Native tool failed` | Any other native-tool failure; details stay out of the model's view |
 | `File tool failed` | Any other failure; details stay out of the model's view |
 
 Every result is kept under 48 KiB, below DaveHarness's 64 KiB per-result budget. When the limit is reached, the page ends early and says so through `truncated`, `next_cursor`, or `next_start_line`.
 
 ## Evaluation
 
-`scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs six extra cases: discovery, long-document paging, a blocked instruction, Markdown section navigation, Git change inspection, and Git history. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).
+`scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs nine extra cases: discovery, long-document paging, a blocked instruction, Markdown section navigation, Git change inspection, Git history, project context, chat recall, and cluster status. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).

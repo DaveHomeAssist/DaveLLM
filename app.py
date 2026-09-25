@@ -1389,6 +1389,99 @@ def tool_git_show(params: Dict) -> ToolResult:
     return _run_extended_file_tool("git.show", git_show, params)
 
 
+from davellm_native_tools import (  # PR-05 native read tools, kept below the PR-04 handlers
+    ARTIFACT_DEFAULT_ENTRIES, ARTIFACT_ID_MAX_CHARS, ARTIFACT_MAX_ENTRIES, ARTIFACT_NOT_FOUND,
+    BRAIN_UNAVAILABLE, CHAT_ROLES, NATIVE_TOOL_FAILED, PROJECT_UNAVAILABLE, SEARCH_DEFAULT_RESULTS,
+    SEARCH_MAX_QUERY_CHARS, SEARCH_MAX_RESULTS, NativeServices, NativeToolError, RunScope,
+    artifacts as native_artifacts, brain_read, chat_search, cluster_status, notepad_read,
+)
+
+
+def _native_scope() -> Optional[RunScope]:
+    """The run binding is the only source of user, project, and BRAIN revision."""
+    binding = HOST_RUN_CONTEXT.get()
+    if binding is None:
+        return None
+    return RunScope(binding.user_id, binding.project_id, binding.brain_revision, binding.brain_digest)
+
+
+def _native_project(project_id: str, user_id: str) -> dict:
+    try:
+        return get_project(project_id, user_id)  # the HTTP routes' ownership check
+    except HTTPException:
+        raise NativeToolError(PROJECT_UNAVAILABLE) from None
+
+
+def _native_brain_revision(project_id: str, revision: int) -> dict:
+    try:
+        return PROJECT_CONTEXT.get_brain_revision(project_id, revision)
+    except ProjectContextError:
+        raise NativeToolError(BRAIN_UNAVAILABLE) from None
+
+
+def _native_artifact(project_id: str, artifact_id: str) -> dict:
+    try:
+        return PROJECT_CONTEXT.get_artifact(project_id, artifact_id)
+    except ProjectContextError:
+        raise NativeToolError(ARTIFACT_NOT_FOUND) from None
+
+
+def _native_nodes() -> List[dict]:
+    """Health of the configured nodes only; the model cannot name a target."""
+    async def probe():
+        return await asyncio.gather(*(get_node_health(node) for node in NODE_CONFIGS))
+
+    return [
+        {"node_id": health["node_id"], "name": health["name"], "reachable": health["status"] == "online",
+         "latency_ms": health["latency"], "models": MODEL_INVENTORY.get(health["node_id"])}
+        for health in asyncio.run(probe())
+    ]
+
+
+NATIVE_SERVICES = NativeServices(
+    scope=_native_scope,
+    project=_native_project,
+    brain_revision=_native_brain_revision,
+    brain_digest=lambda project_id, snapshot: PROJECT_CONTEXT.brain_digest(project_id, dict(snapshot)),
+    artifacts=lambda project_id: PROJECT_CONTEXT.list_artifacts(project_id),
+    artifact=_native_artifact,
+    search=lambda query, user_id, limit: search_conversation_messages(
+        query, user_id, limit, roles=CHAT_ROLES, existing_only=True, fallback_chars=None),
+    nodes=_native_nodes,
+)
+
+
+def _run_native_tool(name: str, implementation, params: Dict) -> ToolResult:
+    """Only fixed messages reach the model; lower-layer errors never do."""
+    try:
+        payload = implementation(params, NATIVE_SERVICES)
+    except NativeToolError as exc:
+        return ToolResult(tool=name, status="error", result="", error=str(exc))
+    except Exception:
+        return ToolResult(tool=name, status="error", result="", error=NATIVE_TOOL_FAILED)
+    return ToolResult(tool=name, status="success", result=encode_result(payload))
+
+
+def tool_project_notepad_read(params: Dict) -> ToolResult:
+    return _run_native_tool("project.notepad.read", notepad_read, params)
+
+
+def tool_project_brain_read(params: Dict) -> ToolResult:
+    return _run_native_tool("project.brain.read", brain_read, params)
+
+
+def tool_project_artifacts(params: Dict) -> ToolResult:
+    return _run_native_tool("project.artifacts", native_artifacts, params)
+
+
+def tool_chat_search(params: Dict) -> ToolResult:
+    return _run_native_tool("chat.search", chat_search, params)
+
+
+def tool_cluster_status(params: Dict) -> ToolResult:
+    return _run_native_tool("cluster.status", cluster_status, params)
+
+
 EXTENDED_PATH_SCHEMA = {
     "type": "string",
     "minLength": 1,
@@ -1421,7 +1514,7 @@ def _optional(schema: Dict) -> Dict:
 
 
 def extended_tool_definitions() -> List[ToolDefinition]:
-    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: read-only discovery, search, paged reads, Markdown, and Git."""
+    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: read-only files, Markdown, Git, and DaveLLM's own data."""
     return [
         ToolDefinition(
             name="file.list",
@@ -1627,6 +1720,76 @@ def extended_tool_definitions() -> List[ToolDefinition]:
             },
             handler=tool_git_show,
             permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="project.notepad.read",
+            description="Read the plain-text notepad of the project this run belongs to.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            handler=tool_project_notepad_read,
+            permission="read",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="project.brain.read",
+            description=(
+                "Read the BRAIN (pinned, active, and recent project memory) of the project this run "
+                "belongs to, as it was when the run started."
+            ),
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            handler=tool_project_brain_read,
+            permission="read",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="project.artifacts",
+            description=(
+                "List the saved artifacts of the project this run belongs to, or read one artifact's "
+                "text by passing its identifier as artifact."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "artifact": _optional({
+                        "type": "string", "minLength": 1, "maxLength": ARTIFACT_ID_MAX_CHARS,
+                        "description": "An artifact identifier from the list; omit it to list.",
+                    }),
+                    "max_entries": _optional({
+                        "type": "integer", "minimum": 1, "maximum": ARTIFACT_MAX_ENTRIES,
+                        "default": ARTIFACT_DEFAULT_ENTRIES,
+                    }),
+                },
+                "additionalProperties": False,
+            },
+            handler=tool_project_artifacts,
+            permission="read",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="chat.search",
+            description="Search your own earlier DaveLLM conversations and return short matching snippets.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "minLength": 1, "maxLength": SEARCH_MAX_QUERY_CHARS},
+                    "max_results": _optional({
+                        "type": "integer", "minimum": 1, "maximum": SEARCH_MAX_RESULTS,
+                        "default": SEARCH_DEFAULT_RESULTS,
+                    }),
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            handler=tool_chat_search,
+            permission="read",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="cluster.status",
+            description="Show which configured DaveLLM nodes are reachable and which models they are known to serve.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            handler=tool_cluster_status,
+            permission="read_system",
             cancellation="bounded",
         ),
     ]
@@ -3539,9 +3702,16 @@ async def monitoring_dashboard(_auth=Depends(require_api_key)):
         "recent_errors": RECENT_ERRORS
     }
 
-@app.get("/search")
-def global_search(query: str, top_k: int = 10, user_id: str = Depends(get_current_user)):
-    """Search across all conversations by semantic similarity with substring fallback."""
+def search_conversation_messages(
+    query: str, user_id: str, top_k: int = 10, *,
+    roles: Optional[frozenset] = None, existing_only: bool = False, fallback_chars: Optional[int] = 200,
+) -> List[dict]:
+    """Search one user's conversations by semantic similarity with substring fallback.
+
+    ``roles`` limits results to those message roles; ``existing_only`` skips
+    embeddings of conversations that no longer exist; ``fallback_chars`` cuts
+    substring matches (``None`` keeps whole messages). ``/search`` keeps the defaults.
+    """
     results = []
     try:
         query_emb = get_simple_embedding(query)
@@ -3554,6 +3724,10 @@ def global_search(query: str, top_k: int = 10, user_id: str = Depends(get_curren
             LIMIT 2000
         """)
         for cid, idx, role, content, emb_bytes in c.fetchall():
+            if existing_only and cid not in CONVERSATIONS:
+                continue
+            if roles is not None and role not in roles:
+                continue
             emb = np.frombuffer(emb_bytes, dtype=np.float32)
             sim = cosine_similarity(query_emb, emb)
             convo_owner = CONVERSATIONS.get(cid, {}).get("user_id", "default")
@@ -3579,18 +3753,26 @@ def global_search(query: str, top_k: int = 10, user_id: str = Depends(get_curren
                 continue
             for msg in convo.get("messages", []):
                 content = msg.get("content", "")
+                if roles is not None and msg.get("role", "") not in roles:
+                    continue
                 if isinstance(content, str) and q_low in content.lower():
                     results.append({
                         "conversation_id": cid,
                         "title": convo.get("title", "Unknown"),
                         "role": msg.get("role", ""),
-                        "content": content[:200],
+                        "content": content[:fallback_chars] if fallback_chars else content,
                         "similarity": 0.2
                     })
                     break
 
     results.sort(key=lambda x: x["similarity"], reverse=True)
     return results[:top_k]
+
+
+@app.get("/search")
+def global_search(query: str, top_k: int = 10, user_id: str = Depends(get_current_user)):
+    """Search across all conversations by semantic similarity with substring fallback."""
+    return search_conversation_messages(query, user_id, top_k)
 
 @app.get("/conversations")
 def list_conversations(user_id: str = Depends(get_current_user)):

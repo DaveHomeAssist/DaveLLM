@@ -90,7 +90,7 @@ def test_git_tools_register_only_with_both_flags(extended):
     assert not GIT_TOOLS & set(extended(extended="true", tools=False).TOOL_REGISTRY.public_catalog())
     assert not GIT_TOOLS & set(extended(extended="false").TOOL_REGISTRY.public_catalog())
     router = extended()
-    assert {definition.name for definition in router.extended_tool_definitions()} == GIT_TOOLS | EARLIER_EXTENDED
+    assert GIT_TOOLS | EARLIER_EXTENDED <= {definition.name for definition in router.extended_tool_definitions()}
     for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
         assert GIT_TOOLS <= set(registry.public_catalog())
 
