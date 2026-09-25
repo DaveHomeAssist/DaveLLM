@@ -107,7 +107,7 @@ The repository intentionally contains no real node addresses or verified model i
 - `cost_log.jsonl`
 - `project_uploads/`
 
-Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and provide `DAVE_TOOL_ROOTS` as a JSON array of absolute paths. File read, write, and append operations share the same containment check. `shell.exec` remains disabled unless `DAVE_ENABLE_SHELL_TOOL=true` is also set. `web.fetch` accepts only bounded public HTTP/HTTPS responses and validates DNS plus each redirect target.
+Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and provide `DAVE_TOOL_ROOTS` as a JSON array of absolute paths. File read, write, and append operations share the same containment check. `shell.exec` remains disabled unless `DAVE_ENABLE_SHELL_TOOL=true` is also set. `DAVE_ENABLE_EXTENDED_TOOLS=true` is the opt-in for the extended tool set; it is honored only when `DAVE_ENABLE_TOOLS=true` and currently adds no tools. `web.fetch` accepts only bounded public HTTP/HTTPS responses and validates DNS plus each redirect target.
 
 The tool registry publishes one JSON schema per active tool. `POST /tools/agent/run` sends the current schemas to Ollama on every bounded model step, validates arguments, logs call and result timing, returns the complete transcript, stops after eight steps by default, and pauses before tools marked as requiring approval. The pending response includes a `run_id` plus exact-call metadata. `POST /tools/agent/resume` accepts that run ID, call ID, SHA-256 argument digest, and an `approve` or `deny` decision for up to 300 seconds. Approval executes the stored canonical arguments without replaying the paused model step; denial records an operator-denied tool result and continues.
 

@@ -1,0 +1,324 @@
+{
+  "HARNESS_REGISTRY": {
+    "file.append": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Append UTF-8 text inside an allowed tool root.",
+      "handler": "app.tool_file_append",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "permission": "write_files",
+      "timeout_seconds": 10.0
+    },
+    "file.read": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a UTF-8 text file inside an allowed tool root.",
+      "handler": "app.tool_file_read",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "file.write": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Write UTF-8 text inside an allowed tool root.",
+      "handler": "app.tool_file_write",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "permission": "write_files",
+      "timeout_seconds": 10.0
+    },
+    "shell.exec": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": true,
+      "description": "Execute one command from the fixed safe-command allowlist.",
+      "handler": "app.tool_shell_exec",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "timeout_seconds": 6
+    },
+    "system.info": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded operating system and Python runtime information.",
+      "handler": "app.tool_system_info",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "all",
+              "platform",
+              "platform_version",
+              "python_version",
+              "processor"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_system",
+      "timeout_seconds": 10.0
+    },
+    "web.fetch": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Fetch a bounded public HTTP or HTTPS text response.",
+      "handler": "app.tool_web_fetch",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "timeout_seconds": 10.0
+    }
+  },
+  "TOOL_REGISTRY": {
+    "file.append": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Append UTF-8 text inside an allowed tool root.",
+      "handler": "app.tool_file_append",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "permission": "write_files",
+      "timeout_seconds": 10.0
+    },
+    "file.read": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a UTF-8 text file inside an allowed tool root.",
+      "handler": "app.tool_file_read",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "file.write": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Write UTF-8 text inside an allowed tool root.",
+      "handler": "app.tool_file_write",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "permission": "write_files",
+      "timeout_seconds": 10.0
+    },
+    "shell.exec": {
+      "approval_required": true,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Execute one command from the fixed safe-command allowlist.",
+      "handler": "app.tool_shell_exec",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "timeout_seconds": 6
+    },
+    "system.info": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded operating system and Python runtime information.",
+      "handler": "app.tool_system_info",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "all",
+              "platform",
+              "platform_version",
+              "python_version",
+              "processor"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_system",
+      "timeout_seconds": 10.0
+    },
+    "web.fetch": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Fetch a bounded public HTTP or HTTPS text response.",
+      "handler": "app.tool_web_fetch",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "timeout_seconds": 10.0
+    }
+  },
+  "_comment": "DaveLLM tool catalog from main e4ad799 before extended tools; every fingerprint input except the path-dependent compiled-code digest.",
+  "default_tools": [
+    "file.append",
+    "file.read",
+    "file.write",
+    "system.info",
+    "web.fetch"
+  ]
+}

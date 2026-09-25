@@ -1307,6 +1307,14 @@ HARNESS_REGISTRY = ToolRegistry(
     async_handler_allowlist=ASYNC_TOOL_HANDLER_ALLOWLIST,
 )
 PENDING_CALL_STORE = InMemoryPendingCallStore()
+# Honored only with DAVE_ENABLE_TOOLS. Kept below the tool handlers: their code
+# provenance, and therefore their definition fingerprints, includes line numbers.
+EXTENDED_TOOLS_ENABLED = TOOLS_ENABLED and _env_flag("DAVE_ENABLE_EXTENDED_TOOLS")
+
+
+def extended_tool_definitions() -> List[ToolDefinition]:
+    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS; none are defined yet."""
+    return []
 
 
 def register_builtin_tools() -> None:
@@ -1421,6 +1429,8 @@ def register_builtin_tools() -> None:
                 cancellation="bounded",
             )
         )
+    if EXTENDED_TOOLS_ENABLED:
+        definitions.extend(extended_tool_definitions())
     for definition in definitions:
         TOOL_REGISTRY.register(definition)
         HARNESS_REGISTRY.register(
