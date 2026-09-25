@@ -313,7 +313,7 @@
       "timeout_seconds": 10.0
     }
   },
-  "_comment": "DaveLLM tool catalog from main before extended tools: every fingerprint input except the path-dependent compiled-code digest, plus each handler's first/last line and source digest (the portable parts of that digest).",
+  "_comment": "DaveLLM tool catalog. TOOL_REGISTRY, HARNESS_REGISTRY, default_tools and handler_code pin the qualified built-in tools from main before extended tools: every fingerprint input except the path-dependent compiled-code digest, plus each handler's first/last line and source digest. extended_tools pins the DAVE_ENABLE_EXTENDED_TOOLS definitions the same way.",
   "default_tools": [
     "file.append",
     "file.read",
@@ -321,6 +321,158 @@
     "system.info",
     "web.fetch"
   ],
+  "extended_tools": {
+    "file.list": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List files and folders inside an allowed tool root, sorted by name, with paging. Paths are shown relative to the tool root.",
+      "handler": "app.tool_file_list",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "next_cursor from the previous page of the same request.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "depth": {
+            "default": 1,
+            "description": "0 describes the path itself; 1 lists its direct children.",
+            "maximum": 3,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_entries": {
+            "default": 100,
+            "maximum": 500,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "file.read_lines": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read up to 400 numbered lines from a UTF-8 text file inside an allowed tool root. Lines start at 1; use next_start_line to continue.",
+      "handler": "app.tool_file_read_lines",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_lines": {
+            "default": 200,
+            "maximum": 400,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "start_line": {
+            "default": 1,
+            "maximum": 10000000,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "file.search": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Find lines containing literal text in UTF-8 files inside an allowed tool root. Binary files and files over 1 MiB are skipped.",
+      "handler": "app.tool_file_search",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "case_sensitive": {
+            "default": false,
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "max_matches": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "default": ".",
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    }
+  },
   "handler_code": {
     "file.append": {
       "first_line": 1191,

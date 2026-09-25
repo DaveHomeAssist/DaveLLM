@@ -73,3 +73,34 @@ def test_extended_code_sits_below_every_builtin_handler(router):
     assert not above, (
         f"Extended-tool code must stay below the last built-in handler (line {last_handler_line}): {above}"
     )
+
+
+@pytest.fixture
+def extended_router(router_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("DAVE_ENABLE_EXTENDED_TOOLS", "true")
+    loaded, _, _ = router_factory(tools=True, tool_roots=[str(tmp_path)])
+    return loaded
+
+
+def test_extended_tool_boundaries_match_the_catalog(extended_router):
+    expected = BASELINE["extended_tools"]
+    for registry in (extended_router.TOOL_REGISTRY, extended_router.HARNESS_REGISTRY):
+        actual = {}
+        for name in expected:
+            definition = registry.get(name)
+            actual[name] = {
+                "description": definition.description, "parameters": definition.parameters,
+                "permission": definition.permission, "approval_required": definition.approval_required,
+                "timeout_seconds": definition.timeout_seconds, "cancellation": definition.cancellation,
+                "async_handler": definition.async_handler, "context_handler": definition.context_handler,
+                "handler": f"{definition.handler.__module__}.{definition.handler.__qualname__}",
+                "handler_version": definition.handler_version,
+            }
+        assert actual == expected
+
+
+def test_extended_handlers_sit_below_every_builtin_handler(extended_router):
+    last_handler_line = max(item["last_line"] for item in BASELINE["handler_code"].values())
+    for name in BASELINE["extended_tools"]:
+        handler = extended_router.TOOL_REGISTRY.get(name).handler
+        assert inspect.getsourcelines(handler)[1] > last_handler_line, name
