@@ -322,6 +322,16 @@
     "web.fetch"
   ],
   "extended_handler_code": {
+    "chat.search": {
+      "first_line": 1477,
+      "last_line": 1478,
+      "source_sha256": "0f713c3ada1bba3a43b83599150539ae99b58c842fa4e7b80d615cf1151922c3"
+    },
+    "cluster.status": {
+      "first_line": 1481,
+      "last_line": 1482,
+      "source_sha256": "ce74b0e9221331cb8c51c0046e0565b6b1b2b8c891e6ec4d7b039ccaed3b763e"
+    },
     "file.list": {
       "first_line": 1344,
       "last_line": 1345,
@@ -366,9 +376,74 @@
       "first_line": 1366,
       "last_line": 1367,
       "source_sha256": "208331c8b262fbf7b981c5265a8a2cdb64aa72228ac16df92e6a866d4cd3a102"
+    },
+    "project.artifacts": {
+      "first_line": 1473,
+      "last_line": 1474,
+      "source_sha256": "e0381d8f38f8884fc8775b6fe8b56465ea89fe41519b6652df35f5c74389303d"
+    },
+    "project.brain.read": {
+      "first_line": 1469,
+      "last_line": 1470,
+      "source_sha256": "aaca3057229faf3af1082180926666cd5f26f0f738b8af49ebd83795b278e214"
+    },
+    "project.notepad.read": {
+      "first_line": 1465,
+      "last_line": 1466,
+      "source_sha256": "f040a420e928e1a4ae5a0e8c8811e1a2a9c8d3e06aa1c23377bdac3e313aac87"
     }
   },
   "extended_tools": {
+    "chat.search": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Search your own earlier DaveLLM conversations and return short matching snippets.",
+      "handler": "app.tool_chat_search",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_results": {
+            "default": 5,
+            "maximum": 10,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "timeout_seconds": 10.0
+    },
+    "cluster.status": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Show which configured DaveLLM nodes are reachable and which models they are known to serve.",
+      "handler": "app.tool_cluster_status",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "permission": "read_system",
+      "timeout_seconds": 10.0
+    },
     "file.list": {
       "approval_required": false,
       "async_handler": false,
@@ -762,6 +837,73 @@
         "type": "object"
       },
       "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "project.artifacts": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List the saved artifacts of the project this run belongs to, or read one artifact's text by passing its identifier as artifact.",
+      "handler": "app.tool_project_artifacts",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "description": "An artifact identifier from the list; omit it to list.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_entries": {
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "permission": "read",
+      "timeout_seconds": 10.0
+    },
+    "project.brain.read": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read the BRAIN (pinned, active, and recent project memory) of the project this run belongs to, as it was when the run started.",
+      "handler": "app.tool_project_brain_read",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "permission": "read",
+      "timeout_seconds": 10.0
+    },
+    "project.notepad.read": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read the plain-text notepad of the project this run belongs to.",
+      "handler": "app.tool_project_notepad_read",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "permission": "read",
       "timeout_seconds": 10.0
     }
   },

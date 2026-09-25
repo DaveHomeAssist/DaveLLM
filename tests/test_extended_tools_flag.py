@@ -13,7 +13,8 @@ BASELINE = json.loads(
 )
 SHELL_TOOL = "shell.exec"
 EXTENDED_TOOLS = {"file.list", "file.search", "file.read_lines", "md.outline", "md.section",
-                  "git.status", "git.diff", "git.log", "git.show"}
+                  "git.status", "git.diff", "git.log", "git.show",
+                  "project.notepad.read", "project.brain.read", "project.artifacts", "chat.search", "cluster.status"}
 
 
 def boundary(registry):
