@@ -33,7 +33,9 @@ _CURSOR_OFFSET_DIGITS = 12
 # Every pattern applies to every path component, case-insensitively, because
 # macOS and Windows volumes usually are. A directory named like a secret file
 # is blocked too.
-SECRET_NAME_PATTERNS = (".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa*", "*.p12")
+SECRET_NAME_PATTERNS = (
+    ".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa*", "id_ed25519*", "id_ecdsa*", "id_dsa*", "*.p12",
+)
 SECRET_DIR_NAMES = frozenset({".ssh", ".aws", ".gnupg"})
 PATH_NOT_ALLOWED = "Access denied: path is not allowed"
 

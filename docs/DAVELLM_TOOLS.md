@@ -293,7 +293,7 @@ No arguments. Checks every configured node and returns `node` (its ID), `name`, 
 
 ## Protected paths
 
-Extended tools refuse and hide environment files, private keys and certificates, and SSH, AWS, and GnuPG folders. The exact patterns are `.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa`, `id_rsa*`, `*.p12`, `.ssh`, `.aws`, and `.gnupg`.
+Extended tools refuse and hide environment files, private keys and certificates, and SSH, AWS, and GnuPG folders. The exact patterns are `.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`, `*.p12`, `.ssh`, `.aws`, and `.gnupg`.
 
 - Patterns are matched case-insensitively against every part of the path, both as written and after symlinks are resolved.
 - Protected items are never listed, searched, or entered, and they do not change any count, flag, cursor, or returned timestamp.
