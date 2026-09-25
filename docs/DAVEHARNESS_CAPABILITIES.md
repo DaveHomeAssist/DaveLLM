@@ -418,12 +418,14 @@ Public constants each module defines, including the fixed refusal messages.
 
 | Name | Value |
 |---|---|
+| `ALTERNATES_MAX_BYTES` | `65536` |
 | `DIFF_SAFETY` | `["--no-color", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all"]` |
 | `FILE_MAX_CHARS` | `1024` |
 | `FILE_NOT_AT_REVISION` | `File not found at that revision` |
 | `FILTER_COMMANDS` | `["clean", "smudge", "process"]` |
 | `FIXED_CONFIG` | `[["core.fsmonitor", "false"], ["core.hooksPath", "/dev/null"], ["core.pager", "cat"], ["core.askPass", ""], ["credential.helper", ""], ["core.attributesFile", "/dev/null"], ["core.excludesFile", "/dev/null"], ["core.untrackedCache", "false"], ["core.quotePath", "false"], ["log.showSignature", "false"], ["log.mailmap", "false"], ["status.submoduleSummary", "false"], ["diff.submodule", "short"], ["submodule.recurse", "false"], ["safe.bareRepository", "explicit"], ["protocol.allow", "never"], ["color.ui", "false"], ["gc.auto", "0"], ["maintenance.auto", "false"]]` |
 | `GIT_CAPTURE_BYTES` | `1048576` |
+| `GIT_DIR_MAX_ENTRIES` | `100000` |
 | `GIT_FAILED` | `Git command failed` |
 | `GIT_STDERR_BYTES` | `65536` |
 | `GIT_TIMED_OUT` | `Git timed out` |

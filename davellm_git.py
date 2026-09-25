@@ -41,9 +41,9 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from davellm_files import (
-    NOT_TEXT, OUTPUT_BUDGET_BYTES, READ_MAX_LINE_CHARS, READ_MAX_LINES, SECRET_DIR_NAMES,
+    FILE_NOT_FOUND, NOT_TEXT, OUTPUT_BUDGET_BYTES, READ_MAX_LINE_CHARS, READ_MAX_LINES, SECRET_DIR_NAMES,
     SECRET_NAME_PATTERNS, FileToolError, PathNotAllowed, _fitting, _option, decode_text,
-    deepest_root, encode_result, has_secret_component, relative_display, split_lines,
+    deepest_root, encode_result, has_secret_component, read_admitted_bytes, relative_display, split_lines,
 )
 
 
@@ -58,6 +58,8 @@ REVISION_MAX_CHARS = 128
 FILE_MAX_CHARS = 1_024
 TEXT_FIELD_CHARS = 300
 SHOW_BODY_CHARS = 2_000
+ALTERNATES_MAX_BYTES = 65_536  # a real alternates file is a few lines
+GIT_DIR_MAX_ENTRIES = 100_000  # entries checked for links in the Git directory before it is refused
 MIN_GIT_VERSION = (2, 32)
 
 NOT_A_WORK_TREE = "Not a Git working tree"
@@ -279,11 +281,11 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
         raise FileToolError(NOT_A_WORK_TREE)
     top, git_dir, common_dir, objects = (_real(item) for item in fields[1:5])
     for location in (top, git_dir, common_dir, objects):
+        # The same answer as a folder that is not a repository, so a .git file or
+        # symlink never reveals whether something outside is a Git directory.
         if not _inside(location, roots) or has_secret_component(location):
-            raise PathNotAllowed()
-    alternates = objects / "info" / "alternates"
-    if alternates.exists() and any(line.strip() and not line.startswith("#")
-                                   for line in alternates.read_text(errors="replace").splitlines()):
+            raise FileToolError(NOT_A_WORK_TREE)
+    if not _free_of_links(git_dir, common_dir, objects) or _names_alternates(objects):
         raise FileToolError(UNSUPPORTED_REPOSITORY)
     # From here on Git uses exactly the admitted locations and never discovers others.
     located = {"GIT_DIR": str(git_dir), "GIT_WORK_TREE": str(top)}
@@ -294,6 +296,59 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
     env = git_environment(git, located, _filter_overrides(listing.stdout))
     display = relative_display(top, deepest_root(top, roots))
     return Repository(top, display, env, deadline)
+
+
+def _names_alternates(objects: Path) -> bool:
+    """Whether the object store borrows objects from elsewhere.
+
+    ``info/alternates`` is read like any extended-tool file: without following a
+    symlink, non-blocking, and bounded. Anything other than a missing file or a
+    small regular file counts as borrowing, so a symlink, a special file, or an
+    oversized file is refused with the same message whatever it points at.
+    """
+    info = objects / "info"
+    try:
+        # Checked without following first, so no platform's fallback read can tell
+        # a dangling symlink from a missing file.
+        if info.is_symlink() or (info / "alternates").is_symlink():
+            return True
+        data = read_admitted_bytes(info / "alternates", ALTERNATES_MAX_BYTES)
+    except FileToolError as exc:
+        return str(exc) != FILE_NOT_FOUND
+    except OSError:  # includes PathNotAllowed
+        return True
+    # Git splits on LF only and skips just empty and comment lines; a line of
+    # spaces or a carriage return is a relative path to Git, so it counts here too.
+    return any(line and not line.startswith(b"#") for line in data.split(b"\n"))
+
+
+def _free_of_links(*directories: Path) -> bool:
+    """Whether the Git directories hold only plain folders and regular files.
+
+    Git follows symlinks inside its own directory (refs, packed-refs, packs,
+    loose objects, the index), so a link planted there could read another
+    repository from outside the roots. The walk never follows a link, skips
+    ``hooks`` (hooks never run), and gives up after GIT_DIR_MAX_ENTRIES entries.
+    """
+    tops = {folder for folder in directories
+            if not any(folder != other and folder.is_relative_to(other) for other in directories)}
+    pending, seen = sorted(tops), 0
+    try:
+        while pending:
+            folder = pending.pop()
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    seen += 1
+                    if seen > GIT_DIR_MAX_ENTRIES or entry.is_symlink():
+                        return False
+                    if entry.is_dir(follow_symlinks=False):
+                        if not (folder in tops and entry.name == "hooks"):
+                            pending.append(Path(entry.path))
+                    elif not entry.is_file(follow_symlinks=False):
+                        return False
+    except OSError:
+        return False
+    return True
 
 
 def _filter_overrides(listing: bytes) -> list[tuple[str, str]]:

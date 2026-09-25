@@ -137,6 +137,7 @@
       "UNREADABLE": "File could not be read"
     },
     "davellm_git": {
+      "ALTERNATES_MAX_BYTES": 65536,
       "DIFF_SAFETY": [
         "--no-color",
         "--no-ext-diff",
@@ -229,6 +230,7 @@
         ]
       ],
       "GIT_CAPTURE_BYTES": 1048576,
+      "GIT_DIR_MAX_ENTRIES": 100000,
       "GIT_FAILED": "Git command failed",
       "GIT_STDERR_BYTES": 65536,
       "GIT_TIMED_OUT": "Git timed out",

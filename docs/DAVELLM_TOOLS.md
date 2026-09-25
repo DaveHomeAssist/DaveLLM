@@ -229,8 +229,9 @@ A repository's own configuration can name programs that Git runs during ordinary
 
 - **Path.** The requested folder must pass the extended path boundary: containment, anchoring, and the protected-path denylist.
 - **Discovery.** Git may search upward for the repository no further than the tool root, never into the folder above it.
-- **Locations.** The working tree, Git directory, common directory, and object store must all resolve inside a tool root and outside protected folders. A `.git` file or symlink that points elsewhere is refused. So is a `core.worktree` that moves the working tree elsewhere, because then the requested folder is not a working tree.
-- **Alternate object stores** are refused, because they would let a repository read objects from outside the roots.
+- **Locations.** The working tree, Git directory, common directory, and object store must all resolve inside a tool root and outside protected folders. A `.git` file or symlink that points elsewhere is refused with "Not a Git working tree", the same answer as a folder that is not a repository, so the answer never reveals whether something outside the roots is a Git directory. So is a `core.worktree` that moves the working tree elsewhere, because then the requested folder is not a working tree.
+- **No links inside the Git directory.** Git follows symlinks inside its own directory, so a linked `packed-refs`, pack folder, loose object, ref, or index could read another repository's history. The Git directory, common directory, and object store are walked without following links before any read. A symlink or special file anywhere in them, except under `hooks` (hooks never run), is refused with "Repository layout is not supported". So is a Git directory with more than 100,000 entries.
+- **Alternate object stores** are refused, because they would let a repository read objects from outside the roots. `objects/info/alternates` is read like any extended-tool file: never through a symlink, non-blocking, and at most 64 KiB. Anything but a missing file or a small regular file holding only comments and empty lines is refused with the same message. A line of spaces or a carriage return counts as an alternate, because Git reads it as a path. See the [Git tools security review](DAVELLM_GIT_SECURITY_REVIEW.md).
 - **Pinned locations.** After admission every command gets the admitted Git directory and working tree explicitly, so Git does not search again.
 - **Ownership.** A repository owned by another user is refused ("Repository is owned by another user"), keeping Git's own `safe.directory` protection.
 
@@ -326,9 +327,9 @@ Listings read names and metadata, never file contents, so they do not use this p
 | `Heading not found` | `md.section` found no heading with that text |
 | `Heading must contain text` | The `md.section` heading is only whitespace |
 | `File has more than 20,000 headings` | Too many headings for the Markdown tools |
-| `Not a Git working tree` | The folder is not inside a Git working tree within the tool root |
+| `Not a Git working tree` | The folder is not inside a Git working tree within the tool root, or its Git data is outside the roots or in a protected folder |
 | `Repository is owned by another user` | Git's ownership check refused the repository |
-| `Repository layout is not supported` | The repository uses alternate object stores |
+| `Repository layout is not supported` | The repository uses alternate object stores, its Git directory holds a symlink or special file, or it has more than 100,000 entries |
 | `Invalid revision` | The revision does not follow the grammar above |
 | `Revision not found` | No commit has that name |
 | `Use a file path relative to the repository` | A Git `file` argument is absolute, escapes, or is malformed |
