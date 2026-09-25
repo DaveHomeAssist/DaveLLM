@@ -1353,6 +1353,20 @@ def tool_file_read_lines(params: Dict) -> ToolResult:
     return _run_extended_file_tool("file.read_lines", read_lines, params)
 
 
+from davellm_markdown import (  # PR-03 Markdown readers, kept below the PR-02 handlers
+    OUTLINE_DEFAULT_HEADINGS, OUTLINE_MAX_HEADINGS, SECTION_MAX_HEADING_CHARS, SECTION_MAX_LINES,
+    markdown_outline, markdown_section,
+)
+
+
+def tool_md_outline(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("md.outline", markdown_outline, params)
+
+
+def tool_md_section(params: Dict) -> ToolResult:
+    return _run_extended_file_tool("md.section", markdown_section, params)
+
+
 EXTENDED_PATH_SCHEMA = {
     "type": "string",
     "minLength": 1,
@@ -1367,7 +1381,7 @@ def _optional(schema: Dict) -> Dict:
 
 
 def extended_tool_definitions() -> List[ToolDefinition]:
-    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: read-only discovery, search, and paged reads."""
+    """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS: read-only discovery, search, paged reads, and Markdown."""
     return [
         ToolDefinition(
             name="file.list",
@@ -1445,6 +1459,55 @@ def extended_tool_definitions() -> List[ToolDefinition]:
                 "additionalProperties": False,
             },
             handler=tool_file_read_lines,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="md.outline",
+            description=(
+                "List the headings of a Markdown file inside an allowed tool root, in order, with "
+                "their levels and line numbers. Headings inside code fences are ignored."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": EXTENDED_PATH_SCHEMA,
+                    "max_headings": _optional({
+                        "type": "integer", "minimum": 1, "maximum": OUTLINE_MAX_HEADINGS,
+                        "default": OUTLINE_DEFAULT_HEADINGS,
+                    }),
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+            handler=tool_md_outline,
+            permission="read_files",
+            cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="md.section",
+            description=(
+                f"Read the lines under one heading of a Markdown file inside an allowed tool root, "
+                f"up to {SECTION_MAX_LINES} lines. The heading must match exactly, ignoring case; "
+                "use next_start_line with file.read_lines to continue a long section."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": EXTENDED_PATH_SCHEMA,
+                    "heading": {
+                        "type": "string", "minLength": 1, "maxLength": SECTION_MAX_HEADING_CHARS,
+                        "description": "The heading text, without the leading # marks.",
+                    },
+                    "include_subsections": _optional({
+                        "type": "boolean", "default": True,
+                        "description": "false stops at the first subheading.",
+                    }),
+                },
+                "required": ["path", "heading"],
+                "additionalProperties": False,
+            },
+            handler=tool_md_section,
             permission="read_files",
             cancellation="bounded",
         ),

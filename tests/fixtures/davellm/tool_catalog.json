@@ -313,7 +313,7 @@
       "timeout_seconds": 10.0
     }
   },
-  "_comment": "DaveLLM tool catalog. TOOL_REGISTRY, HARNESS_REGISTRY, default_tools and handler_code pin the qualified built-in tools from main before extended tools: every fingerprint input except the path-dependent compiled-code digest, plus each handler's first/last line and source digest. extended_tools pins the DAVE_ENABLE_EXTENDED_TOOLS definitions the same way.",
+  "_comment": "DaveLLM tool catalog. TOOL_REGISTRY, HARNESS_REGISTRY, default_tools and handler_code pin the qualified built-in tools from main before extended tools: every fingerprint input except the path-dependent compiled-code digest, plus each handler's first/last line and source digest. extended_tools and extended_handler_code pin the DAVE_ENABLE_EXTENDED_TOOLS definitions and handlers the same way.",
   "default_tools": [
     "file.append",
     "file.read",
@@ -321,6 +321,33 @@
     "system.info",
     "web.fetch"
   ],
+  "extended_handler_code": {
+    "file.list": {
+      "first_line": 1344,
+      "last_line": 1345,
+      "source_sha256": "c9c21a65b12f0db55a6c7e50e0c56ebba192b9b9cb6c30cf0a85afe8f3ecf8a9"
+    },
+    "file.read_lines": {
+      "first_line": 1352,
+      "last_line": 1353,
+      "source_sha256": "e83a66cb31f169e6de561559aa520607766896befee925619ac441161ee7dafc"
+    },
+    "file.search": {
+      "first_line": 1348,
+      "last_line": 1349,
+      "source_sha256": "6c9741c74ac57d7642a474d46577fb3d501f1647b21afc19af57949f951d77a8"
+    },
+    "md.outline": {
+      "first_line": 1362,
+      "last_line": 1363,
+      "source_sha256": "6390a25ccdd6e82bcd57ce2dc0db68c2efc1f21f7f90f13e0fbbe038d65c2a4e"
+    },
+    "md.section": {
+      "first_line": 1366,
+      "last_line": 1367,
+      "source_sha256": "208331c8b262fbf7b981c5265a8a2cdb64aa72228ac16df92e6a866d4cd3a102"
+    }
+  },
   "extended_tools": {
     "file.list": {
       "approval_required": false,
@@ -466,6 +493,82 @@
         },
         "required": [
           "query"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "md.outline": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List the headings of a Markdown file inside an allowed tool root, in order, with their levels and line numbers. Headings inside code fences are ignored.",
+      "handler": "app.tool_md_outline",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_headings": {
+            "default": 200,
+            "maximum": 500,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "timeout_seconds": 10.0
+    },
+    "md.section": {
+      "approval_required": false,
+      "async_handler": false,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read the lines under one heading of a Markdown file inside an allowed tool root, up to 400 lines. The heading must match exactly, ignoring case; use next_start_line with file.read_lines to continue a long section.",
+      "handler": "app.tool_md_section",
+      "handler_version": "",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "heading": {
+            "description": "The heading text, without the leading # marks.",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "include_subsections": {
+            "default": true,
+            "description": "false stops at the first subheading.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Relative to the tool root, or absolute inside it.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "heading"
         ],
         "type": "object"
       },

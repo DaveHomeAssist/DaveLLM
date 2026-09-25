@@ -12,7 +12,7 @@ BASELINE = json.loads(
     (Path(__file__).parent / "fixtures" / "davellm" / "tool_catalog.json").read_text()
 )
 SHELL_TOOL = "shell.exec"
-EXTENDED_TOOLS = {"file.list", "file.search", "file.read_lines"}
+EXTENDED_TOOLS = {"file.list", "file.search", "file.read_lines", "md.outline", "md.section"}
 
 
 def boundary(registry):
