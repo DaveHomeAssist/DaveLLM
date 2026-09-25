@@ -10,11 +10,13 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 
 import pytest
 
+import davellm_files
 import davellm_git
 from daveharness import run_tool
 from daveharness.registry import DEFAULT_TOOL_TIMEOUT_SECONDS
@@ -171,6 +173,66 @@ def test_symlinked_repository_escape_is_rejected(router):  # 6
 
 def test_alternate_object_stores_are_refused(router):
     refused(router, "git.log", UNSUPPORTED_REPOSITORY, path="alternates")
+
+
+def alternates_file(hostile_git):
+    info = hostile_git.at("repo") / ".git" / "objects" / "info"
+    info.mkdir(exist_ok=True)
+    return info / "alternates"
+
+
+def test_comment_only_alternates_are_admitted_and_oversized_ones_refused(router, hostile_git):
+    target = alternates_file(hostile_git)
+    target.write_text("# no alternates here\n\n")
+    ok(router, "git.status", path="repo")
+    target.write_text("#\n" * (davellm_git.ALTERNATES_MAX_BYTES // 2 + 1))
+    refused(router, "git.status", UNSUPPORTED_REPOSITORY, path="repo")
+
+
+@pytest.mark.parametrize("descriptor_walk", [True, False], ids=["descriptor-walk", "inode-check"])
+def test_symlinked_alternates_are_refused_the_same_way_whatever_they_point_at(
+    router, hostile_git, monkeypatch, descriptor_walk,
+):
+    """Security review G-1 and G-2: the check once followed this symlink and read the target whole.
+
+    Following it let a model plant a link to an endless file and exhaust memory,
+    and the different answers for a present or missing target revealed whether
+    any path outside the root existed. Both read strategies must refuse alike.
+    """
+    monkeypatch.setattr(davellm_files, "DESCRIPTOR_WALK", descriptor_walk and davellm_files.DESCRIPTOR_WALK)
+    target = alternates_file(hostile_git)
+    comments = hostile_git.outside / "comments.txt"
+    comments.write_text("# only comments\n" * 200_000)
+    for destination in (comments, hostile_git.outside / "missing.txt", hostile_git.outside / "missing-dir" / "x"):
+        target.unlink(missing_ok=True)
+        target.symlink_to(destination)
+        for name, extra in (("git.status", {}), ("git.diff", {}), ("git.log", {}), ("git.show", {"revision": "HEAD"})):
+            refused(router, name, UNSUPPORTED_REPOSITORY, path="repo", **extra)
+    target.unlink()
+    info = target.parent
+    shutil.rmtree(info)
+    (hostile_git.outside / "info").mkdir()
+    (hostile_git.outside / "info" / "alternates").write_text("# only comments\n")
+    info.symlink_to(hostile_git.outside / "info", target_is_directory=True)
+    refused(router, "git.status", UNSUPPORTED_REPOSITORY, path="repo")
+    info.unlink()
+    info.symlink_to(hostile_git.outside / "missing-info", target_is_directory=True)
+    refused(router, "git.status", UNSUPPORTED_REPOSITORY, path="repo")
+
+
+def test_special_file_alternates_are_refused_without_blocking(router, hostile_git):
+    pipe = alternates_file(hostile_git)
+    os.mkfifo(pipe)
+    outcome = []
+    worker = threading.Thread(target=lambda: outcome.append(run(router, "git.status", path="repo")), daemon=True)
+    worker.start()
+    worker.join(20)
+    try:  # release a reader stuck on the pipe, so a regression fails instead of hanging the suite
+        os.close(os.open(pipe, os.O_WRONLY | os.O_NONBLOCK))
+    except OSError:
+        pass
+    worker.join(20)
+    assert [(item.status, item.error) for item in outcome] == [("error", UNSUPPORTED_REPOSITORY)]
 
 
 def test_results_and_errors_never_show_absolute_paths(router, hostile_git):  # 7

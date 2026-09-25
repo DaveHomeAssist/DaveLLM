@@ -137,6 +137,7 @@
       "UNREADABLE": "File could not be read"
     },
     "davellm_git": {
+      "ALTERNATES_MAX_BYTES": 65536,
       "DIFF_SAFETY": [
         "--no-color",
         "--no-ext-diff",

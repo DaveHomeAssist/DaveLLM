@@ -418,6 +418,7 @@ Public constants each module defines, including the fixed refusal messages.
 
 | Name | Value |
 |---|---|
+| `ALTERNATES_MAX_BYTES` | `65536` |
 | `DIFF_SAFETY` | `["--no-color", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all"]` |
 | `FILE_MAX_CHARS` | `1024` |
 | `FILE_NOT_AT_REVISION` | `File not found at that revision` |

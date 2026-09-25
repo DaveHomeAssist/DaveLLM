@@ -230,7 +230,7 @@ A repository's own configuration can name programs that Git runs during ordinary
 - **Path.** The requested folder must pass the extended path boundary: containment, anchoring, and the protected-path denylist.
 - **Discovery.** Git may search upward for the repository no further than the tool root, never into the folder above it.
 - **Locations.** The working tree, Git directory, common directory, and object store must all resolve inside a tool root and outside protected folders. A `.git` file or symlink that points elsewhere is refused. So is a `core.worktree` that moves the working tree elsewhere, because then the requested folder is not a working tree.
-- **Alternate object stores** are refused, because they would let a repository read objects from outside the roots.
+- **Alternate object stores** are refused, because they would let a repository read objects from outside the roots. `objects/info/alternates` is read like any extended-tool file: never through a symlink, non-blocking, and at most 64 KiB. Anything but a missing file or a small regular file holding only comments is refused with the same message. See the [Git tools security review](DAVELLM_GIT_SECURITY_REVIEW.md).
 - **Pinned locations.** After admission every command gets the admitted Git directory and working tree explicitly, so Git does not search again.
 - **Ownership.** A repository owned by another user is refused ("Repository is owned by another user"), keeping Git's own `safe.directory` protection.
 
