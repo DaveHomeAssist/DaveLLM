@@ -2,6 +2,8 @@
 
 DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, and the native read tools added in PR-05.
 
+[DAVEHARNESS_CAPABILITIES.md](DAVEHARNESS_CAPABILITIES.md) lists every tool's full schema, flags, run budgets, host limits, routes, and tool-module constants in one place. It and its machine-readable twin, [DAVEHARNESS_CAPABILITIES.json](DAVEHARNESS_CAPABILITIES.json), are generated from the registry by `scripts/generate_capabilities_manifest.py`.
+
 ## Settings
 
 | Setting | Default | Effect |
