@@ -8,9 +8,9 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 
 ## Summary
 
-- 20 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 14 from `DAVE_ENABLE_EXTENDED_TOOLS`.
-- Exact-call approval required: `file.append`, `file.write`, `shell.exec`.
-- Tools by permission: `execute_process` 1; `public_network` 1; `read` 4; `read_files` 10; `read_system` 2; `write_files` 2.
+- 21 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 15 from `DAVE_ENABLE_EXTENDED_TOOLS`.
+- Exact-call approval required: `file.append`, `file.edit`, `file.write`, `shell.exec`.
+- Tools by permission: `execute_process` 1; `public_network` 1; `read` 4; `read_files` 10; `read_system` 2; `write_files` 3.
 - Every tool schema rejects unknown arguments (`additionalProperties: false`).
 - Definition fingerprints are not listed: they depend on the checkout path and Python version. `tests/fixtures/davellm/tool_catalog.json` pins their portable inputs.
 
@@ -20,7 +20,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 |---|---|---|---|
 | `DAVE_ENABLE_TOOLS` | `false` | `file.append`, `file.read`, `file.write`, `system.info`, `web.fetch` | Turns on tool execution and the core tools. |
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | `shell.exec` | Registers shell.exec. Execution still needs DAVE_ENABLE_TOOLS. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | `chat.search`, `cluster.status`, `file.list`, `file.read_lines`, `file.search`, `git.diff`, `git.log`, `git.show`, `git.status`, `md.outline`, `md.section`, `project.artifacts`, `project.brain.read`, `project.notepad.read` | Registers the extended read-only tools. Honored only with DAVE_ENABLE_TOOLS. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | `chat.search`, `cluster.status`, `file.edit`, `file.list`, `file.read_lines`, `file.search`, `git.diff`, `git.log`, `git.show`, `git.status`, `md.outline`, `md.section`, `project.artifacts`, `project.brain.read`, `project.notepad.read` | Registers the extended tools: bounded reads, plus file.edit, which needs approval for every call. Honored only with DAVE_ENABLE_TOOLS. |
 | `DAVE_TOOL_ROOTS` | `[]` | — | JSON array of absolute folders that file and Git tools may use. |
 
 ## Tools
@@ -30,6 +30,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`chat.search`](#chatsearch) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | **`query`**, `max_results` |
 | [`cluster.status`](#clusterstatus) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_system` | — | `10.0` | `bounded` | sync | — |
 | [`file.append`](#fileappend) | `DAVE_ENABLE_TOOLS` | `write_files` | exact call | `10.0` | `bounded` | sync | **`path`**, **`content`** |
+| [`file.edit`](#fileedit) | `DAVE_ENABLE_EXTENDED_TOOLS` | `write_files` | exact call | `10.0` | `bounded` | sync | **`path`**, **`old_text`**, **`new_text`**, `expected_count` |
 | [`file.list`](#filelist) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path`, `depth`, `max_entries`, `cursor` |
 | [`file.read`](#fileread) | `DAVE_ENABLE_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`** |
 | [`file.read_lines`](#fileread_lines) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, `start_line`, `max_lines` |
@@ -73,6 +74,17 @@ Append UTF-8 text inside an allowed tool root.
 |---|---|---|---|---|
 | `path` | string | yes | minLength `1` | — |
 | `content` | string | yes | — | — |
+
+### file.edit
+
+Replace exact text in an existing UTF-8 text file inside an allowed tool root. old_text must occur exactly expected_count times (default 1), or nothing is written. Needs the user's approval, which shows the text before and after.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `path` | string | yes | maxLength `4096`, minLength `1` | Relative to the tool root, or absolute inside it. |
+| `old_text` | string | yes | maxLength `20000`, minLength `1` | The exact text to replace, copied from the file. |
+| `new_text` | string | yes | maxLength `20000` | The replacement text; empty deletes old_text. |
+| `expected_count` | integer or null | no | default `1`, maximum `100`, minimum `1` | How many times old_text occurs; any other count refuses the edit. |
 
 ### file.list
 
@@ -474,3 +486,19 @@ Public constants each module defines, including the fixed refusal messages.
 | `SEARCH_MAX_RESULTS` | `10` |
 | `SNIPPET_CHARS` | `300` |
 | `TITLE_CHARS` | `200` |
+
+### davellm_edit
+
+| Name | Value |
+|---|---|
+| `COUNT_MISMATCH` | `old_text was found {found} times, not the expected {expected}; nothing was written` |
+| `EDIT_DEFAULT_REPLACEMENTS` | `1` |
+| `EDIT_FAILED` | `The edit could not be written` |
+| `EDIT_MAX_REPLACEMENTS` | `100` |
+| `EDIT_MAX_TEXT_CHARS` | `20000` |
+| `EDIT_UNSUPPORTED` | `Editing files is not supported on this platform` |
+| `FILE_CHANGED` | `The file changed while the edit was being prepared; nothing was written` |
+| `MULTIPLE_LINKS` | `File has more than one hard link` |
+| `NO_CHANGE` | `old_text and new_text are the same` |
+| `TEMP_PREFIX` | `.davellm-edit-` |
+| `TEXT_NOT_FOUND` | `old_text was not found in the file; nothing was written` |

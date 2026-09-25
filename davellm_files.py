@@ -429,13 +429,26 @@ class FileTooLarge(FileToolError):
         super().__init__(f"File is larger than the {limit // 1_048_576} MiB limit")
 
 
-def _open_by_descriptor_walk(path: Path) -> int:
+def open_directory_descriptor(path: Path) -> int:
+    """Open an absolute directory one component at a time from "/", never following a symlink.
+
+    Needs DESCRIPTOR_WALK. Raises the OSError of the component that failed.
+    """
     parent = os.open("/", os.O_RDONLY | _O_DIRECTORY | _O_CLOEXEC)
     try:
-        for part in path.parts[1:-1]:
+        for part in path.parts[1:]:
             child = os.open(part, os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW | _O_CLOEXEC, dir_fd=parent)
             os.close(parent)
             parent = child
+    except BaseException:
+        os.close(parent)
+        raise
+    return parent
+
+
+def _open_by_descriptor_walk(path: Path) -> int:
+    parent = open_directory_descriptor(path.parent)
+    try:
         return os.open(path.name, os.O_RDONLY | _O_NOFOLLOW | _O_CLOEXEC | _O_NONBLOCK, dir_fd=parent)
     finally:
         os.close(parent)
@@ -482,26 +495,31 @@ def open_admitted_file(path: Path) -> int:
     return descriptor
 
 
-def read_admitted_bytes(path: Path, limit: int) -> bytes:
-    """Read at most ``limit`` bytes of an admitted regular file through ``open_admitted_file``."""
-    descriptor = open_admitted_file(path)
-    try:
-        if os.fstat(descriptor).st_size > limit:
-            raise FileTooLarge(limit)
-        chunks: list[bytes] = []
-        remaining = limit + 1
-        while remaining > 0:
-            chunk = os.read(descriptor, min(remaining, 1_048_576))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-    finally:
-        os.close(descriptor)
+def read_descriptor(descriptor: int, limit: int) -> bytes:
+    """Read an open regular file to its end, refusing more than ``limit`` bytes."""
+    if os.fstat(descriptor).st_size > limit:
+        raise FileTooLarge(limit)
+    chunks: list[bytes] = []
+    remaining = limit + 1
+    while remaining > 0:
+        chunk = os.read(descriptor, min(remaining, 1_048_576))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
     data = b"".join(chunks)
     if len(data) > limit:  # grew after the size check
         raise FileTooLarge(limit)
     return data
+
+
+def read_admitted_bytes(path: Path, limit: int) -> bytes:
+    """Read at most ``limit`` bytes of an admitted regular file through ``open_admitted_file``."""
+    descriptor = open_admitted_file(path)
+    try:
+        return read_descriptor(descriptor, limit)
+    finally:
+        os.close(descriptor)
 
 
 def decode_text(data: bytes) -> str | None:

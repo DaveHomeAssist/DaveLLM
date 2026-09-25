@@ -30,7 +30,7 @@ jobs:
 
       - name: Compile application and DaveHarness
         run: |
-          python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_markdown.py davellm_git.py davellm_native_tools.py scripts/project_context_cli.py tool_executor.py
+          python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py scripts/project_context_cli.py tool_executor.py
           python -m compileall -q daveharness
 
       - name: Tests
@@ -60,8 +60,8 @@ jobs:
       - name: JavaScript syntax check
         run: node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
 
-      - name: Run ledger stream regression
-        run: node --test tests/test_run_ledger_watch.mjs
+      - name: Run ledger and approval preview regressions
+        run: node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs
 
       - name: Shell syntax check
         run: bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh
