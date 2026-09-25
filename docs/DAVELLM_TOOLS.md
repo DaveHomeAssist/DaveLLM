@@ -1,6 +1,6 @@
 # DaveLLM tools
 
-DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, and the extended file tools added in PR-02.
+DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, and the Markdown tools added in PR-03.
 
 ## Settings
 
@@ -9,7 +9,7 @@ DaveLLM offers tools to Ollama models through the in-process DaveHarness registr
 | `DAVE_ENABLE_TOOLS` | `false` | Turns on the tool registry and the tool routes. Nothing below works without it. |
 | `DAVE_TOOL_ROOTS` | `[]` | JSON array of absolute folders. Every file tool stays inside these roots. |
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | Second opt-in for `shell.exec`. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, and `file.read_lines`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, and `md.section`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
 
 ```bash
 export DAVE_ENABLE_TOOLS=true
@@ -34,7 +34,7 @@ These tools are unchanged by the extended tools. `file.read` still returns at mo
 
 ## Extended file tools
 
-All three are read-only: permission `read_files`, no approval, bounded cancellation, and a 10-second timeout. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
+All five extended tools, including the Markdown tools below, are read-only: permission `read_files`, no approval, synchronous handlers, bounded cancellation, and a 10-second timeout. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
 
 ### `file.list`
 
@@ -74,6 +74,65 @@ Regex search is not available. Python's regular-expression engine can backtrack 
 
 The result has `path`, `start_line`, `lines`, `line_count`, `total_lines`, `next_start_line` (`null` at the end of the file), and `truncated`. Lines split on LF, and a trailing CR is removed. A start past the end returns no lines and the real `total_lines`. Lines longer than 2,000 characters are cut and listed in `cut_lines`. Binary and non-UTF-8 files are refused, never decoded with replacement characters.
 
+## Markdown tools
+
+`md.outline` and `md.section` navigate long Markdown files by heading instead of by page. They read through the same path rules, protected paths, symlink-swap protection, UTF-8 check, and 10 MiB size limit as `file.read_lines`. Both use one heading parser, `parse_headings` in `davellm_markdown.py`, so they always agree on where headings and sections are. It is a small line-by-line reader with no regular expressions and no Markdown dependency.
+
+### Heading syntax
+
+| Syntax | Behavior |
+|---|---|
+| ATX `#` to `######` | A heading after at most three spaces when a space, a tab, or the end of the line follows the marks. `#hashtag` and `####### seven` are not headings. |
+| Closing `#` marks | Removed when a space or tab precedes them: `## Setup ##` is `Setup`, while `## C#` stays `C#`. |
+| Inline Markdown | Kept as written, never rendered: `## *New* in [2.1](notes.md)` is `*New* in [2.1](notes.md)`. |
+| Setext | A `===` (level 1) or `---` (level 2) underline directly under a paragraph. Paragraph lines join with single spaces. `line` is the paragraph's first line and `source_end_line` is the underline. |
+| Fenced code | Three or more backticks or tildes after at most three spaces open a fence. Only the same character, repeated at least as often and followed by nothing but spaces, closes it. An unclosed fence runs to the end of the file. Nothing inside a fence is a heading or ends a section. |
+| Indented code | A line indented four or more columns is never a heading or a fence. A tab counts to the next multiple of four. |
+| Front matter | A `---` block at the very start of the file, closed by `---` or `...`, is skipped so its closing line is not read as a Setext underline. Its contents are not parsed or returned. |
+
+Block quotes, list items, and HTML are not parsed. `> # Title` and `- # Item` are never headings, and a `---` under a list item, quote, or HTML line is not a Setext underline. A `#` line inside an HTML block still counts as a heading.
+
+A file with more than 20,000 headings is refused with "File has more than 20,000 headings". This bounds parsing time and memory on hostile input; use `file.search` or `file.read_lines` for such a file.
+
+### `md.outline`
+
+| Argument | Type | Default | Bounds |
+|---|---|---|---|
+| `path` | string | required | A strict UTF-8 text file up to 10 MiB |
+| `max_headings` | integer | `200` | 1–500 |
+
+The result has `path`, `headings`, `heading_count` (returned), `total_headings` (in the file), `total_lines`, `truncated`, and `next_start_line`. Each heading has `text`, `level` (1–6), and `line` (1-based). Setext headings also have `source_end_line`. Text longer than 300 characters is cut and marked with `text_truncated`. Outline entries have no breadcrumb because the levels already give the hierarchy; `md.section` returns one.
+
+When `max_headings` or the result budget ends the list early, `truncated` is `true` and `next_start_line` is the line of the first heading left out. Read on from there with `file.read_lines`. There is no outline cursor.
+
+### `md.section`
+
+| Argument | Type | Default | Bounds |
+|---|---|---|---|
+| `path` | string | required | A strict UTF-8 text file up to 10 MiB |
+| `heading` | string | required | 1–500 characters |
+| `include_subsections` | boolean | `true` | |
+
+**Matching.** The request and every heading are compared after trimming, collapsing runs of whitespace, and case folding, so `install`, `  INSTALL ` and `Install` are the same and `STRASSE` matches `Straße`. If a request written with its marks, such as `## Setup`, matches nothing as written, it is tried again without them. Nothing else is matched: no prefixes, substrings, or near misses. With no match the tool fails with "Heading not found", and it never lists the outline in the error.
+
+**Ambiguity.** When several headings match, the tool succeeds with `ambiguous: true`, `match_count`, and `matches`. Each candidate has `text`, `level`, `line`, and `breadcrumb`, plus `source_end_line` for Setext. No section text is returned and the tool never picks one. Read the intended one with `file.read_lines` from its `line`. Candidates stop at the result budget with `truncated: true`.
+
+```json
+{"path": "docs/guide.md", "heading": "Setup", "ambiguous": true, "match_count": 2, "truncated": false,
+ "matches": [{"text": "Setup", "level": 2, "line": 3, "breadcrumb": ["Linux", "Setup"]},
+             {"text": "Setup", "level": 2, "line": 9, "breadcrumb": ["macOS", "Setup"]}]}
+```
+
+**Boundaries.** For a heading at level N, the section starts on the line after the heading, or after the underline for a Setext heading. The heading line itself is not in `lines`; its text, level, and line come back as fields.
+
+- With `include_subsections: true`, the section runs to the line before the next heading of level N or lower, such as the next sibling or a parent. Deeper subsections stay inside.
+- With `include_subsections: false`, it stops before the next heading of any level.
+- With no such heading, it runs to the end of the file.
+
+**Result.** `path`, `ambiguous: false`, `heading`, `level`, `line`, `breadcrumb` (the ancestor headings, then this one), `include_subsections`, `content_start_line` and `content_end_line` (the whole section's range, or `null` for an empty section), `lines`, `line_count`, `truncated`, and `next_start_line`.
+
+**Limits and continuation.** At most 400 lines are returned, and fewer when the result budget is reached first. Lines longer than 2,000 characters are cut and listed in `cut_lines`, as in `file.read_lines`, and also set `truncated`. When the section continues past the returned lines, `next_start_line` is the next line to read. Call `file.read_lines` with that `start_line` and stop at `content_end_line`; `md.section` has no paging of its own.
+
 ## Paths
 
 - **Input.** An absolute path must be inside a tool root. A relative path is anchored at the tool root when exactly one root is configured. With several roots, relative paths are refused with "Use an absolute path when several tool roots are configured".
@@ -106,15 +165,18 @@ Listings read names and metadata, never file contents, so they do not use this p
 | `Access denied: path is not allowed` | Outside the roots, protected, a symlink escape or loop, or swapped during the read |
 | `Use an absolute path when several tool roots are configured` | Relative path with several roots |
 | `Path not found` / `File not found` | Nothing exists there |
-| `Path is not a regular file` | A folder or special file where `file.read_lines` needs a file |
+| `Path is not a regular file` | A folder or special file where `file.read_lines` or a Markdown tool needs a file |
 | `File is not UTF-8 text` | Binary data or another encoding |
-| `File is larger than the 10 MiB limit` | Too large for `file.read_lines` |
+| `File is larger than the 10 MiB limit` | Too large for `file.read_lines` or the Markdown tools |
 | `Query must be a single line` | The search text contains a line break |
 | `Invalid cursor`, `Cursor does not belong to this request`, `Cursor is past the end of the results` | A cursor that is malformed, reused with a different request, or too far |
+| `Heading not found` | `md.section` found no heading with that text |
+| `Heading must contain text` | The `md.section` heading is only whitespace |
+| `File has more than 20,000 headings` | Too many headings for the Markdown tools |
 | `File tool failed` | Any other failure; details stay out of the model's view |
 
 Every result is kept under 48 KiB, below DaveHarness's 64 KiB per-result budget. When the limit is reached, the page ends early and says so through `truncated`, `next_cursor`, or `next_start_line`.
 
 ## Evaluation
 
-`scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs three extra cases: discovery, long-document paging, and a blocked instruction. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).
+`scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs four extra cases: discovery, long-document paging, a blocked instruction, and Markdown section navigation. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).

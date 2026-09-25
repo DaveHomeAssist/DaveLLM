@@ -83,7 +83,7 @@ def test_tools_register_only_with_both_flags(extended):
     router = extended()
     for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
         assert EXTENDED_TOOLS <= set(registry.public_catalog())
-    assert {definition.name for definition in router.extended_tool_definitions()} == EXTENDED_TOOLS
+    assert EXTENDED_TOOLS <= {definition.name for definition in router.extended_tool_definitions()}
 
 
 def test_extended_definitions_are_read_only_bounded_and_strict(extended):

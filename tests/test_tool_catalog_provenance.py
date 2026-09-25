@@ -66,6 +66,7 @@ def test_extended_code_sits_below_every_builtin_handler(router):
     extended = {
         "EXTENDED_TOOLS_ENABLED": first_line(r"EXTENDED_TOOLS_ENABLED = "),
         "davellm_files import": first_line(r"from davellm_files import "),
+        "davellm_markdown import": first_line(r"from davellm_markdown import "),
         "resolve_extended_tool_path": inspect.getsourcelines(router.resolve_extended_tool_path)[1],
         "extended_tool_definitions": inspect.getsourcelines(router.extended_tool_definitions)[1],
     }
@@ -104,3 +105,21 @@ def test_extended_handlers_sit_below_every_builtin_handler(extended_router):
     for name in BASELINE["extended_tools"]:
         handler = extended_router.TOOL_REGISTRY.get(name).handler
         assert inspect.getsourcelines(handler)[1] > last_handler_line, name
+
+
+def test_extended_handlers_have_not_moved_or_changed(extended_router):
+    expected = BASELINE["extended_handler_code"]
+    assert expected.keys() == BASELINE["extended_tools"].keys()
+    for registry in ("TOOL_REGISTRY", "HARNESS_REGISTRY"):
+        actual = {name: code for name, code in handler_code(getattr(extended_router, registry)).items()
+                  if name in expected}
+        assert actual == expected, (
+            "An extended tool handler moved or changed, so its definition fingerprint changed. "
+            f"Add new app.py code below the extended handlers. {registry}"
+        )
+
+
+def test_markdown_handlers_sit_below_the_pr02_handlers():
+    code = BASELINE["extended_handler_code"]
+    last_pr02_line = max(code[name]["last_line"] for name in ("file.list", "file.search", "file.read_lines"))
+    assert min(code[name]["first_line"] for name in ("md.outline", "md.section")) > last_pr02_line
