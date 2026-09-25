@@ -242,6 +242,8 @@ def build_hostile_git(base: Path) -> HostileGit:
     (repo / "todo.txt").write_text("remember the milk\n")
     (repo / ".ssh").mkdir()
     (repo / ".ssh" / "id_ed25519").write_text(f"{SECRET_TEXT}-key\n")
+    (repo / "id_ecdsa").write_text(f"{SECRET_TEXT}-ecdsa\n")
+    (repo / "docs" / "id_dsa.pub").write_text(f"{SECRET_TEXT}-dsa\n")
     _harden_repo(repo, config)
 
     tracking = builder.init(root / "tracking")

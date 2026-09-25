@@ -397,7 +397,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `SEARCH_MAX_QUERY_CHARS` | `200` |
 | `SEARCH_SCAN_LIMIT` | `20000` |
 | `SECRET_DIR_NAMES` | `[".aws", ".gnupg", ".ssh"]` |
-| `SECRET_NAME_PATTERNS` | `[".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa*", "*.p12"]` |
+| `SECRET_NAME_PATTERNS` | `[".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa*", "id_ed25519*", "id_ecdsa*", "id_dsa*", "*.p12"]` |
 | `UNREADABLE` | `File could not be read` |
 
 ### davellm_markdown

@@ -129,6 +129,9 @@
         "*.key",
         "id_rsa",
         "id_rsa*",
+        "id_ed25519*",
+        "id_ecdsa*",
+        "id_dsa*",
         "*.p12"
       ],
       "UNREADABLE": "File could not be read"

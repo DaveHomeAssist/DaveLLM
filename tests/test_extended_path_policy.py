@@ -32,11 +32,15 @@ BASELINE = json.loads(
 SECRET_FILE_NAMES = (
     ".env", ".env.local", ".env.production", "server.pem", "server.key", "id_rsa",
     "id_rsa.pub", "id_rsa_backup", "client.p12",
+    "id_ed25519", "id_ed25519.pub", "id_ed25519_sk", "id_ecdsa", "id_ecdsa.pub", "id_ecdsa_sk",
+    "id_dsa", "id_dsa.pub",
     ".ENV", ".Env.Local", "SERVER.PEM", "Server.Key", "ID_RSA", "CLIENT.P12",
+    "ID_ED25519", "Id_Ecdsa.Pub", "ID_DSA",
 )
 NEAR_MISSES = (
     "env", "env.txt", ".envrc", "environment.md", "pem.txt", "keys", "key.txt",
     "monkey", "rsa_id", "p12.md", "ssh", ".sshd", "aws", "gnupg",
+    "id_ed", "my_id_ed25519", "ed25519.txt", "id-ecdsa", "ecdsa", "idx_dsa", "dsa.md",
 )
 
 
@@ -88,7 +92,9 @@ def test_hostile_tree_contains_every_planted_hazard(hostile_tree):
 
 
 def test_the_denylist_is_exactly_the_documented_policy():
-    assert SECRET_NAME_PATTERNS == (".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa*", "*.p12")
+    assert SECRET_NAME_PATTERNS == (
+        ".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa*", "id_ed25519*", "id_ecdsa*", "id_dsa*", "*.p12",
+    )
     assert SECRET_DIR_NAMES == {".ssh", ".aws", ".gnupg"}
 
 
@@ -194,7 +200,7 @@ def test_normalization_cannot_bypass_the_denylist(extended, hostile_tree):
     for relative in ("docs/../.ssh/config", "./.env", "docs/./../.env", "docs//..//.aws/credentials",
                      ".ssh/", ".ssh/.", "src/../.gnupg", "docs/nested/./.ssh/known_hosts",
                      "certs/../certs/server.pem", "links/../.env.local", "keys/./id_rsa.pub",
-                     SECRET_FILE_LINK, f"{SECRET_DIR_LINK}/config", f"{SECRET_DIR_LINK}/"):
+                     "keys/../keys/id_ecdsa.pub", SECRET_FILE_LINK, f"{SECRET_DIR_LINK}/config", f"{SECRET_DIR_LINK}/"):
         refused(router, f"{hostile_tree.root}/{relative}")
     # The name as written counts too: a secret-named link to an ordinary file is refused.
     hostile_tree.at("docs/.env").symlink_to("../README.md")

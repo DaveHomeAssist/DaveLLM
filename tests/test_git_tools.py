@@ -451,6 +451,7 @@ def test_status_lists_untracked_files_but_never_protected_ones(router):  # 25
     assert status["untracked"] == ["todo.txt"]
     text = json.dumps(status)
     assert ".env" not in text and ".ssh" not in text and SECRET_TEXT not in text
+    assert "id_ecdsa" not in text and "id_dsa" not in text
 
 
 def test_status_reports_a_detached_head(router):  # 26
@@ -493,7 +494,7 @@ def test_log_file_filter(router):  # 29
         "Add config loader"]
     assert ok(router, "git.log", path="repo", file="docs")["count"] == 2  # a folder filters too
     assert ok(router, "git.log", path="repo", file="never-existed.txt")["commits"] == []
-    for secret in (".env", "docs/.ENV", ".ssh/id_ed25519", "keys/server.pem"):
+    for secret in (".env", "docs/.ENV", ".ssh/id_ed25519", "keys/server.pem", "id_ecdsa", "docs/ID_DSA.pub"):
         refused(router, "git.log", PATH_NOT_ALLOWED, path="repo", file=secret)
     refused(router, "git.log", INVALID_FILE, path="repo", file="docs/../../x")
 
