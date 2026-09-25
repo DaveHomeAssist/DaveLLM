@@ -313,12 +313,44 @@
       "timeout_seconds": 10.0
     }
   },
-  "_comment": "DaveLLM tool catalog from main e4ad799 before extended tools; every fingerprint input except the path-dependent compiled-code digest.",
+  "_comment": "DaveLLM tool catalog from main before extended tools: every fingerprint input except the path-dependent compiled-code digest, plus each handler's first/last line and source digest (the portable parts of that digest).",
   "default_tools": [
     "file.append",
     "file.read",
     "file.write",
     "system.info",
     "web.fetch"
-  ]
+  ],
+  "handler_code": {
+    "file.append": {
+      "first_line": 1191,
+      "last_line": 1207,
+      "source_sha256": "38238914779eec17b01f48ed11e3304e8359cb831bdaeee04396c93c9b1960b4"
+    },
+    "file.read": {
+      "first_line": 1155,
+      "last_line": 1169,
+      "source_sha256": "1420ec7a5ed9211eaef739587bdc7cebce30f4ba3c9a8fc77445b240dbf2a2df"
+    },
+    "file.write": {
+      "first_line": 1171,
+      "last_line": 1189,
+      "source_sha256": "0b41520b02651cb6aeadcfa060744dff4dc9db87fd2f570036b5240c44bf2ed4"
+    },
+    "shell.exec": {
+      "first_line": 1269,
+      "last_line": 1299,
+      "source_sha256": "9a46ffd51e47180d69652cc567c8673e6531e67af7493c381557708753eefb79"
+    },
+    "system.info": {
+      "first_line": 1248,
+      "last_line": 1267,
+      "source_sha256": "0e52a6767ec2136ebd9bfb83778ffa5cd9b26f82dc1cc1ed0656143aafbdd653"
+    },
+    "web.fetch": {
+      "first_line": 1209,
+      "last_line": 1246,
+      "source_sha256": "4d6be254d7618acbb9e1286984fcdb57be25162e5141277a026d4ad772a684f6"
+    }
+  }
 }
