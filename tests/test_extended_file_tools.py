@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -657,9 +658,25 @@ def test_file_swapped_for_a_fifo_is_refused_without_blocking(extended, hostile_t
         os.mkfifo(target)
 
     swap_after_admission(router, monkeypatch, swap)
+    stop = threading.Event()
+
+    def release_a_blocked_reader():
+        # A reader stuck opening the FIFO would hang the suite; give it a writer so the test fails instead.
+        while not stop.wait(2):
+            try:
+                os.close(os.open(target, os.O_WRONLY | os.O_NONBLOCK))
+            except OSError:
+                pass
+
+    watchdog = threading.Thread(target=release_a_blocked_reader, daemon=True)
+    watchdog.start()
     started = time.monotonic()
-    assert error(router, "file.read_lines", path="notes.txt")[1] == davellm_files.NOT_A_REGULAR_FILE
-    assert time.monotonic() - started < 5
+    try:
+        assert error(router, "file.read_lines", path="notes.txt")[1] == davellm_files.NOT_A_REGULAR_FILE
+    finally:
+        stop.set()
+        watchdog.join()
+    assert time.monotonic() - started < 2
 
 
 def test_search_does_not_follow_a_file_swapped_after_the_walk(extended, hostile_tree, monkeypatch, open_strategy):
