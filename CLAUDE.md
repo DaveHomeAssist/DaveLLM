@@ -106,3 +106,16 @@ git diff --check
 DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, and Python 3.12–3.14 CI. See [H8 qualification](docs/DAVEHARNESS_H8_QUALIFICATION.md). This candidate does not establish live-model qualification or human acceptance. DaveLLM remains `2.1.0`.
 
 H9 action 55 adds the authorized live-evaluation runner `scripts/evaluate_live_daveharness.py`, which runs DaveLLM's Ollama adapter and file/system tools inside disposable roots and reports the action 56 thresholds per model. See [H9 live evaluation](docs/DAVEHARNESS_H9_LIVE_EVALUATION.md). No target model is qualified yet, and DaveHarness remains `1.0.0-rc.1`.
+
+## Status naming
+
+Name work with one string everywhere (chat status title, session title, Notion
+Status Check Runs "Human Name"):
+
+`Project | 🚦 | Phase | Title → state, reason | MM-DD`
+
+- 🚦: 🟢 complete and verified · 🟡 partial · 🔴 not started, blocked or failed · ⚪ unverifiable.
+  Add ⏳ scheduled, 🙋 awaiting Dave or 🚧 blocked to 🟡/🔴/⚪, never to 🟢.
+- Phase: Research, Design, Build, Audit or Scheduled. MM-DD: date of the latest light change.
+- Every light change gets a new name: a `RENAME:` line in chat and the Notion row updated.
+- Canonical source: https://github.com/DaveHomeAssist/skills/blob/master/status-naming.md
