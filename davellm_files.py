@@ -1,13 +1,15 @@
 """DaveLLM-owned helpers shared by extended file, Markdown, and repository tools.
 
-These are pure functions over caller-supplied roots. They read no environment,
-register no tools, and make no permission decisions. Callers contain paths with
-the existing tool-root check before passing them here.
+These are pure functions over caller-supplied roots. They read no environment
+and register no tools. The one policy they own is the secret-path denylist:
+extended tools admit every requested path through ``admit_path`` around the
+existing tool-root check, and ``walk_tree`` never lists or enters secrets.
 """
 
 from __future__ import annotations
 
 import codecs
+import fnmatch
 import hashlib
 import hmac
 import json
@@ -15,7 +17,7 @@ import os
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generic, Iterable, Mapping, Sequence, TypeVar
+from typing import Any, Callable, Generic, Iterable, Mapping, Sequence, TypeVar
 
 
 DEFAULT_IGNORED_DIRS = frozenset({".git", "node_modules", "venv", "__pycache__", ".trash"})
@@ -23,7 +25,61 @@ BINARY_SNIFF_BYTES = 8_192
 CURSOR_VERSION = "c1"
 _CURSOR_OFFSET_DIGITS = 12
 
+# Every pattern applies to every path component, case-insensitively, because
+# macOS and Windows volumes usually are. A directory named like a secret file
+# is blocked too.
+SECRET_NAME_PATTERNS = (".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa*", "*.p12")
+SECRET_DIR_NAMES = frozenset({".ssh", ".aws", ".gnupg"})
+PATH_NOT_ALLOWED = "Access denied: path is not allowed"
+
 T = TypeVar("T")
+
+
+class PathNotAllowed(PermissionError):
+    """The single refusal for every blocked path, whatever exists on disk."""
+
+    def __init__(self) -> None:
+        super().__init__(PATH_NOT_ALLOWED)
+
+
+def is_secret_name(name: str) -> bool:
+    folded = name.casefold()
+    return folded in SECRET_DIR_NAMES or any(
+        fnmatch.fnmatchcase(folded, pattern) for pattern in SECRET_NAME_PATTERNS
+    )
+
+
+def has_secret_component(path: str | os.PathLike[str]) -> bool:
+    return any(is_secret_name(part) for part in Path(path).parts)
+
+
+def _still_linked(path: Path) -> bool:
+    # A fully resolved path has no symlink left in it. One that remains is a
+    # loop, which only some Python versions report while resolving.
+    return any(os.path.islink(item) for item in (path, *path.parents))
+
+
+def admit_path(requested: str, resolve: Callable[[str], Path]) -> Path:
+    """Apply the secret denylist around an existing containment resolver.
+
+    The path is checked as written (so ``foo/../.ssh`` fails before any
+    filesystem access), resolved by ``resolve``, which must enforce the tool
+    roots, and checked again after symlinks are followed. Every refusal,
+    including a containment or resolution failure, raises the same
+    ``PathNotAllowed`` with no cause or context attached.
+    """
+    if not isinstance(requested, str) or not requested:
+        raise PathNotAllowed()
+    if has_secret_component(requested) or has_secret_component(os.path.expanduser(requested)):
+        raise PathNotAllowed()
+    resolved: Path | None
+    try:
+        resolved = resolve(requested)
+    except (OSError, ValueError, RuntimeError):
+        resolved = None
+    if resolved is None or has_secret_component(resolved) or _still_linked(resolved):
+        raise PathNotAllowed()
+    return resolved
 
 
 def _positive_int(name: str, value: int) -> int:
@@ -182,9 +238,20 @@ def _entry_kind(entry: os.DirEntry[str]) -> str:
 def _has_children(path: Path) -> bool:
     try:
         with os.scandir(path) as entries:
-            return any(True for _ in entries)
+            return any(not is_secret_name(entry.name) for entry in entries)
     except OSError:
         return False
+
+
+def _link_stays_inside(path: Path, root: Path) -> bool:
+    try:
+        target = path.resolve()
+    except (OSError, RuntimeError):
+        return False
+    return (
+        (target == root or target.is_relative_to(root))
+        and not has_secret_component(target) and not _still_linked(target)
+    )
 
 
 def walk_tree(
@@ -197,13 +264,25 @@ def walk_tree(
     below ``max_depth``. ``truncated`` means more entries existed past
     ``max_entries``; ``depth_limited`` means a directory at the depth limit still
     had children. Ignored directories are neither listed nor entered.
+
+    Secrets are skipped silently: they are never listed, entered, counted, or
+    allowed to set ``truncated`` or ``depth_limited``. A symlink is listed only
+    when its target stays inside ``root`` and is not a secret.
     """
     _positive_int("max_depth", max_depth)
     _positive_int("max_entries", max_entries)
     start = Path(start)
+    resolved_start: Path | None
+    try:
+        resolved_start = start.resolve()
+    except (OSError, RuntimeError):
+        resolved_start = None
+    if resolved_start is None or has_secret_component(start) or has_secret_component(resolved_start):
+        raise PathNotAllowed()
     relative_display(start, root)
     if start.is_symlink() or not start.is_dir():
         raise ValueError("Walk start must be a directory")
+    resolved_root = Path(root).resolve()
     ignore = frozenset(ignored_dirs)
     entries: list[WalkEntry] = []
     truncated = depth_limited = False
@@ -218,11 +297,15 @@ def walk_tree(
             unreadable += 1
             continue
         for child in children:
+            if is_secret_name(child.name):
+                continue
             kind = _entry_kind(child)
             if kind == "dir" and child.name in ignore:
                 ignored += 1
                 continue
             path = Path(child.path)
+            if kind == "symlink" and not _link_stays_inside(path, resolved_root):
+                continue
             child_depth = depth + 1
             if kind == "dir":
                 if child_depth < max_depth:

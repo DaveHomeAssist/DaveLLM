@@ -1311,6 +1311,16 @@ PENDING_CALL_STORE = InMemoryPendingCallStore()
 # provenance, and therefore their definition fingerprints, includes line numbers.
 EXTENDED_TOOLS_ENABLED = TOOLS_ENABLED and _env_flag("DAVE_ENABLE_EXTENDED_TOOLS")
 
+from davellm_files import admit_path  # imported here, below the handlers, for the same reason
+
+
+def resolve_extended_tool_path(path: str) -> Path:
+    """The only path entry point for extended tools: containment plus the secret denylist.
+
+    The qualified built-in tools keep calling resolve_tool_path directly.
+    """
+    return admit_path(path, resolve_tool_path)
+
 
 def extended_tool_definitions() -> List[ToolDefinition]:
     """Tools gated by DAVE_ENABLE_EXTENDED_TOOLS; none are defined yet."""

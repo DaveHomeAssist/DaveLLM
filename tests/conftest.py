@@ -5,10 +5,18 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
+from hostile_fs import build_hostile_tree
+
 
 TEST_API_KEY = "test-only-api-key"
 TEST_NODE_URL = "http://ollama.test:11434"
 TEST_NODE = {"id": "node-test", "name": "Test Ollama", "url": TEST_NODE_URL}
+
+
+@pytest.fixture
+def hostile_tree(tmp_path):
+    """Planted secrets, escaping symlinks, and awkward files; see tests/hostile_fs.py."""
+    return build_hostile_tree(tmp_path / "hostile")
 
 
 @pytest.fixture
