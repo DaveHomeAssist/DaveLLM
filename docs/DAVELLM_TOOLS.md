@@ -1,6 +1,6 @@
 # DaveLLM tools
 
-DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, the native read tools added in PR-05, and the approved `file.edit` added in PR-06.
+DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, the native read tools added in PR-05, the approved `file.edit` added in PR-06, and the web tools `web.search` and `web.read`.
 
 [DAVEHARNESS_CAPABILITIES.md](DAVEHARNESS_CAPABILITIES.md) lists every tool's full schema, flags, run budgets, host limits, routes, and tool-module constants in one place. It and its machine-readable twin, [DAVEHARNESS_CAPABILITIES.json](DAVEHARNESS_CAPABILITIES.json), are generated from the registry by `scripts/generate_capabilities_manifest.py`.
 
@@ -11,7 +11,8 @@ DaveLLM offers tools to Ollama models through the in-process DaveHarness registr
 | `DAVE_ENABLE_TOOLS` | `false` | Turns on the tool registry and the tool routes. Nothing below works without it. |
 | `DAVE_TOOL_ROOTS` | `[]` | JSON array of absolute folders. Every file tool stays inside these roots. |
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | Second opt-in for `shell.exec`. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, `git.show`, `project.notepad.read`, `project.brain.read`, `project.artifacts`, `chat.search`, `cluster.status`, and `file.edit`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, `git.show`, `project.notepad.read`, `project.brain.read`, `project.artifacts`, `chat.search`, `cluster.status`, `file.edit`, `web.search`, and `web.read`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
+| `DAVE_SEARCH_URL` | unset | Base URL of a SearXNG instance with JSON output enabled. Only `web.search` uses it; unset, `web.search` says search is not configured. |
 
 ```bash
 export DAVE_ENABLE_TOOLS=true
@@ -36,7 +37,7 @@ These tools are unchanged by the extended tools. `file.read` still returns at mo
 
 ## Extended file tools
 
-Fourteen of the fifteen extended tools, including the Markdown, Git, and native tools below, are read-only: no approval, synchronous handlers, bounded cancellation, and a 10-second timeout. The fifteenth, [`file.edit`](#fileedit), is the only extended tool that writes, and every call needs the user's approval. The file, Markdown, and Git tools use permission `read_files`. The native tools use `read`, except `cluster.status`, which uses `read_system`. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
+Sixteen of the seventeen extended tools, including the Markdown, Git, native, and web tools below, are read-only and need no approval. The other one, [`file.edit`](#fileedit), is the only extended tool that writes, and every call needs the user's approval. The file, Markdown, and Git tools use permission `read_files`, with synchronous handlers, bounded cancellation, and a 10-second timeout. The native tools use `read`, except `cluster.status`, which uses `read_system`. The web tools use `public_network` and asynchronous handlers. Optional arguments may be omitted or sent as `null` for their default. Unknown arguments and wrong types are rejected by the schema.
 
 ### `file.list`
 
@@ -317,6 +318,39 @@ Approving runs exactly the arguments shown. The count is checked again when the 
 - **Size.** The file must be at most 10 MiB before and after the edit.
 
 The approval card lives in the browser and desktop UI for runs started with `POST /tools/agent/runs`. As with `file.write`, the legacy `POST /tools/agent/run` loop pauses on `file.edit` unless the request lists it in `approved_tools`, and the authenticated `POST /tools/execute` route runs it directly.
+
+## Web tools
+
+`web.search` and `web.read` let a tool run look something up and read the source. Both are read-only, need no approval, use permission `public_network`, run as asynchronous handlers with bounded cancellation, and time out after 10 seconds. Neither changes the qualified `web.fetch`.
+
+### `web.search`
+
+Searches through the SearXNG instance at `DAVE_SEARCH_URL` and returns numbered results: title, URL, and a snippet of at most 300 characters. Duplicate URLs and non-web links are dropped.
+
+| Argument | Type | Default | Limit |
+|---|---|---|---|
+| `query` | string | required | 1–500 characters |
+| `max_results` | integer or `null` | `5` | 1–10 |
+
+The search address is chosen by the operator, never by the model, so it may be a private or tailnet address and skips the public-address check. The URLs it returns are opened only through `web.read` or `web.fetch`, which check every hop.
+
+### `web.read`
+
+Fetches one public page and returns its visible text: scripts, styles, and markup are removed, and each block becomes a line. It applies `web.fetch`'s rules: the address must be public on every redirect hop, at most five redirects, and at most 1 MiB of response. It accepts HTML, plain text, Markdown, CSV, and JSON; other content types are refused. The result is capped at the tool output limit and ends with `[truncated: showing N of M characters]` when cut. After a redirect, the first line names the final URL.
+
+| Argument | Type | Limit |
+|---|---|---|
+| `url` | string | an `http` or `https` URL, at most 4096 characters |
+
+| Error | Cause |
+|---|---|
+| `web.search is not configured on this router (DAVE_SEARCH_URL is unset).` | No search service configured |
+| `The search service returned HTTP N` / `timed out` / `could not be reached` / `returned an invalid response` | SearXNG failed or has JSON output turned off |
+| `Resolved address is not public: …` and other address refusals | `web.read` was given, or redirected to, a private or local address |
+| `The page returned HTTP N` / `The page timed out` / `The page could not be reached` | The page failed |
+| `Unsupported content type: T` | Not HTML or text |
+| `Response exceeds N byte limit` / `Too many redirects` | Transport limits |
+| `web.search failed` / `web.read failed` | Any other failure; details stay out of the model's view |
 
 ## Paths
 

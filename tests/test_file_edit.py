@@ -91,7 +91,9 @@ def test_file_edit_is_the_only_extended_tool_that_writes_or_needs_approval(edito
     router, _ = editor()
     writers = {
         definition.name for definition in router.extended_tool_definitions()
-        if definition.approval_required or definition.permission not in {"read", "read_files", "read_system"}
+        # public_network is the read-only network permission web.fetch, web.search and web.read share.
+        if definition.approval_required
+        or definition.permission not in {"read", "read_files", "read_system", "public_network"}
     }
     assert writers == {"file.edit"}
 
