@@ -22,6 +22,7 @@ def test_macos_launcher_uses_keychain_and_live_tailscale_inventory():
         'DAVE_API_KEY="$api_key"',
         'DAVE_NODES="$nodes_json"',
         'DAVE_DATA_DIR="$DATA_DIR"',
+        'DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}"',
         '"$NPM_BIN" start',
     ):
         assert required in launcher
@@ -47,6 +48,15 @@ def test_macos_launcher_adds_only_a_healthy_optional_duncan_node():
         assert required in launcher
 
     assert "resolve_node_ip duncan" not in launcher
+
+
+def test_macos_launcher_enables_tools_but_not_shell_or_roots():
+    launcher = LAUNCHER.read_text()
+
+    # Tools are on for the desktop app (overridable); the shell tool and file roots stay opt-in.
+    assert 'DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}"' in launcher
+    assert "DAVE_ENABLE_SHELL_TOOL" not in launcher
+    assert "DAVE_TOOL_ROOTS" not in launcher
 
 
 def test_macos_installer_generates_a_key_and_one_click_app_without_printing_it():
