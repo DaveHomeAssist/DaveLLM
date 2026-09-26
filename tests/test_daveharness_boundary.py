@@ -295,6 +295,7 @@ def test_executor_package_has_no_davellm_runtime_dependencies():
         "DAVE_DATA_DIR",
         "os.getenv",
         "/api/tags",
+        "/api/chat",
         "/v1/chat/completions",
     ):
         assert forbidden_text not in source

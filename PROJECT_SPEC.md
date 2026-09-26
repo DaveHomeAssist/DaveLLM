@@ -104,7 +104,7 @@ The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 | FR-03 | Node configuration | `DAVE_NODES` is the only live inventory override. Malformed JSON registers zero nodes and emits a startup explanation. Source placeholders are never evidence of a working node. |
 | FR-04 | Model discovery | The router reads Ollama `GET /api/tags`, publishes the exact model IDs returned, and retains the last good inventory across a transient refresh failure. |
 | FR-05 | Model validation | Chat rejects an unknown node, an inventory not yet loaded, or a model absent from that node's loaded inventory. |
-| FR-06 | Chat transport | The router supports complete and server-sent-event streaming chat through Ollama's OpenAI-compatible `POST /v1/chat/completions`. |
+| FR-06 | Chat transport | The router supports complete and server-sent-event streaming chat through Ollama's native `POST /api/chat`: `max_tokens` and `temperature` travel as `options`, extra `options` and `keep_alive` are sent only when the `app.py` policy hooks set them, and image attachments become per-message base64 `images`. The bounded tool loop still uses the OpenAI-compatible `POST /v1/chat/completions` (DL-TRANSPORT-01b). |
 | FR-07 | Manual control | Normal chat uses the visible node and model selection. Local suggestions may propose actions but cannot silently send or change context. |
 | FR-08 | Conversation lifecycle | The app lists, loads, creates, renames, clears, deletes, searches, exports, and project-attaches conversations. |
 | FR-09 | Templates | New conversations may use `general`, `code_review`, or `brainstorm`; template CRUD is not provided. |
@@ -116,7 +116,7 @@ The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 | FR-15 | Artifacts | Eligible assistant outputs from attached chats are captured; artifacts may be inspected, pinned, archived, edited, or deleted. |
 | FR-16 | BRAIN | BRAIN stores pinned, active, and compactable recent text with optimistic revisions, explicit/threshold compaction, immutable snapshots, restore, and recoverable delete. |
 | FR-17 | Notepad | Every project has a bounded plain-text notepad with autosave, message-to-notepad, and send-full-note behavior. |
-| FR-18 | Attachments | Chat accepts bounded text and image inputs; image payloads are limited to 5 MB of base64 data. |
+| FR-18 | Attachments | Chat accepts bounded text and image inputs; image payloads are limited to 5 MB of base64 data. Images are forwarded to Ollama as per-message base64 `images`. |
 | FR-19 | Dictation | Audio uploads and recorded microphone blobs are sent as multipart audio to local Whisper; the request must carry the same authenticated transport as other protected routes. |
 | FR-20 | Copy actions | Completed user and assistant messages provide keyboard-reachable raw-source Copy and Add to notepad actions. |
 | FR-21 | Suggestions | The client shows no more than three deterministic next actions. Prediction performs no network, DOM, or storage work. |
@@ -191,7 +191,8 @@ FastAPI router on 127.0.0.1
   |-- Local ffmpeg + whisper-cli transcription
   |
   +---- Ollama /api/tags              (inventory)
-  +---- Ollama /v1/chat/completions   (inference)
+  +---- Ollama /api/chat              (chat, stream, summary)
+  +---- Ollama /v1/chat/completions   (tool loop; DL-TRANSPORT-01b)
            on DAVE_NODES
 ```
 
@@ -199,7 +200,8 @@ FastAPI router on 127.0.0.1
 
 | Component | Source | Responsibility |
 |---|---|---|
-| FastAPI router | `app.py` | Auth, routes, Ollama transport, persistence integration, dictation, monitoring, routing advice, and tool registration. |
+| FastAPI router | `app.py` | Auth, routes, tool-loop Ollama transport (`/v1`), plain-chat policy hooks, persistence integration, dictation, monitoring, routing advice, and tool registration. |
+| Ollama chat transport | `davellm_ollama.py` | Native `/api/chat` payload, per-message images, NDJSON parsing, metrics, and the sync/stream executors behind `ollama_chat`. |
 | Project context store | `project_context.py` | Normalized project components, quotas, retrieval, BRAIN revisions, and exact request assembly. |
 | DaveHarness | `daveharness/` | Versioned public API, registry, schemas, validation, approvals, timing, error handling, and bounded model/tool loop. |
 | Legacy executor import | `tool_executor.py` | Compatibility re-export only; contains no executor implementation. |
@@ -275,7 +277,7 @@ Conversation JSON and core project metadata remain compatibility stores. A full 
 | `DAVE_BUDGET_DEFAULT` | No | Default synthetic cost budget; `100`. |
 | `DAVE_USER_BUDGETS` | No | JSON map of per-user synthetic budgets. |
 | `DAVE_MODEL_CONTEXT_DEFAULT` | No | Fallback model window; 32,768 tokens. |
-| `DAVE_MODEL_CONTEXT_WINDOWS` | No | JSON map of model IDs to windows of at least 4,096 tokens. |
+| `DAVE_MODEL_CONTEXT_WINDOWS` | No | JSON map of model IDs to windows of at least 4,096 tokens. Sizes the project-context budget only; not sent to Ollama as `num_ctx`. |
 | `DAVE_PROJECT_CONTEXT_TOKENS` | No | New-project context budget; 16,384 tokens. |
 | `DAVE_BRAIN_COMPACT_TOKENS` | No | New-project compaction threshold; 3,072 tokens. |
 | `DAVE_BRAIN_RECOVERY_DAYS` | No | Soft-delete recovery window; 30 days. |
@@ -305,6 +307,7 @@ Conversation JSON and core project metadata remain compatibility stores. A full 
 | Agent loop | 8 steps and 2 errors by default; configurable request bounds are 1-32 steps and 1-8 errors |
 | Tool timeout | 10 seconds by default |
 | Model turn timeout in agent loop | 120 seconds |
+| Chat request to a node | 120 seconds for `/chat` and `/chat/stream`; 10 seconds for summary generation |
 | Pending exact-call approval | 300 seconds, stored only in the current process |
 
 ## 12. Installation and launch
@@ -359,7 +362,7 @@ A DaveLLM release is acceptable only when all applicable checks below pass:
 Repository verification commands:
 
 ```bash
-python -m py_compile app.py project_context.py scripts/project_context_cli.py tool_executor.py
+python -m py_compile app.py project_context.py davellm_ollama.py scripts/project_context_cli.py tool_executor.py
 python -m compileall -q daveharness
 python -m pytest -q
 node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js

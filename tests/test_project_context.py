@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import httpx
 import respx
 
-from conftest import TEST_API_KEY, TEST_NODE_URL
+from conftest import TEST_API_KEY, TEST_NODE_URL, ollama_chat_json
 
 
 AUTH = {"X-API-Key": TEST_API_KEY}
@@ -188,11 +188,8 @@ def test_project_homepage_files_artifacts_and_context_order(router_factory):
 
     with respx.mock(assert_all_called=True) as mock:
         load_inventory(client, mock)
-        first_chat = mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
-            return_value=httpx.Response(
-                200,
-                json={"choices": [{"message": {"content": "Verified launch artifact"}}]},
-            )
+        first_chat = mock.post(f"{TEST_NODE_URL}/api/chat").mock(
+            return_value=ollama_chat_json("Verified launch artifact")
         )
         response = client.post(
             "/chat",
@@ -265,11 +262,8 @@ def test_project_homepage_files_artifacts_and_context_order(router_factory):
 
     with respx.mock(assert_all_called=True) as mock:
         load_inventory(client, mock)
-        second_chat = mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
-            return_value=httpx.Response(
-                200,
-                json={"choices": [{"message": {"content": "Second answer"}}]},
-            )
+        second_chat = mock.post(f"{TEST_NODE_URL}/api/chat").mock(
+            return_value=ollama_chat_json("Second answer")
         )
         response = client.post(
             "/chat",

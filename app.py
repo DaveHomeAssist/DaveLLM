@@ -2267,6 +2267,38 @@ def build_project_messages_for_node(
         },
     )
 
+from davellm_ollama import (  # native /api/chat transport, kept below the handlers (see tests/test_tool_catalog_provenance.py)
+    OllamaResponseError, OllamaStreamError, ollama_chat, ollama_image_data, ollama_user_message,
+)
+
+def chat_node_options(node: NodeConfig, model_id: str) -> dict | None:
+    """Ollama `options` for plain chat on this node/model, merged over num_predict/temperature.
+
+    None sends nothing beyond those two. DL-CTX-01 lands here (for example
+    {"num_ctx": get_model_context_window(model_id)}). Every plain-chat call site,
+    including the summary, goes through this hook so one model never alternates
+    num_ctx values: a different Runner-level option forces a model reload.
+    """
+    return None
+
+def chat_keep_alive(conversation: dict | None) -> str | int | float | None:
+    """Ollama `keep_alive` for plain chat. None sends nothing (server default). DL-KEEP-01 lands here."""
+    return None
+
+V1_DEFAULT_TEMPERATURE = 1.0  # what Ollama's OpenAI layer substituted for an absent or null `temperature`
+
+def chat_temperature(requested: float | None) -> float:
+    """`options.temperature` for `/chat` and `/chat/stream`: the request value, or the old `/v1` default.
+
+    ChatRequest.temperature is Optional, so a client may POST `"temperature": null`. The
+    OpenAI-compatible `/v1` transport forwarded that null and Ollama replaced it with 1.0;
+    the native endpoint would fall through to the Modelfile default instead, so the same
+    substitution happens here and the request samples exactly as it did before 01a.
+    `max_tokens: null` needs no equivalent: `/v1` omitted `num_predict` for it, as the
+    helper does. The summary passes its fixed 0.3 and never comes through here.
+    """
+    return V1_DEFAULT_TEMPERATURE if requested is None else requested
+
 def generate_conversation_summary(older_messages: List[dict]) -> str:
     """Use a cheap local model to summarize older turns."""
     if not older_messages:
@@ -2284,23 +2316,17 @@ def generate_conversation_summary(older_messages: List[dict]) -> str:
     condensed = "\n".join([f"{m.get('role','')}: {m.get('content','')[:200]}" for m in older_messages[-6:]])
     summary_prompt = f"Summarize the earlier conversation in 2-3 sentences. Keep key facts and decisions.\n\n{condensed}"
 
-    payload = {
-        "model": summary_model,
-        "messages": [
-            {"role": "system", "content": "You summarize prior chat turns concisely."},
-            {"role": "user", "content": summary_prompt},
-        ],
-        "max_tokens": 150,
-        "temperature": 0.3,
-        "stream": False,
-    }
-
     try:
-        with httpx.Client(timeout=10) as client:
-            resp = client.post(f"{node.url}/v1/chat/completions", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+        result = ollama_chat(
+            node.url, summary_model,
+            [
+                {"role": "system", "content": "You summarize prior chat turns concisely."},
+                {"role": "user", "content": summary_prompt},
+            ],
+            stream=False, timeout=10, num_predict=150, temperature=0.3,
+            options=chat_node_options(node, summary_model), keep_alive=chat_keep_alive(None),
+        )
+        return result.content or ""
     except Exception as e:
         print(f"⚠️ Summary generation failed: {e}")
         return f"[Earlier conversation summary over {len(older_messages)} messages]"
@@ -4176,12 +4202,8 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     conversation["last_context_budget"] = context_budget
 
     if req.images:
-        multimodal_content = []
-        if user_text:
-            multimodal_content.append({"type": "text", "text": user_text})
-        for img in req.images:
-            multimodal_content.append({"type": "image_url", "image_url": {"url": img}})
-        messages_for_node[-1] = {"role": "user", "content": multimodal_content}
+        # Native /api/chat takes per-message raw base64, not OpenAI image_url parts.
+        messages_for_node[-1] = ollama_user_message(user_text, ollama_image_data(req.images))
 
     # Budget check (estimate)
     model_meta = get_model_meta(preferred_model)
@@ -4192,26 +4214,15 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     if spent + est_cost > budget:
         raise HTTPException(402, f"Budget exceeded. Spent ${spent:.4f} / ${budget:.4f}.")
 
-    endpoint = f"{node.url}/v1/chat/completions"
-
-    # Build payload
-    payload = {
-        "model": preferred_model,
-        "messages": messages_for_node,
-        "max_tokens": req.max_tokens,
-        "temperature": req.temperature,
-        "stream": False
-    }
-    
-    if req.images:
-        payload["images"] = req.images
-
-    # Call the selected Ollama node through its OpenAI-compatible endpoint.
+    # Call the selected Ollama node through its native chat endpoint.
     try:
         start = time.time()
-        with httpx.Client(timeout=120) as client:
-            resp = client.post(endpoint, json=payload)
-            resp.raise_for_status()
+        result = ollama_chat(
+            node.url, preferred_model, messages_for_node, stream=False, timeout=120,
+            num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
+            options=chat_node_options(node, preferred_model),
+            keep_alive=chat_keep_alive(conversation),
+        )
         latency_ms = (time.time() - start) * 1000
     except httpx.TimeoutException:
         track_model_failure(preferred_model, "timeout")
@@ -4222,16 +4233,15 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     except httpx.HTTPStatusError as e:
         track_model_failure(preferred_model, "http_error")
         raise HTTPException(500, f"Node error: {e.response.text if e.response else str(e)}")
+    except OllamaResponseError as e:
+        # A 2xx body that is not a native chat reply; not a node failure, so not tracked.
+        raise HTTPException(500, f"Invalid response from node: {str(e)}")
     except Exception as e:
         track_model_failure(preferred_model, "unexpected")
         raise HTTPException(500, f"Unexpected node error: {str(e)}")
 
-    # Parse response
-    try:
-        data = resp.json()
-        assistant_msg = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, json.JSONDecodeError) as e:
-        raise HTTPException(500, f"Invalid response from node: {str(e)}")
+    # result.thinking, result.metrics and result.done_reason are available here (DL-UX-01).
+    assistant_msg = result.content
 
     # Sanitize: strip any base64-looking image blobs
     assistant_msg = re.sub(
@@ -4378,12 +4388,8 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     conversation["last_context_budget"] = context_budget
 
     if req.images:
-        multimodal_content = []
-        if user_text:
-            multimodal_content.append({"type": "text", "text": user_text})
-        for img in req.images:
-            multimodal_content.append({"type": "image_url", "image_url": {"url": img}})
-        messages_for_node[-1] = {"role": "user", "content": multimodal_content}
+        # Native /api/chat takes per-message raw base64, not OpenAI image_url parts.
+        messages_for_node[-1] = ollama_user_message(user_text, ollama_image_data(req.images))
 
     # Budget check (estimate)
     model_meta = get_model_meta(preferred_model)
@@ -4394,53 +4400,33 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     if spent + est_cost > budget:
         raise HTTPException(402, f"Budget exceeded. Spent ${spent:.4f} / ${budget:.4f}.")
 
-    endpoint = f"{node.url}/v1/chat/completions"
-
-    # Build payload with streaming enabled
-    payload = {
-        "model": preferred_model,
-        "messages": messages_for_node,
-        "max_tokens": req.max_tokens,
-        "temperature": req.temperature,
-        "stream": True
-    }
-    
-    if req.images:
-        payload["images"] = req.images
-
     async def stream_generator():
         """
         Generator that streams SSE events as tokens arrive.
-        Offloads blocking HTTP to a background thread to keep the event loop responsive.
+        Streams the node reply with httpx.AsyncClient on the event loop.
         """
         full_response = ""
         start_time = time.time()
         had_error = False
 
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
-                async with client.stream("POST", endpoint, json=payload) as resp:
-                    if not resp.is_success:
-                        body = (await resp.aread()).decode("utf-8", errors="replace")[:200]
-                        yield f"data: {json.dumps({'error': f'Node error {resp.status_code}: {body}', 'done': True})}\n\n"
-                        had_error = True
-                    else:
-                        async for line in resp.aiter_lines():
-                            if not line:
-                                continue
-                            if line == "[DONE]":
-                                break
-                            if line.startswith("data: "):
-                                line = line[6:]
-                            try:
-                                data = json.loads(line)
-                                delta = data.get("choices", [{}])[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    full_response += content
-                                    yield f"data: {json.dumps({'token': content, 'done': False})}\n\n"
-                            except json.JSONDecodeError:
-                                continue
+            async with ollama_chat(
+                node.url, preferred_model, messages_for_node, stream=True, timeout=120,
+                num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
+                options=chat_node_options(node, preferred_model),
+                keep_alive=chat_keep_alive(conversation),
+            ) as stream:
+                async for chunk in stream:
+                    if chunk.content:
+                        full_response += chunk.content
+                        yield f"data: {json.dumps({'token': chunk.content, 'done': False})}\n\n"
+                # stream.thinking / stream.metrics / stream.done_reason / stream.completed: DL-UX-01 hook
+        except OllamaStreamError as e:
+            # /v1 parity: Ollama's openai.go ChatWriter.writeResponse unmarshals an in-band {"error"}
+            # NDJSON line into an empty api.ChatResponse, so /v1 emitted delta.content == "" and then
+            # EOF; the partial reply is kept. Recorded for /monitoring/health; DL-UX-01 owns making it visible.
+            record_error("stream_node_error", str(e))
+            print(f"⚠️ Node stream error after {len(full_response)} chars: {e}")
         except httpx.TimeoutException:
             yield f"data: {json.dumps({'error': 'Node timed out', 'done': True})}\n\n"
             had_error = True
@@ -4448,7 +4434,8 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
             yield f"data: {json.dumps({'error': 'Cannot connect to node', 'done': True})}\n\n"
             had_error = True
         except httpx.HTTPStatusError as e:
-            msg = f"Node error {e.response.status_code}"
+            body = e.response.content.decode("utf-8", errors="replace")[:200]
+            msg = f"Node error {e.response.status_code}: {body}"
             yield f"data: {json.dumps({'error': msg, 'done': True})}\n\n"
             had_error = True
         except Exception as e:
