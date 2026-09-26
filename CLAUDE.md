@@ -10,6 +10,7 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - `project_context.py`: normalized Project Homepage storage, BRAIN revisions, file/artifact retrieval, and bounded request assembly
 - `daveharness/`: headless in-process `1.0.0-rc.1` library for typed leaf contracts, versioned serialization, policy, budgets, registry, schema validation, timing, exact-call approval/resume, and bounded executor loop
 - DaveHarness `0.2.0` was the execution-semantics milestone; `0.3.0` added the internal module split and leaf-contract envelope; `0.4.0` added policy, fingerprints, and budgets; `0.5.0` adds snapshot and exact decision operations without changing DaveLLM endpoints. `0.6.0` adds opt-in cooperative cancellation and absolute deadlines; `0.7.0` adds metadata-only ordered events; `0.8.0` adds a bounded store and instance-owned facade; `0.9.0` integrates the DaveLLM lifecycle and frozen BRAIN run context.
+- `davellm_ollama.py`: native Ollama `POST /api/chat` transport for plain chat (payload, per-message images, NDJSON parsing, metrics); the tool loop does not use it
 - `tool_executor.py`: compatibility re-export for legacy imports; do not add implementation here
 - `VERSION`: canonical DaveLLM Semantic Version mirrored into package metadata and runtime output
 - `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
@@ -49,7 +50,15 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 
 ## Ollama integration
 
-`DAVE_NODES` is the only runtime node inventory override. Do not add real addresses or fabricate aliases in source. Model discovery uses `/api/tags`; inference uses `/v1/chat/completions`. A chat must name a node returned by `/nodes` and a model returned for that node. Automatic routing is advisory and may replace a manual model only when the suggestion exists in the currently loaded inventory.
+`DAVE_NODES` is the only runtime node inventory override. Do not add real addresses or fabricate aliases in source. Model discovery uses `/api/tags`. A chat must name a node returned by `/nodes` and a model returned for that node. Automatic routing is advisory and may replace a manual model only when the suggestion exists in the currently loaded inventory.
+
+Inference transport (DL-TRANSPORT-01a):
+
+- Plain chat (`chat`, `chat_stream`, `generate_conversation_summary`) uses native `POST /api/chat` through `davellm_ollama.ollama_chat`. The SSE events, `/chat` JSON, persistence, error events, and the 120 s chat / 10 s summary timeouts are unchanged; the contract tests pin them.
+- `max_tokens` and `temperature` travel as `options.num_predict` / `options.temperature` (`chat_temperature` keeps the `/v1` substitution of 1.0 for an explicit null). Extra `options` such as `num_ctx`, and `keep_alive`, come only from the `chat_node_options` / `chat_keep_alive` hooks in `app.py`, which return `None` in 01a. Every plain-chat site, including the summary, goes through those hooks so one model never alternates `num_ctx` (a Runner-level change forces a model reload).
+- The helper exposes `message.thinking` and the done-line metrics; nothing forwards them to the UI yet (DL-UX-01). An in-band mid-stream `{"error": ...}` line keeps the partial reply and is recorded as `stream_node_error` in `GET /monitoring/health`; see `INTEGRATION.md`.
+- The tool loop (`invoke_harness_model`, `run_agent_endpoint`) stays on `/v1/chat/completions` until DL-TRANSPORT-01b because it sends tool schemas and reads OpenAI-shaped `tool_calls`. Do not route it through the native helper, and do not add `num_ctx` or `keep_alive` to a `/v1` request: that endpoint ignores both.
+- Sampling parity: `/v1` sent `top_p` 1.0, so the native payload sends `top_p` 1.0 as an overridable baseline (pinned by contract tests).
 
 ## Persistence
 
@@ -85,7 +94,7 @@ GitHub Actions enforces these checks on every push to `main` and every pull requ
 Required checks after relevant changes:
 
 ```bash
-python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py scripts/project_context_cli.py tool_executor.py
+python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py davellm_ollama.py scripts/project_context_cli.py tool_executor.py
 python -m compileall -q daveharness
 python -m mypy daveharness
 python -m pytest -q

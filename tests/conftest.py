@@ -2,6 +2,7 @@ import importlib
 import json
 import sys
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,6 +13,32 @@ from hostile_git import build_hostile_git
 TEST_API_KEY = "test-only-api-key"
 TEST_NODE_URL = "http://ollama.test:11434"
 TEST_NODE = {"id": "node-test", "name": "Test Ollama", "url": TEST_NODE_URL}
+
+
+def ollama_chat_json(content, **extra):
+    """A native, non-stream `POST /api/chat` reply carrying `content`."""
+    return httpx.Response(
+        200,
+        json={
+            "model": "m",
+            "created_at": "t",
+            "message": {"role": "assistant", "content": content},
+            "done": True,
+            "done_reason": "stop",
+            "total_duration": 1,
+            "eval_count": 1,
+            **extra,
+        },
+    )
+
+
+def ollama_chat_ndjson(*lines):
+    """A native streamed `POST /api/chat` reply; each dict becomes one NDJSON line."""
+    return httpx.Response(
+        200,
+        content="\n".join(json.dumps(line) for line in lines) + "\n",
+        headers={"content-type": "application/x-ndjson"},
+    )
 
 
 @pytest.fixture

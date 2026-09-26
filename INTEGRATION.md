@@ -8,7 +8,7 @@
 4. The UI loads `GET /nodes`.
 5. The UI loads `GET /nodes/{node_id}/models`; the router queries that Ollama node at `GET /api/tags` and records the returned inventory.
 6. The UI submits `/chat` or `/chat/stream` only with the selected configured node and a model in that node's loaded inventory.
-7. The router sends an OpenAI-compatible request to the selected Ollama node at `/v1/chat/completions`.
+7. For `/chat`, `/chat/stream`, and summary generation the router sends a native Ollama request to the selected node at `POST /api/chat` (NDJSON when streaming; `message.content` is forwarded, `message.thinking` is parsed but not yet surfaced). The tool-loop routes under `/tools/agent/*` still send OpenAI-compatible requests to that node's `/v1/chat/completions` until DL-TRANSPORT-01b.
 
 There is no `/api` prefix.
 
@@ -81,7 +81,7 @@ The body is validated by Pydantic. Existing templates remain `general`, `code_re
 }
 ```
 
-`node_id` and `model` are required at runtime. An unloaded inventory returns `409`; an unavailable model returns `400`; an unknown node returns `404`. Attached text and the Support prefix are incorporated into one effective prompt used both for display and the backend request.
+`node_id` and `model` are required at runtime. An unloaded inventory returns `409`; an unavailable model returns `400`; an unknown node returns `404`. Attached text and the Support prefix are incorporated into one effective prompt used both for display and the backend request. `images` holds base64 image strings; a `data:<type>;base64,` prefix is accepted and stripped, and the router sends them as the user message's `images` list on the native request. `max_tokens` and `temperature` reach the node as `options.num_predict` and `options.temperature`; an explicit `"temperature": null` becomes 1.0 (the value the previous `/v1` transport substituted) and an explicit `"max_tokens": null` omits `num_predict`, as before.
 
 ### `POST /chat/stream`
 
@@ -97,7 +97,7 @@ Terminal event:
 data: {"token":"","done":true,"message_count":2}
 ```
 
-Node failures are returned as SSE error events. The renderer promotes `error` events into the visible chat error state rather than treating them as JSON parse failures.
+Node failures (timeout, connection refused, non-2xx status, unexpected exception) are returned as SSE error events. The renderer promotes `error` events into the visible chat error state rather than treating them as JSON parse failures. An in-band Ollama `{"error": ...}` NDJSON line at any point, including before the first token, is not an error event: the stream ends with the normal terminal event and the partial reply (possibly empty) is persisted, exactly as the `/v1` transport behaved (its OpenAI layer rendered that line as an empty delta). The router records it as a `stream_node_error` entry in `GET /monitoring/health` `recent_errors`; DL-UX-01 owns turning it into a visible error.
 
 ### `GET /conversations/{conversation_id}/export`
 
@@ -151,7 +151,7 @@ All persistence artifacts, including `dave_settings.json`, `dave_project_context
 
 ## Verified versus runtime-dependent
 
-Automated tests verify auth states, static isolation, Ollama-compatible inventory and chat transports, stream success and failure events, templates, export, tools default-off behavior, title generation, raw embedding indexes, exact effective-prompt construction, Project Homepage lifecycles, request-context order and preview, BRAIN compaction/recovery, token rollover, and data-directory containment.
+Automated tests verify auth states, static isolation, Ollama inventory (`/api/tags`) and native chat (`/api/chat`) transports, stream success and failure events, templates, export, tools default-off behavior, title generation, raw embedding indexes, exact effective-prompt construction, Project Homepage lifecycles, request-context order and preview, BRAIN compaction/recovery, token rollover, and data-directory containment.
 
 Real cluster reachability, actual model inventory, Whisper binaries, inference performance, and end-to-end hardware behavior remain runtime-dependent and require an authorized cluster check.
 

@@ -30,7 +30,7 @@ jobs:
 
       - name: Compile application and DaveHarness
         run: |
-          python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py scripts/project_context_cli.py tool_executor.py
+          python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py davellm_ollama.py scripts/project_context_cli.py tool_executor.py
           python -m compileall -q daveharness
 
       - name: Tests

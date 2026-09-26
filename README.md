@@ -1,6 +1,6 @@
 # DaveLLM Desktop
 
-DaveLLM is an Electron desktop client backed by a FastAPI router. The router discovers models from configured Ollama nodes, streams OpenAI-compatible chat responses, and persists conversations, projects, vector indexes, feedback, performance, and cost data on the router host.
+DaveLLM is an Electron desktop client backed by a FastAPI router. The router discovers models from configured Ollama nodes, streams chat responses from Ollama's native chat API, and persists conversations, projects, vector indexes, feedback, performance, and cost data on the router host.
 
 ## Documentation
 
@@ -81,7 +81,7 @@ Open `http://127.0.0.1:8000`. Browser mode prompts for the key and keeps it in `
 
 ## Ollama contract
 
-The UI loads nodes from `GET /nodes`, then loads the selected node's inventory from `GET /nodes/{node_id}/models`. The router queries Ollama `GET /api/tags`. Chat requests are accepted only when `node_id` is a configured node and `model` appears in the loaded inventory for that node. Inference uses Ollama's OpenAI-compatible `POST /v1/chat/completions` endpoint.
+The UI loads nodes from `GET /nodes`, then loads the selected node's inventory from `GET /nodes/{node_id}/models`. The router queries Ollama `GET /api/tags`. Chat requests are accepted only when `node_id` is a configured node and `model` appears in the loaded inventory for that node. Plain chat (`POST /chat`, `POST /chat/stream`, and conversation-summary generation) uses Ollama's native `POST /api/chat` through the shared helper in `davellm_ollama.py`, which accepts optional `options` (for example `num_ctx`) and `keep_alive`; both default to unset, so node behaviour is unchanged. The bounded tool loop (`POST /tools/agent/run` and the lifecycle run routes) still uses the OpenAI-compatible `POST /v1/chat/completions` because it exchanges tool schemas and `tool_calls` (DL-TRANSPORT-01b). Ollama's OpenAI-compatible endpoint ignores `num_ctx` and `keep_alive` (verified on Ollama 0.33.3). Sampling is unchanged: `/v1` sent `top_p` 1.0, so the native payload sends `top_p` 1.0 too instead of the model's Modelfile default. Request-field mapping is in [INTEGRATION.md](INTEGRATION.md).
 
 The repository intentionally contains no real node addresses or verified model inventory. Cluster reachability and installed models remain runtime-dependent.
 
@@ -114,7 +114,7 @@ Tools are disabled by default. To enable them, set `DAVE_ENABLE_TOOLS=true` and 
 
 The tool registry publishes one JSON schema per active tool. `POST /tools/agent/run` sends the current schemas to Ollama on every bounded model step, validates arguments, logs call and result timing, returns the complete transcript, stops after eight steps by default, and pauses before tools marked as requiring approval. The pending response includes a `run_id` plus exact-call metadata. `POST /tools/agent/resume` accepts that run ID, call ID, SHA-256 argument digest, and an `approve` or `deny` decision for up to 300 seconds. Approval executes the stored canonical arguments without replaying the paused model step; denial records an operator-denied tool result and continues.
 
-The generic registry and bounded-loop implementation lives in the in-process `daveharness` package at version `1.0.0-rc.1`. DaveLLM imports that public API and retains concrete tools, authentication, Ollama transport, persistence, and HTTP routes in `app.py`. Root `tool_executor.py` and `daveharness/executor.py` remain compatibility re-exports; new code should import `daveharness`.
+The generic registry and bounded-loop implementation lives in the in-process `daveharness` package at version `1.0.0-rc.1`. DaveLLM imports that public API and retains concrete tools, authentication, the `/v1` tool-loop transport, persistence, and HTTP routes in `app.py`, with the native `/api/chat` transport in `davellm_ollama.py`. Root `tool_executor.py` and `daveharness/executor.py` remain compatibility re-exports; new code should import `daveharness`.
 
 DaveHarness `0.3.0` adds `CONTRACT_VERSION = 1` and the separate `encode_contract`/`decode_contract` envelope for `ParsedToolCall`, `PendingCall`, `ToolExecution`, and `ExecutorOutcome`. The envelope has exactly `contract_version`, `contract_type`, and `payload`; canonical JSON uses sorted keys, compact separators, and UTF-8 without ASCII escaping. Unknown versions, types, fields, invalid timestamps, non-finite numbers, and non-JSON nested values are rejected. DaveHarness `0.4.0` adds injected policy decisions, definition fingerprints, and immutable budgets. DaveHarness `0.5.0` adds versioned `RunSnapshot`, exact `ApprovalDecision`, and compare-and-swap `resume_run`/`decide_run` operations; see [H3 state contract](docs/DAVEHARNESS_H3_RUN_STATE.md). DaveHarness `0.6.0` adds [cancellation and deadline contracts](docs/DAVEHARNESS_H4_CANCELLATION.md). DaveHarness `0.7.0` adds [metadata-only lifecycle events](docs/DAVEHARNESS_H5_EVENTS.md). DaveHarness `0.8.0` adds the [bounded run store and instance-owned facade](docs/DAVEHARNESS_H6_FACADE.md). DaveHarness `0.9.0` adds the [DaveLLM lifecycle integration](docs/DAVEHARNESS_H7_INTEGRATION.md). The legacy route retains its original step and error limits. `ExecutorOutcome.to_dict()` and legacy `/tools/agent/*` responses keep their existing fields.
 
@@ -145,7 +145,7 @@ python scripts/project_context_cli.py restore <project-id> 2
 Project-context configuration:
 
 - `DAVE_MODEL_CONTEXT_DEFAULT` — fallback model window, default `32768`.
-- `DAVE_MODEL_CONTEXT_WINDOWS` — JSON object of model IDs to context-window tokens.
+- `DAVE_MODEL_CONTEXT_WINDOWS` — JSON object of model IDs to context-window tokens. These windows size the project-context budget only; they are not sent to Ollama as `num_ctx`.
 - `DAVE_PROJECT_CONTEXT_TOKENS` — new-project context budget, default `16384`.
 - `DAVE_BRAIN_COMPACT_TOKENS` — new-project compaction threshold, default `3072`.
 - `DAVE_BRAIN_RECOVERY_DAYS` — soft-delete recovery window, default `30`.
@@ -167,6 +167,7 @@ source venv/bin/activate
 python -m py_compile app.py
 python -m py_compile project_context.py scripts/project_context_cli.py
 python -m py_compile tool_executor.py
+python -m py_compile davellm_ollama.py
 python -m compileall -q daveharness
 python -m mypy daveharness
 python -m pytest -q
