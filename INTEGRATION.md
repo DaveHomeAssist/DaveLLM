@@ -93,6 +93,12 @@ Progress events (DL-UX-01). The stream opens with a status event, before the nod
 data: {"status":"waiting","done":false}
 ```
 
+When the prompt is over the node's prompt limit for that model (DL-ROUTE-02, see the node profiles in the README), the same event also carries the estimate and the limit. The request still goes to the chosen node:
+
+```text
+data: {"status":"waiting","prompt_tokens":4100,"prompt_token_limit":1300,"done":false}
+```
+
 If the model sends reasoning before its first token, one `{"status":"thinking","done":false}` follows. The reasoning text itself is never forwarded. The renderer shows the status in the empty reply bubble until the first token arrives.
 
 After a successful reply, just before the terminal event, the router sends the reply's speed. It comes from Ollama's `done` line plus the router's own time to first token. Fields the node did not report are left out:

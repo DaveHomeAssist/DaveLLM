@@ -2870,7 +2870,8 @@ function renderNodeSelect(nodes) {
     nodes.forEach((n) => {
         const opt = document.createElement("option");
         opt.value = n.id;
-        opt.textContent = n.name;
+        // DL-ROUTE-01: a CPU-only node says so in the picker.
+        opt.textContent = n.profile?.compute === "cpu" ? `${n.name} (CPU, slower)` : n.name;
         nodeSelect.appendChild(opt);
     });
 
@@ -3214,7 +3215,7 @@ async function sendMessage() {
                 if (data.error) throw new Error(data.error);
 
                 if (data.status) {
-                    streamingMsg.statusText = STREAM_STATUS_TEXT[data.status] || "";
+                    streamingMsg.statusText = streamStatusText(data);
                     renderMessages();
                     continue;
                 }
@@ -3322,6 +3323,17 @@ const STREAM_STATUS_TEXT = {
     waiting: "Waiting for the model (loading it and reading your message)…",
     thinking: "Thinking…",
 };
+
+// DL-ROUTE-02: a waiting status for a prompt over the node's limit carries the estimate and the limit.
+function streamStatusText(data) {
+    const text = STREAM_STATUS_TEXT[data.status] || "";
+    if (data.status !== "waiting" || !Number.isFinite(data.prompt_tokens) || !Number.isFinite(data.prompt_token_limit)) {
+        return text;
+    }
+    const size = (n) => Math.round(n).toLocaleString("en-US");
+    return `${text} This prompt is about ${size(data.prompt_tokens)} tokens and this node reads about `
+        + `${size(data.prompt_token_limit)} in reasonable time, so the reply may take several minutes.`;
+}
 
 function formatReplyStats(stats) {
     const parts = [];

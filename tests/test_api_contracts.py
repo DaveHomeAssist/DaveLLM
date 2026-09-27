@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from conftest import TEST_API_KEY, TEST_NODE_URL, ollama_chat_json, ollama_chat_ndjson
+from conftest import TEST_API_KEY, TEST_NODE, TEST_NODE_URL, ollama_chat_json, ollama_chat_ndjson
 
 
 AUTH = {"X-API-Key": TEST_API_KEY}
@@ -1487,3 +1487,39 @@ def test_no_stats_after_an_error_and_no_thinking_status_without_reasoning(router
     # The done line carried no metrics, so only the router's own time to first token is reported.
     stats_events = [json.loads(b[6:]) for b in plain.split("\n\n") if b.startswith('data: {"stats"')]
     assert len(stats_events) == 1 and set(stats_events[0]["stats"]) == {"ttft_s"}
+
+
+# DL-ROUTE-01/02 ------------------------------------------------------------------------------------
+
+# The limit sits above the default system prompt (~900 tokens), which every prompt carries.
+PROFILED_NODE = {**TEST_NODE, "profile": {"compute": "cpu", "prompt_token_limit": 2000}}
+
+
+def test_nodes_list_their_profile_and_a_bad_profile_keeps_the_node(router_factory):
+    _, client, _ = router_factory(nodes=[PROFILED_NODE])
+    assert client.get("/nodes", headers=AUTH).json() == [
+        {**TEST_NODE, "profile": {"compute": "cpu", "prompt_token_limit": 2000, "model_prompt_token_limits": {}}}
+    ]
+    _, client, _ = router_factory(nodes=[{**TEST_NODE, "profile": {"compute": "tpu"}}])
+    assert client.get("/nodes", headers=AUTH).json() == [TEST_NODE]
+
+
+def _waiting_event(router_factory, prompt):
+    _, client, _ = router_factory(nodes=[PROFILED_NODE])
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_ndjson(
+            {"message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "stop"},
+        ))
+        text = client.post("/chat/stream", headers=AUTH, json=chat_body("big", prompt=prompt)).text
+    return json.loads(text.split("\n\n")[0].removeprefix("data: "))
+
+
+def test_a_prompt_over_the_node_limit_says_so_in_the_waiting_status(router_factory):
+    event = _waiting_event(router_factory, "word " * 3000)
+    assert event["status"] == "waiting" and event["done"] is False
+    assert event["prompt_token_limit"] == 2000
+    assert event["prompt_tokens"] > 3750  # the message alone is 3,750
+    assert _waiting_event(router_factory, "hi") == {"status": "waiting", "done": False}
+

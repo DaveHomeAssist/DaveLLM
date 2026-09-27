@@ -101,7 +101,7 @@ The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 |---|---|---|
 | FR-01 | Local runtime | Electron starts uvicorn on `127.0.0.1`; browser mode may start the same router manually. |
 | FR-02 | Authentication | `GET /health` is public. Every operational route requires `X-API-Key`; an unset server key returns `503`, and a missing or wrong caller key returns `401`. |
-| FR-03 | Node configuration | `DAVE_NODES` is the only live inventory override. Malformed JSON registers zero nodes and emits a startup explanation. Source placeholders are never evidence of a working node. |
+| FR-03 | Node configuration | `DAVE_NODES` is the only live inventory override. Malformed JSON registers zero nodes and emits a startup explanation. Source placeholders are never evidence of a working node. An optional `profile` per node (DL-ROUTE-01) is listed by `GET /nodes`. A streamed prompt over that node's prompt limit gets the estimate and the limit in its `waiting` status (DL-ROUTE-02). Nothing is rerouted, and a malformed profile is dropped with a warning while the node stays. |
 | FR-04 | Model discovery | The router reads Ollama `GET /api/tags`, publishes the exact model IDs returned, and retains the last good inventory across a transient refresh failure. |
 | FR-05 | Model validation | Chat rejects an unknown node, an inventory not yet loaded, or a model absent from that node's loaded inventory. |
 | FR-06 | Chat transport | The router supports complete and server-sent-event streaming chat through Ollama's native `POST /api/chat`: `max_tokens` and `temperature` travel as `options`, extra `options` and `keep_alive` are sent only when the `app.py` policy hooks set them, and image attachments become per-message base64 `images`. The bounded tool loop uses the same native endpoint with `tools`, `num_ctx`, `keep_alive`, and a response byte cap (DL-TRANSPORT-01b). |
@@ -264,7 +264,7 @@ Conversation JSON and core project metadata remain compatibility stores. A full 
 | Variable | Required | Default or purpose |
 |---|---:|---|
 | `DAVE_API_KEY` | Yes | Shared local secret for all protected routes. |
-| `DAVE_NODES` | Yes for real use | JSON array of `{id,name,url}` Ollama nodes. Source fallbacks are non-working placeholders. |
+| `DAVE_NODES` | Yes for real use | JSON array of `{id,name,url}` Ollama nodes, each with an optional advisory `profile` (`compute`, `prompt_token_limit`, `model_prompt_token_limits`; DL-ROUTE-01). Source fallbacks are non-working placeholders. |
 | `DAVE_DATA_DIR` | Recommended | Runtime data root; process working directory when unset. |
 | `DAVE_PORT` | No | Loopback router port; `8000`. |
 | `DAVE_PYTHON` | No | Python executable Electron uses; repository venv by default. |

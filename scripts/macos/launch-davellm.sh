@@ -86,20 +86,24 @@ if [[ -n "$duncan_ip" ]]; then
     if ollama_is_healthy "$duncan_url"; then
         duncan_node="$($JQ_BIN -cn \
             --arg duncan_url "$duncan_url" \
-            '{id: "duncan", name: "Duncan", url: $duncan_url}')"
+            '{id: "duncan", name: "Duncan", url: $duncan_url,
+              profile: {compute: "gpu", model_prompt_token_limits: {"gpt-oss:120b": 2500}}}')"
     else
         print -u2 -- "DaveLLM launcher: optional node unavailable: duncan"
     fi
 else
     print -u2 -- "DaveLLM launcher: optional node offline or not found: duncan"
 fi
+# Capability profiles (DL-ROUTE-01, measured 2026-09-25): prompt sizes each node reads in reasonable
+# time. Dominic is CPU-only; gpt-oss:120b on Duncan reads prompts slowly. Advisory: nothing is rerouted.
 nodes_json="$($JQ_BIN -cn \
     --arg dominic_url "http://${dominic_ip}:11434" \
     --arg walter_url "http://${walter_ip}:11434" \
     --argjson duncan_node "$duncan_node" \
     '([
-        {id: "dominic", name: "Dominic", url: $dominic_url},
-        {id: "walter", name: "Walter", url: $walter_url}
+        {id: "dominic", name: "Dominic", url: $dominic_url,
+         profile: {compute: "cpu", prompt_token_limit: 1300}},
+        {id: "walter", name: "Walter", url: $walter_url, profile: {compute: "gpu"}}
     ] + if $duncan_node == null then [] else [$duncan_node] end)')"
 
 # Optional web search: a SearXNG instance on Dominic. Never a startup dependency.
