@@ -2339,6 +2339,21 @@ from davellm_ollama import (  # native /api/chat transport, kept below the handl
     OllamaResponseError, OllamaStreamError, ollama_chat, ollama_chat_bounded, ollama_image_data, ollama_tool_call_names,
     ollama_user_message,
 )
+from davellm_node_profiles import NodeProfile, estimate_prompt_tokens, parse_node_profiles, prompt_size_check
+
+NODE_PROFILES: Dict[str, NodeProfile] = parse_node_profiles(os.getenv("DAVE_NODES"))  # DL-ROUTE-01, advisory only
+
+def node_listing(node: NodeConfig) -> dict:
+    """A GET /nodes entry: the configured node, plus its profile when it has one."""
+    listing = node.model_dump()
+    profile = NODE_PROFILES.get(node.id)
+    if profile is not None:
+        listing["profile"] = profile.model_dump()
+    return listing
+
+def prompt_size_warning(node: NodeConfig, model_id: str, messages: List[Dict]) -> Optional[dict]:
+    """DL-ROUTE-02: waiting-status fields when this prompt is over the node's limit for the model."""
+    return prompt_size_check(NODE_PROFILES.get(node.id), model_id, estimate_prompt_tokens(messages, estimate_tokens))
 
 CHAT_NUM_CTX_FLOOR = 8192  # smallest window that still leaves project context room after output and safety reserves
 
@@ -2884,8 +2899,8 @@ def health():
 
 @app.get("/nodes")
 def list_nodes(_auth=Depends(require_api_key)):
-    """List all configured Ollama nodes."""
-    return [n.model_dump() for n in NODE_CONFIGS]
+    """List all configured Ollama nodes, with their capability profiles (DL-ROUTE-01)."""
+    return [node_listing(n) for n in NODE_CONFIGS]
 
 @app.get("/nodes/status")
 async def get_all_nodes_status(_auth=Depends(require_api_key)):
@@ -4573,6 +4588,8 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     if spent + est_cost > budget:
         raise HTTPException(402, f"Budget exceeded. Spent ${spent:.4f} / ${budget:.4f}.")
 
+    prompt_warning = prompt_size_warning(node, preferred_model, messages_for_node)
+
     async def stream_generator():
         """
         Generator that streams SSE events as tokens arrive.
@@ -4587,7 +4604,8 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         stats = None
 
         # DL-UX-01: additive status events; token, notice, error and terminal events are unchanged.
-        yield f"data: {json.dumps({'status': 'waiting', 'done': False})}\n\n"
+        # DL-ROUTE-02: over the node's prompt limit, the waiting status carries the estimate and the limit.
+        yield f"data: {json.dumps({'status': 'waiting', **(prompt_warning or {}), 'done': False})}\n\n"
         try:
             async with ollama_chat(
                 node.url, preferred_model, messages_for_node, stream=True, timeout=node_stream_timeout(),

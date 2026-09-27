@@ -88,10 +88,10 @@ def background_git(monkeypatch, tmp_path):
 def router_factory(monkeypatch, tmp_path):
     clients = []
 
-    def load(*, api_key=TEST_API_KEY, tools=False, tool_roots=None, shell=False):
+    def load(*, api_key=TEST_API_KEY, tools=False, tool_roots=None, shell=False, nodes=None):
         data_dir = tmp_path / f"data-{len(clients)}"
         monkeypatch.setenv("DAVE_DATA_DIR", str(data_dir))
-        monkeypatch.setenv("DAVE_NODES", json.dumps([TEST_NODE]))
+        monkeypatch.setenv("DAVE_NODES", json.dumps(nodes or [TEST_NODE]))
         if api_key is None:
             monkeypatch.delenv("DAVE_API_KEY", raising=False)
         else:
