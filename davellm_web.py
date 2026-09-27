@@ -25,6 +25,8 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from davellm_public_http import public_http_client, public_stream
+
 WEB_SEARCH_DEFAULT_RESULTS = 5
 WEB_SEARCH_MAX_RESULTS = 10
 WEB_SEARCH_MAX_QUERY_CHARS = 500
@@ -67,6 +69,8 @@ class _TextExtractor(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag in _SKIPPED:
             self.skip_depth += 1
+        elif tag in {"td", "th"}:
+            self.parts.append("\t")
         elif tag in _BLOCKS:
             self.parts.append("\n")
 
@@ -77,6 +81,8 @@ class _TextExtractor(HTMLParser):
     def handle_endtag(self, tag):
         if tag in _SKIPPED:
             self.skip_depth = max(0, self.skip_depth - 1)
+        elif tag in {"td", "th"}:
+            self.parts.append("\t")
         elif tag in _BLOCKS:
             self.parts.append("\n")
 
@@ -150,7 +156,7 @@ async def search_web(search_url: Optional[str], params: Dict, *, output_limit: i
 async def read_page(
     params: Dict,
     *,
-    validate_public_url: Callable[[str], None],
+    validate_public_url: Callable[[str], tuple[str, ...]],
     max_bytes: int,
     max_redirects: int,
     output_limit: int,
@@ -161,13 +167,13 @@ async def read_page(
         raise WebToolError("Missing url")
     current = url
     try:
-        async with httpx.AsyncClient(follow_redirects=False, timeout=WEB_TIMEOUT_SECONDS) as client:
+        async with public_http_client(timeout=WEB_TIMEOUT_SECONDS) as client:
             for hop in range(max_redirects + 1):
                 try:
-                    await asyncio.to_thread(validate_public_url, current)
+                    addresses = await asyncio.to_thread(validate_public_url, current)
                 except Exception as exc:  # the validator's message names the refused address class
                     raise WebToolError(str(exc)) from None
-                async with client.stream("GET", current) as resp:
+                async with public_stream(client, current, addresses) as resp:
                     if resp.status_code in REDIRECT_CODES:
                         location = resp.headers.get("location")
                         if not location:

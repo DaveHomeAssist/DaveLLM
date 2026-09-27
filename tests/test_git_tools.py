@@ -26,7 +26,7 @@ from davellm_git import (
     NOT_A_FILE_AT_REVISION, NOT_A_WORK_TREE, REVISION_NOT_FOUND, TO_WITHOUT_FROM, UNSUPPORTED_REPOSITORY,
     UNTRUSTED_REPOSITORY, check_revision,
 )
-from hostile_git import SECRET_TEXT, UNIQUE_FACT, _Builder
+from hostile_git import NO_AUTO_MAINTENANCE, SECRET_TEXT, UNIQUE_FACT, _Builder, build_hostile_git
 from tool_contract import PathToolContract, assert_path_contract, run_path_contract
 
 
@@ -731,9 +731,16 @@ def test_every_read_leaves_the_filesystem_unchanged(router, hostile_git):  # 36
     assert hostile_git.fired() == []
 
 
+def test_building_the_hostile_repositories_is_finished_when_it_returns(tmp_path, background_git):
+    # Snapshot comparisons above would otherwise catch background auto-maintenance, not a tool write.
+    build_hostile_git(tmp_path / "hostile-git")
+    assert background_git() == []
+
+
 def test_git_tools_pass_the_security_contract(extended, hostile_tree):
     env = {"PATH": os.environ["PATH"], "HOME": str(hostile_tree.base), "GIT_CONFIG_NOSYSTEM": "1",
-           "GIT_CONFIG_GLOBAL": os.devnull, "GIT_AUTHOR_NAME": "A", "GIT_AUTHOR_EMAIL": "a@example.invalid",
+           "GIT_CONFIG_GLOBAL": os.devnull, **NO_AUTO_MAINTENANCE,
+           "GIT_AUTHOR_NAME": "A", "GIT_AUTHOR_EMAIL": "a@example.invalid",
            "GIT_COMMITTER_NAME": "A", "GIT_COMMITTER_EMAIL": "a@example.invalid"}
     shutil.rmtree(hostile_tree.root / ".git")  # the planted stand-in, so the root can become a real repository
     for args in (("init", "-q", "-b", "main"), ("add", "README.md", "docs", "src"), ("commit", "-qm", "Tree")):

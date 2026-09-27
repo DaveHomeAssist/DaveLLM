@@ -51,6 +51,17 @@ def test_html_to_text_keeps_visible_text_and_drops_code():
     assert html_to_text(html) == "Fuel & prices\nHome\nU.S. Regular\nNational average:\n$4.478\nEast\nWest"
 
 
+@pytest.mark.parametrize("separator", ["", "\n  "])
+def test_html_to_text_keeps_table_headers_and_prices_separate(separator):
+    cells = separator.join(["<td>4.157</td>", "<td><strong>4.319</strong></td>", "<td>4.478</td>"])
+    html = ("<table><tr><th>Regular</th><th>Midgrade</th><th>Premium</th></tr>"
+            f"<tr>{cells}</tr></table>")
+    result = html_to_text(html)
+    assert result.split() == ["Regular", "Midgrade", "Premium", "4.157", "4.319", "4.478"]
+    assert "RegularMidgrade" not in result
+    assert "4.1574.319" not in result
+
+
 def test_search_url_must_be_http_or_https():
     assert normalize_search_url("http://search.test:8890/") == "http://search.test:8890"
     assert normalize_search_url(" https://s.test ") == "https://s.test"
@@ -128,7 +139,7 @@ def test_web_read_returns_visible_text_not_markup(web):
     _, client = web()
     page = "<html><head><script>" + "x" * 20000 + "</script></head><body><p>U.S. regular $4.478</p></body></html>"
     with respx.mock(assert_all_called=True) as mock:
-        mock.get("https://fuel.test/prices").mock(
+        mock.get("https://93.184.216.34/prices").mock(
             return_value=httpx.Response(200, text=page, headers={"content-type": "text/html; charset=utf-8"})
         )
         out = run(client, "web.read", url="https://fuel.test/prices")
@@ -139,8 +150,8 @@ def test_web_read_returns_visible_text_not_markup(web):
 def test_web_read_follows_public_redirects_and_names_the_final_page(web):
     _, client = web()
     with respx.mock(assert_all_called=True) as mock:
-        mock.get("https://fuel.test/old").mock(return_value=httpx.Response(301, headers={"location": "/new"}))
-        mock.get("https://fuel.test/new").mock(
+        mock.get("https://93.184.216.34/old").mock(return_value=httpx.Response(301, headers={"location": "/new"}))
+        mock.get("https://93.184.216.34/new").mock(
             return_value=httpx.Response(200, text="plain body", headers={"content-type": "text/plain"})
         )
         out = run(client, "web.read", url="https://fuel.test/old")
@@ -152,7 +163,7 @@ def test_web_read_refuses_private_addresses_on_every_hop(web):
     _, client = web()
     assert "not public" in run(client, "web.read", url="http://127.0.0.1/admin")["error"]
     with respx.mock(assert_all_called=False) as mock:
-        mock.get("https://fuel.test/hop").mock(
+        mock.get("https://93.184.216.34/hop").mock(
             return_value=httpx.Response(302, headers={"location": "http://127.0.0.1/private"})
         )
         private = mock.get("http://127.0.0.1/private")
@@ -165,18 +176,18 @@ def test_web_read_refuses_private_addresses_on_every_hop(web):
 def test_web_read_limits_content_type_size_and_output(web):
     router, client = web()
     with respx.mock(assert_all_called=True) as mock:
-        mock.get("https://fuel.test/pdf").mock(
+        mock.get("https://93.184.216.34/pdf").mock(
             return_value=httpx.Response(200, content=b"%PDF", headers={"content-type": "application/pdf"})
         )
-        mock.get("https://fuel.test/huge").mock(
+        mock.get("https://93.184.216.34/huge").mock(
             return_value=httpx.Response(
                 200, content=b"a" * (router.MAX_WEB_FETCH_BYTES + 1), headers={"content-type": "text/plain"}
             )
         )
-        mock.get("https://fuel.test/long").mock(
+        mock.get("https://93.184.216.34/long").mock(
             return_value=httpx.Response(200, text="word " * 5000, headers={"content-type": "text/plain"})
         )
-        mock.get("https://fuel.test/gone").mock(return_value=httpx.Response(404))
+        mock.get("https://93.184.216.34/gone").mock(return_value=httpx.Response(404))
         assert run(client, "web.read", url="https://fuel.test/pdf")["error"] == "Unsupported content type: application/pdf"
         assert "byte limit" in run(client, "web.read", url="https://fuel.test/huge")["error"]
         assert run(client, "web.read", url="https://fuel.test/gone")["error"] == "The page returned HTTP 404"
