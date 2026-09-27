@@ -278,7 +278,7 @@ Conversation JSON and core project metadata remain compatibility stores. A full 
 | `DAVE_MODEL_CONTEXT_DEFAULT` | No | Fallback model window; 32,768 tokens. |
 | `DAVE_CHAT_NUM_CTX` | No | Largest context the router requests for plain chat (`options.num_ctx`); the model window is capped at it; values below 8,192 are raised to 8,192; 16,384. Plain chat and the context preview budget with this window; agent runs keep the uncapped model window. |
 | `DAVE_CHAT_KEEP_ALIVE` | No | `keep_alive` sent for plain chats in a conversation; empty uses the Ollama server default; `30m`. |
-| `DAVE_NODE_CONNECT_TIMEOUT`, `DAVE_NODE_FIRST_CHUNK_TIMEOUT`, `DAVE_NODE_IDLE_TIMEOUT`, `DAVE_NODE_TOTAL_TIMEOUT` | No | Node deadlines in seconds (DL-TIME-01): connect 10, first streamed line 300, gap between streamed lines 120, whole non-streaming reply 600; non-numeric or non-positive values use the default. |
+| `DAVE_NODE_CONNECT_TIMEOUT`, `DAVE_NODE_FIRST_CHUNK_TIMEOUT`, `DAVE_NODE_IDLE_TIMEOUT`, `DAVE_NODE_TOTAL_TIMEOUT` | No | Node deadlines in seconds (DL-TIME-01): connect 10, first streamed line 300, gap between streamed lines 120, whole non-streaming reply 600; non-numeric, non-positive or infinite values use the default. The total is a wall clock for `/chat` and each tool-loop model turn. |
 | `DAVE_MODEL_CONTEXT_WINDOWS` | No | JSON map of model IDs to windows of at least 4,096 tokens. Sizes the project-context budget only; not sent to Ollama as `num_ctx`. |
 | `DAVE_PROJECT_CONTEXT_TOKENS` | No | New-project context budget; 16,384 tokens. |
 | `DAVE_BRAIN_COMPACT_TOKENS` | No | New-project compaction threshold; 3,072 tokens. |

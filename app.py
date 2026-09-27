@@ -2068,6 +2068,22 @@ HARNESS_STORE = InMemoryRunStore(max_runs=32, max_bytes=268_435_456, ttl_seconds
 HARNESS_STORE.add_remove_listener(lambda run_id: HOST_RUN_BINDINGS.pop(run_id, None))
 
 
+def _env_seconds(name: str, default: float) -> float:
+    try:
+        value = float(os.getenv(name, "").strip() or default)
+    except ValueError:
+        return default
+    return value if 0 < value < float("inf") else default
+
+# DL-TIME-01: separate deadlines instead of one flat 120 s. A dead node fails at connect; a slow
+# first token (model load plus prompt reading) gets its own budget; a stalled stream fails on idle.
+# Defined above HARNESS: the total is also the wall clock for each tool-loop model step.
+NODE_CONNECT_TIMEOUT = _env_seconds("DAVE_NODE_CONNECT_TIMEOUT", 10.0)
+NODE_FIRST_CHUNK_TIMEOUT = _env_seconds("DAVE_NODE_FIRST_CHUNK_TIMEOUT", 300.0)
+NODE_IDLE_TIMEOUT = _env_seconds("DAVE_NODE_IDLE_TIMEOUT", 120.0)
+NODE_TOTAL_TIMEOUT = _env_seconds("DAVE_NODE_TOTAL_TIMEOUT", 600.0)
+
+
 async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dict:
     """Use the node/model captured for this run, including after approval resume."""
     binding = HOST_RUN_CONTEXT.get()
@@ -2089,6 +2105,7 @@ HARNESS = Harness(
     store=HARNESS_STORE,
     runner=SHELL_RUNNER,
     event_sink=NoopEventSink(),
+    model_timeout_seconds=NODE_TOTAL_TIMEOUT,
 )
 
 # ============================================================
@@ -2398,22 +2415,12 @@ def _chat_num_ctx_cap() -> int:
 CHAT_NUM_CTX = _chat_num_ctx_cap()  # DL-CTX-01: context the router asks Ollama for; node app sliders no longer decide it
 CHAT_KEEP_ALIVE = os.getenv("DAVE_CHAT_KEEP_ALIVE", "30m").strip() or None  # DL-KEEP-01: empty means server default
 
-def _env_seconds(name: str, default: float) -> float:
-    try:
-        value = float(os.getenv(name, "").strip() or default)
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-# DL-TIME-01: separate deadlines instead of one flat 120 s. A dead node fails at connect; a slow
-# first token (model load plus prompt reading) gets its own budget; a stalled stream fails on idle.
-NODE_CONNECT_TIMEOUT = _env_seconds("DAVE_NODE_CONNECT_TIMEOUT", 10.0)
-NODE_FIRST_CHUNK_TIMEOUT = _env_seconds("DAVE_NODE_FIRST_CHUNK_TIMEOUT", 300.0)
-NODE_IDLE_TIMEOUT = _env_seconds("DAVE_NODE_IDLE_TIMEOUT", 120.0)
-NODE_TOTAL_TIMEOUT = _env_seconds("DAVE_NODE_TOTAL_TIMEOUT", 600.0)
-
 def node_complete_timeout() -> httpx.Timeout:
-    """Non-streaming chat and the tool loop: the whole reply within the total budget; connecting fails fast."""
+    """Non-streaming chat and the tool loop: each read within the total, connecting fails fast.
+
+    httpx timeouts are per operation, so the wall clock is enforced elsewhere: ``total_timeout`` on
+    ``/chat`` and the harness model-step timeout (``NODE_TOTAL_TIMEOUT``) in the tool loop.
+    """
     return httpx.Timeout(NODE_TOTAL_TIMEOUT, connect=NODE_CONNECT_TIMEOUT)
 
 def node_stream_timeout() -> httpx.Timeout:
@@ -3664,6 +3671,7 @@ async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key
         step_limit=req.step_limit,
         error_budget=req.error_budget,
         approved_tools=set(req.approved_tools),
+        model_timeout_seconds=NODE_TOTAL_TIMEOUT,
         pending_store=PENDING_CALL_STORE,
     )
     return outcome.to_dict()
@@ -4428,6 +4436,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
         with NODE_ACTIVITY.track(node.url, chat_prompt_key(preferred_model, req.conversation_id, project_id)):
             result = ollama_chat(
                 node.url, preferred_model, messages_for_node, stream=False, timeout=node_complete_timeout(),
+                total_timeout=NODE_TOTAL_TIMEOUT,
                 num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
                 options=chat_node_options(node, preferred_model),
                 keep_alive=chat_keep_alive(conversation),

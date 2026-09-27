@@ -50,6 +50,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Iterable, Literal, Mapping, Optional, Sequence, Union, overload
@@ -362,6 +363,7 @@ class OllamaChatStream:
     ``idle_timeout`` bounds each gap after that. Either one expiring raises
     ``httpx.ReadTimeout``, the same exception an httpx read timeout raises, so
     callers keep their existing handling. ``None`` leaves that deadline off.
+    A non-2xx reply's error body is read within the first-chunk budget too.
     """
 
     def __init__(
@@ -402,7 +404,12 @@ class OllamaChatStream:
             except asyncio.TimeoutError:
                 raise httpx.ReadTimeout("No response from the node before the first-chunk deadline") from None
             if not response.is_success:
-                await response.aread()  # so .response.text / .content are available to the handler
+                # Read the error body (so .response.text is available to the handler) within the same
+                # first-chunk budget: a node that sends error headers and then stalls must still time out.
+                try:
+                    await asyncio.wait_for(response.aread(), self._first_chunk_wait())
+                except asyncio.TimeoutError:
+                    raise httpx.ReadTimeout("The node stopped sending its error before the first-chunk deadline") from None
                 response.raise_for_status()
         except BaseException:
             await stack.aclose()  # __aexit__ never runs when __aenter__ raises
@@ -410,6 +417,13 @@ class OllamaChatStream:
         self._stack = stack
         self._response = response
         return self
+
+    def _first_chunk_wait(self) -> Optional[float]:
+        """What is left of the first-chunk budget; the idle budget when there is none."""
+        if self.first_chunk_timeout is None:
+            return self.idle_timeout
+        elapsed = asyncio.get_running_loop().time() - (self._started or 0.0)
+        return max(0.0, self.first_chunk_timeout - elapsed)
 
     async def __aexit__(self, *exc: object) -> None:
         stack, self._stack, self._response = self._stack, None, None
@@ -422,12 +436,7 @@ class OllamaChatStream:
         lines = self._response.aiter_lines()
         first = True
         while True:
-            if first and self.first_chunk_timeout is not None:
-                wait: Optional[float] = max(
-                    0.0, self.first_chunk_timeout - (asyncio.get_running_loop().time() - (self._started or 0.0))
-                )
-            else:
-                wait = self.idle_timeout
+            wait = self._first_chunk_wait() if first else self.idle_timeout
             try:
                 line = await asyncio.wait_for(lines.__anext__(), wait)
             except StopAsyncIteration:
@@ -483,6 +492,11 @@ def model_is_loaded(model_id: str, loaded: Iterable[str]) -> bool:
     return canonical(model_id) in {canonical(name) for name in loaded}
 
 
+def _check_total_deadline(deadline: Optional[float], request: httpx.Request) -> None:
+    if deadline is not None and time.monotonic() > deadline:
+        raise httpx.ReadTimeout("The node did not finish its reply before the total deadline", request=request)
+
+
 def _endpoint(node_url: str) -> str:
     return f"{node_url.rstrip('/')}{OLLAMA_CHAT_PATH}"
 
@@ -498,6 +512,7 @@ def ollama_chat_complete(
     options: Optional[Mapping[str, Any]] = None,
     keep_alive: Optional[KeepAlive] = None,
     think: Optional[Think] = None,
+    total_timeout: Optional[float] = None,
 ) -> OllamaChatResult:
     """One blocking ``/api/chat`` request on ``httpx.Client(timeout)``.
 
@@ -505,14 +520,34 @@ def ollama_chat_complete(
     is synchronous. From async code, wrap it in ``asyncio.to_thread`` (01b).
     Raises ``httpx.HTTPStatusError`` on non-2xx (body already read) and
     ``OllamaResponseError`` when a 2xx body is not a native chat response.
+
+    httpx timeouts are per operation, so ``timeout`` alone lets a node that keeps
+    sending a few bytes at a time run forever. ``total_timeout`` (seconds) is the
+    wall clock for the whole reply: the body is read in chunks and the remaining
+    budget checked after each one and once more at the end of the body, raising
+    ``httpx.ReadTimeout`` once it is spent, so a reply that finishes late is a
+    timeout, not a success. httpx cannot cut a read short, so a trickling node
+    can hold the caller up to one read past the total before that timeout.
     """
     payload = build_ollama_chat_payload(
         model, messages, stream=False, num_predict=num_predict, temperature=temperature,
         options=options, keep_alive=keep_alive, think=think,
     )
+    deadline = None if total_timeout is None else time.monotonic() + total_timeout
     with httpx.Client(timeout=timeout) as client:
-        response = client.post(_endpoint(node_url), json=payload)
-        response.raise_for_status()
+        with client.stream(
+            "POST", _endpoint(node_url), json=payload, headers={"Accept-Encoding": "identity"},
+        ) as streamed:
+            body = bytearray()
+            for chunk in streamed.iter_raw():
+                body.extend(chunk)
+                _check_total_deadline(deadline, streamed.request)
+            _check_total_deadline(deadline, streamed.request)  # the end of the body can arrive late too
+    # A fully read Response, so raise_for_status() and the handler's .text work as before.
+    response = httpx.Response(
+        streamed.status_code, headers=streamed.headers, content=bytes(body), request=streamed.request,
+    )
+    response.raise_for_status()
     try:
         data = response.json()
     except ValueError as exc:  # json.JSONDecodeError is a ValueError
@@ -550,7 +585,7 @@ def ollama_chat(
     node_url: str, model: str, messages: Sequence[Mapping[str, Any]], *, stream: Literal[False],
     timeout: Union[float, httpx.Timeout], num_predict: Optional[int] = None, temperature: Optional[float] = None,
     options: Optional[Mapping[str, Any]] = None, keep_alive: Optional[KeepAlive] = None,
-    think: Optional[Think] = None,
+    think: Optional[Think] = None, total_timeout: Optional[float] = None,
 ) -> OllamaChatResult: ...
 
 
@@ -578,6 +613,7 @@ def ollama_chat(
     think: Optional[Think] = None,
     first_chunk_timeout: Optional[float] = None,
     idle_timeout: Optional[float] = None,
+    total_timeout: Optional[float] = None,
 ) -> Union[OllamaChatResult, OllamaChatStream]:
     """The shared plain-chat entry point; dispatches on ``stream``.
 
@@ -587,7 +623,8 @@ def ollama_chat(
     ``node_url`` is a validated ``NodeConfig.url``; ``messages`` are already in
     native shape (see ``ollama_user_message``). ``timeout`` is a number or an
     ``httpx.Timeout``; the stream-only ``first_chunk_timeout`` / ``idle_timeout``
-    are ignored for a complete (non-streaming) call, whose ``timeout`` covers it.
+    are ignored for a complete (non-streaming) call, and the complete-only
+    ``total_timeout`` (wall clock for the whole reply) is ignored for a stream.
     """
     kwargs = dict(
         timeout=timeout, num_predict=num_predict, temperature=temperature,
@@ -598,4 +635,4 @@ def ollama_chat(
             node_url, model, messages, **kwargs,
             first_chunk_timeout=first_chunk_timeout, idle_timeout=idle_timeout,
         )
-    return ollama_chat_complete(node_url, model, messages, **kwargs)
+    return ollama_chat_complete(node_url, model, messages, **kwargs, total_timeout=total_timeout)
