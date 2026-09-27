@@ -21,7 +21,9 @@ A malformed profile is dropped with a warning and the node stays registered.
 ``NodeActivity`` (DL-ROUTE-04) counts the requests the router has in flight on each node.
 Ollama nodes run one request at a time, so a count above zero means a new reply waits
 behind the others; the UI says so instead of looking stuck. Only this router's requests
-are counted.
+are counted. It also remembers the prompt key (model and conversation) each node last
+started: Ollama keeps that prompt cached while the model stays loaded, so a follow-up in the
+same conversation only has to read its new message.
 
 The module reads no environment and never imports ``app``.
 """
@@ -105,16 +107,26 @@ class NodeActivity:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._counts: Dict[str, int] = {}
+        self._last_prompt: Dict[str, Optional[str]] = {}
 
     def in_flight(self, node_key: str) -> int:
         with self._lock:
             return self._counts.get(node_key, 0)
 
-    def start(self, node_key: str) -> int:
-        """Count one more request; returns how many were already in flight (the queue ahead)."""
+    def last_prompt(self, node_key: str) -> Optional[str]:
+        with self._lock:
+            return self._last_prompt.get(node_key)
+
+    def start(self, node_key: str, prompt_key: Optional[str] = None) -> int:
+        """Count one more request; returns how many were already in flight (the queue ahead).
+
+        ``prompt_key`` names the prompt this request leaves in the node's cache; ``None`` (a
+        summary, a tool run, a project chat) means nothing reusable, which clears the last key.
+        """
         with self._lock:
             ahead = self._counts.get(node_key, 0)
             self._counts[node_key] = ahead + 1
+            self._last_prompt[node_key] = prompt_key
             return ahead
 
     def finish(self, node_key: str) -> None:
@@ -126,8 +138,8 @@ class NodeActivity:
                 self._counts.pop(node_key, None)
 
     @contextmanager
-    def track(self, node_key: str) -> Iterator[int]:
-        ahead = self.start(node_key)
+    def track(self, node_key: str, prompt_key: Optional[str] = None) -> Iterator[int]:
+        ahead = self.start(node_key, prompt_key)
         try:
             yield ahead
         finally:

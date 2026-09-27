@@ -105,3 +105,14 @@ def test_node_activity_is_consistent_across_threads():
         thread.join()
     assert activity.in_flight("n") == 0
 
+
+def test_node_activity_remembers_the_prompt_each_node_last_started():
+    activity = NodeActivity()
+    assert activity.last_prompt("a") is None
+    with activity.track("a", "llama3\nc1"):
+        pass
+    assert activity.last_prompt("a") == "llama3\nc1"
+    with activity.track("a"):  # a summary or tool run leaves nothing reusable
+        pass
+    assert activity.last_prompt("a") is None and activity.last_prompt("b") is None
+

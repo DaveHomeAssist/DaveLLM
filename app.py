@@ -2361,19 +2361,30 @@ def prompt_size_warning(node: NodeConfig, model_id: str, messages: List[Dict]) -
 NODE_ACTIVITY = NodeActivity()  # DL-ROUTE-04: this router's requests in flight, keyed by node URL
 NODE_PS_TIMEOUT = 2.0  # DL-ROUTE-03: the residency probe must never hold a chat up for long
 
-async def waiting_status(node: NodeConfig, model_id: str, prompt_warning: Optional[dict], queue_ahead: int) -> dict:
+def chat_prompt_key(model_id: str, conversation_id: str, project_id: Optional[str]) -> Optional[str]:
+    """What a plain chat leaves in the node's prompt cache; project chats retrieve new context each turn."""
+    return None if project_id else f"{model_id}\n{conversation_id}"
+
+async def waiting_status(
+    node: NodeConfig, model_id: str, messages: List[Dict], queue_ahead: int, prefix_cached: bool,
+) -> dict:
     """The stream's first event (DL-UX-01), with the DL-ROUTE hints that apply.
 
-    ``prompt_tokens``/``prompt_token_limit`` when the prompt is over the node's limit (02),
-    ``model_loaded`` when the node answered ``/api/ps`` (03), and ``queue_ahead`` when other
-    replies are already running on the node, which serves one at a time (04).
+    ``model_loaded`` when the node answered ``/api/ps`` (03), ``queue_ahead`` when other
+    replies are already running on the node, which serves one at a time (04), and
+    ``prompt_tokens``/``prompt_token_limit`` when the prompt is over the node's limit (02).
+    A follow-up in the conversation the node last served, with the model still loaded and
+    nothing ahead, reads only its new message (Ollama reuses the cached prefix), so only
+    that message counts toward the limit.
     """
-    status: Dict[str, Any] = {"status": "waiting", **(prompt_warning or {})}
+    status: Dict[str, Any] = {"status": "waiting"}
     loaded = await ollama_loaded_models(node.url, timeout=NODE_PS_TIMEOUT)
     if loaded is not None:
         status["model_loaded"] = model_is_loaded(model_id, loaded)
     if queue_ahead:
         status["queue_ahead"] = queue_ahead
+    warm = prefix_cached and status.get("model_loaded") is True and not queue_ahead
+    status.update(prompt_size_warning(node, model_id, messages[-1:] if warm else messages) or {})
     return {**status, "done": False}
 
 CHAT_NUM_CTX_FLOOR = 8192  # smallest window that still leaves project context room after output and safety reserves
@@ -4414,7 +4425,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     # Call the selected Ollama node through its native chat endpoint.
     try:
         start = time.time()
-        with NODE_ACTIVITY.track(node.url):  # DL-ROUTE-04
+        with NODE_ACTIVITY.track(node.url, chat_prompt_key(preferred_model, req.conversation_id, project_id)):
             result = ollama_chat(
                 node.url, preferred_model, messages_for_node, stream=False, timeout=node_complete_timeout(),
                 num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
@@ -4612,7 +4623,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     if spent + est_cost > budget:
         raise HTTPException(402, f"Budget exceeded. Spent ${spent:.4f} / ${budget:.4f}.")
 
-    prompt_warning = prompt_size_warning(node, preferred_model, messages_for_node)
+    prompt_key = chat_prompt_key(preferred_model, req.conversation_id, project_id)
 
     async def stream_generator():
         """
@@ -4629,9 +4640,11 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
 
         # DL-UX-01: additive status events; token, notice, error and terminal events are unchanged.
         # The node counts as busy from here until its reply ends, however it ends (DL-ROUTE-04).
-        queue_ahead = NODE_ACTIVITY.start(node.url)
+        prefix_cached = prompt_key is not None and NODE_ACTIVITY.last_prompt(node.url) == prompt_key
+        queue_ahead = NODE_ACTIVITY.start(node.url, prompt_key)
         try:
-            yield f"data: {json.dumps(await waiting_status(node, preferred_model, prompt_warning, queue_ahead))}\n\n"
+            waiting = await waiting_status(node, preferred_model, messages_for_node, queue_ahead, prefix_cached)
+            yield f"data: {json.dumps(waiting)}\n\n"
             async with ollama_chat(
                 node.url, preferred_model, messages_for_node, stream=True, timeout=node_stream_timeout(),
                 first_chunk_timeout=NODE_FIRST_CHUNK_TIMEOUT, idle_timeout=NODE_IDLE_TIMEOUT,

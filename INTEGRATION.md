@@ -104,7 +104,7 @@ Two more hints can ride on the same event:
 - `model_loaded` (DL-ROUTE-03) is `true` or `false` when the node answered a quick `GET /api/ps` probe (2 s limit). It is left out when residency is unknown.
 - `queue_ahead` (DL-ROUTE-04) is the number of other requests this router already has running on that node. Nodes serve one request at a time, so those finish first.
 
-The count covers streamed and plain chat, summaries and tool-loop model turns, and it is released however the reply ends.
+The count covers streamed and plain chat, summaries and tool-loop model turns, and it is released however the reply ends. A follow-up in the conversation the node last served, with the model still loaded, nothing ahead of it and no project context, counts only its new message toward the prompt limit. Ollama reuses the cached conversation prefix: on Dominic a follow-up's first token took 3.5 s, against 189 s for the same conversation read cold.
 
 ```text
 data: {"status":"waiting","model_loaded":false,"queue_ahead":1,"done":false}

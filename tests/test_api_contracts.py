@@ -1556,3 +1556,30 @@ def test_chat_and_tool_loop_count_as_busy_while_the_node_works(router_factory, m
     assert seen == [("chat", 1), ("tool", 1)]
     assert router.NODE_ACTIVITY.in_flight(node_url) == 0
 
+
+def test_a_warm_follow_up_counts_only_its_new_message(router_factory):
+    router, client, _ = router_factory(nodes=[PROFILED_NODE])
+    loaded = httpx.Response(200, json={"models": [{"name": MODEL_ID}]})
+    reply = {"message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "stop"}
+
+    def first_event(mock, prompt, ps):
+        mock.get(f"{TEST_NODE_URL}/api/ps").mock(return_value=ps)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_ndjson(reply))
+        text = client.post("/chat/stream", headers=AUTH, json=chat_body("warm", prompt=prompt)).text
+        return json.loads(text.split("\n\n")[0].removeprefix("data: "))
+
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        # First turn: nothing cached yet, so the whole long prompt counts.
+        assert first_event(mock, "word " * 3000, loaded)["prompt_token_limit"] == 2000
+        # Same conversation, model still loaded: the node reads only the new message.
+        assert first_event(mock, "hi", loaded) == {"status": "waiting", "model_loaded": True, "done": False}
+        # Model unloaded since: the whole conversation is read again.
+        cold = first_event(mock, "hi again", httpx.Response(200, json={"models": []}))
+        assert cold["model_loaded"] is False and cold["prompt_tokens"] > 3750
+        # Something else used the node in between: its cache no longer holds this chat.
+        router.NODE_ACTIVITY.start(router.NODE_CONFIGS[0].url)
+        router.NODE_ACTIVITY.finish(router.NODE_CONFIGS[0].url)
+        assert "prompt_token_limit" in first_event(mock, "and again", loaded)
+
