@@ -1,7 +1,9 @@
 """Unit tests for davellm_ollama, the native /api/chat transport (no router import)."""
 
 import ast
+import asyncio
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -10,6 +12,7 @@ import respx
 
 from davellm_ollama import (
     OllamaChatError,
+    OllamaChatStream,
     OllamaResponseError,
     OllamaStreamError,
     build_ollama_chat_payload,
@@ -403,3 +406,80 @@ async def test_bounded_chat_sends_native_tools_payload_and_caps_the_body():
         route.mock(return_value=httpx.Response(500, text="boom"))
         with pytest.raises(httpx.HTTPStatusError):
             await ollama_chat_bounded(NODE_URL, "m", [], tools=None, timeout=5, max_bytes=1000)
+
+
+# DL-TIME-01 review: wall-clock deadlines where httpx only has per-operation timeouts ------------
+
+class _Trickle(httpx.SyncByteStream):
+    """A node that keeps each read under the httpx read timeout but never finishes quickly."""
+
+    def __init__(self, pieces, delay, end_delay=0.0):
+        self.pieces, self.delay, self.end_delay = pieces, delay, end_delay
+
+    def __iter__(self):
+        for piece in self.pieces:
+            time.sleep(self.delay)
+            yield piece
+        time.sleep(self.end_delay)
+
+
+class _StalledBody(httpx.AsyncByteStream):
+    """Response headers arrive, then the body stalls."""
+
+    def __init__(self, delay, body=b"late error"):
+        self.delay, self.body = delay, body
+
+    async def __aiter__(self):
+        await asyncio.sleep(self.delay)
+        yield self.body
+
+
+def test_complete_call_enforces_the_total_across_trickled_reads():
+    reply = json.dumps({"message": {"role": "assistant", "content": "ok"}, "done": True}).encode()
+    pieces = [reply[i:i + 8] for i in range(0, len(reply), 8)]
+    with respx.mock(assert_all_called=True) as mock:
+        route = mock.post(f"{NODE_URL}/api/chat")
+        route.mock(return_value=httpx.Response(200, stream=_Trickle(pieces, 0.05)))
+        started = time.monotonic()
+        with pytest.raises(httpx.ReadTimeout, match="total deadline"):
+            ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=5, total_timeout=0.2)
+        assert time.monotonic() - started < 1.0  # stopped near the total, not after every piece
+
+        # Every byte in time but the end of the body late: still a timeout, not a late success.
+        route.mock(return_value=httpx.Response(200, stream=_Trickle(pieces, 0.0, end_delay=0.3)))
+        with pytest.raises(httpx.ReadTimeout, match="total deadline"):
+            ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=5, total_timeout=0.2)
+
+        route.mock(return_value=httpx.Response(200, stream=_Trickle(pieces, 0.0)))
+        result = ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=5, total_timeout=0.2)
+        assert result.content == "ok"
+        assert route.calls.last.request.headers["accept-encoding"] == "identity"
+
+        route.mock(return_value=httpx.Response(503, stream=_Trickle([b"node ", b"offline"], 0.0)))
+        with pytest.raises(httpx.HTTPStatusError) as status_error:
+            ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=5, total_timeout=5)
+        assert status_error.value.response.text == "node offline"
+
+
+@pytest.mark.asyncio
+async def test_stream_error_body_is_read_within_the_first_chunk_budget():
+    with respx.mock(assert_all_called=True) as mock:
+        route = mock.post(f"{NODE_URL}/api/chat")
+        route.mock(return_value=httpx.Response(500, stream=_StalledBody(2.0)))
+        started = time.monotonic()
+        with pytest.raises(httpx.ReadTimeout, match="first-chunk deadline"):
+            async with OllamaChatStream(f"{NODE_URL}/api/chat", {}, httpx.Timeout(None), first_chunk_timeout=0.2):
+                pass
+        assert time.monotonic() - started < 1.5
+
+        # Without a first-chunk budget the idle budget bounds it instead.
+        route.mock(return_value=httpx.Response(500, stream=_StalledBody(2.0)))
+        with pytest.raises(httpx.ReadTimeout):
+            async with OllamaChatStream(f"{NODE_URL}/api/chat", {}, httpx.Timeout(None), idle_timeout=0.2):
+                pass
+
+        route.mock(return_value=httpx.Response(500, stream=_StalledBody(0.0, b"model not found")))
+        with pytest.raises(httpx.HTTPStatusError) as status_error:
+            async with OllamaChatStream(f"{NODE_URL}/api/chat", {}, httpx.Timeout(None), first_chunk_timeout=1):
+                pass
+        assert status_error.value.response.text == "model not found"
