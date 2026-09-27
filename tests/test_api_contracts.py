@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sqlite3
 from pathlib import Path
@@ -658,9 +659,11 @@ def test_malformed_node_env_registers_no_nodes_loudly(monkeypatch, tmp_path, cap
 
 OPENAI_ONLY_KEYS = ("max_tokens", "temperature", "think", "tools", "images")
 CHAT_KEEP_ALIVE_DEFAULT = "30m"  # DL-KEEP-01: sent for chats that belong to a conversation
-# The node timeouts the transport migration must not change (DL-TRANSPORT-01a); httpx records
-# the value each call site passes as request.extensions["timeout"].
-CHAT_NODE_TIMEOUT = httpx.Timeout(120).as_dict()
+# DL-TIME-01 node deadlines; httpx records the value each call site passes as request.extensions["timeout"].
+# Non-streaming chat: the whole reply within the total budget, connect fails fast.
+CHAT_NODE_TIMEOUT = httpx.Timeout(600, connect=10).as_dict()
+# Streaming chat: httpx bounds only the connect; first-chunk and idle are enforced per line.
+STREAM_NODE_TIMEOUT = httpx.Timeout(None, connect=10).as_dict()
 SUMMARY_NODE_TIMEOUT = httpx.Timeout(10).as_dict()
 
 
@@ -715,7 +718,7 @@ def test_chat_stream_sends_native_options_and_no_openai_keys(router_factory):
     assert payload["stream"] is True
     for absent in OPENAI_ONLY_KEYS:
         assert absent not in payload
-    assert route.calls.last.request.extensions["timeout"] == CHAT_NODE_TIMEOUT
+    assert route.calls.last.request.extensions["timeout"] == STREAM_NODE_TIMEOUT
     assert router.MODEL_HEALTH == {}
 
 
@@ -1319,3 +1322,75 @@ def test_plain_chat_call_sites_pass_the_chat_window(router_factory, monkeypatch)
         ))
         client.post("/chat/stream", headers=AUTH, json=chat_body("win-stream"))
     assert windows == [router.chat_num_ctx(MODEL_ID)] * 2
+
+
+# DL-TIME-01 ------------------------------------------------------------------------------------------
+
+class _SlowNDJSON(httpx.AsyncByteStream):
+    """An Ollama stream that waits before each line: (delay_seconds, json_line) pairs."""
+
+    def __init__(self, *steps):
+        self.steps = steps
+
+    async def __aiter__(self):
+        for delay, line in self.steps:
+            await asyncio.sleep(delay)
+            yield (json.dumps(line) + "\n").encode()
+
+
+def _stream_with(router_factory, monkeypatch, *steps, **env):
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    router, client, _ = router_factory()
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=httpx.Response(200, stream=_SlowNDJSON(*steps)))
+        return router, client.post("/chat/stream", headers=AUTH, json=chat_body("slow")).text
+
+
+def test_stream_times_out_when_no_first_line_arrives(router_factory, monkeypatch):
+    router, text = _stream_with(
+        router_factory, monkeypatch,
+        (2.0, {"message": {"role": "assistant", "content": "late"}, "done": True}),
+        DAVE_NODE_FIRST_CHUNK_TIMEOUT="0.2",
+    )
+    assert '"error": "Node timed out"' in text
+    assert '"token": "late"' not in text
+    assert not [m for m in router.CONVERSATIONS["slow"]["messages"] if m["role"] == "assistant"]
+
+
+def test_stream_times_out_when_the_node_stalls_after_the_first_line(router_factory, monkeypatch):
+    _, text = _stream_with(
+        router_factory, monkeypatch,
+        (0.0, {"message": {"role": "assistant", "content": "partial"}, "done": False}),
+        (2.0, {"message": {"role": "assistant", "content": " never"}, "done": True}),
+        DAVE_NODE_FIRST_CHUNK_TIMEOUT="5", DAVE_NODE_IDLE_TIMEOUT="0.2",
+    )
+    assert '"token": "partial"' in text
+    assert '"error": "Node timed out"' in text
+    assert "never" not in text
+
+
+def test_slow_first_line_within_the_deadline_is_not_a_timeout(router_factory, monkeypatch):
+    # The old flat read timeout would have cut this off; a first-chunk budget lets it through.
+    _, text = _stream_with(
+        router_factory, monkeypatch,
+        (0.4, {"message": {"role": "assistant", "content": "ok"}, "done": False}),
+        (0.0, {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}),
+        DAVE_NODE_FIRST_CHUNK_TIMEOUT="2", DAVE_NODE_IDLE_TIMEOUT="0.3",
+    )
+    assert '"token": "ok"' in text
+    assert "Node timed out" not in text
+
+
+def test_node_deadline_settings_fall_back_on_bad_values(router_factory, monkeypatch):
+    for value in ("abc", "0", "-5", ""):
+        monkeypatch.setenv("DAVE_NODE_IDLE_TIMEOUT", value)
+        router, _, _ = router_factory()
+        assert router.NODE_IDLE_TIMEOUT == 120.0
+    monkeypatch.setenv("DAVE_NODE_CONNECT_TIMEOUT", "3.5")
+    monkeypatch.setenv("DAVE_NODE_TOTAL_TIMEOUT", "900")
+    router, _, _ = router_factory()
+    assert router.node_complete_timeout().as_dict() == httpx.Timeout(900, connect=3.5).as_dict()
+    assert router.node_stream_timeout().as_dict() == httpx.Timeout(None, connect=3.5).as_dict()

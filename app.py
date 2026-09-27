@@ -2075,7 +2075,7 @@ async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dic
         raise RuntimeError("Run model binding is unavailable")
     # DL-TRANSPORT-01b: native /api/chat, so the run gets the router's num_ctx and keep_alive.
     return await ollama_chat_bounded(
-        binding.node_url, binding.model, messages, tools=schemas, timeout=120,
+        binding.node_url, binding.model, messages, tools=schemas, timeout=node_complete_timeout(),
         max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
         temperature=chat_temperature(binding.temperature),
         options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
@@ -2350,6 +2350,28 @@ def _chat_num_ctx_cap() -> int:
 
 CHAT_NUM_CTX = _chat_num_ctx_cap()  # DL-CTX-01: context the router asks Ollama for; node app sliders no longer decide it
 CHAT_KEEP_ALIVE = os.getenv("DAVE_CHAT_KEEP_ALIVE", "30m").strip() or None  # DL-KEEP-01: empty means server default
+
+def _env_seconds(name: str, default: float) -> float:
+    try:
+        value = float(os.getenv(name, "").strip() or default)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+# DL-TIME-01: separate deadlines instead of one flat 120 s. A dead node fails at connect; a slow
+# first token (model load plus prompt reading) gets its own budget; a stalled stream fails on idle.
+NODE_CONNECT_TIMEOUT = _env_seconds("DAVE_NODE_CONNECT_TIMEOUT", 10.0)
+NODE_FIRST_CHUNK_TIMEOUT = _env_seconds("DAVE_NODE_FIRST_CHUNK_TIMEOUT", 300.0)
+NODE_IDLE_TIMEOUT = _env_seconds("DAVE_NODE_IDLE_TIMEOUT", 120.0)
+NODE_TOTAL_TIMEOUT = _env_seconds("DAVE_NODE_TOTAL_TIMEOUT", 600.0)
+
+def node_complete_timeout() -> httpx.Timeout:
+    """Non-streaming chat and the tool loop: the whole reply within the total budget; connecting fails fast."""
+    return httpx.Timeout(NODE_TOTAL_TIMEOUT, connect=NODE_CONNECT_TIMEOUT)
+
+def node_stream_timeout() -> httpx.Timeout:
+    """Streaming chat: httpx bounds only the connect; OllamaChatStream enforces first-chunk and idle per line."""
+    return httpx.Timeout(None, connect=NODE_CONNECT_TIMEOUT)
 
 def chat_num_ctx(model_id: str) -> int:
     """The context window for plain chat with this model: its configured window, capped at DAVE_CHAT_NUM_CTX.
@@ -3561,7 +3583,7 @@ async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key
 
     async def invoke_model(messages: List[Dict], schemas: List[Dict]):
         return await ollama_chat_bounded(
-            node.url, req.model, messages, tools=schemas, timeout=120,
+            node.url, req.model, messages, tools=schemas, timeout=node_complete_timeout(),
             max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=req.max_tokens,
             temperature=chat_temperature(req.temperature),
             options={"num_ctx": chat_num_ctx(req.model)}, keep_alive=CHAT_KEEP_ALIVE,
@@ -4336,7 +4358,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     try:
         start = time.time()
         result = ollama_chat(
-            node.url, preferred_model, messages_for_node, stream=False, timeout=120,
+            node.url, preferred_model, messages_for_node, stream=False, timeout=node_complete_timeout(),
             num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
             options=chat_node_options(node, preferred_model),
             keep_alive=chat_keep_alive(conversation),
@@ -4544,7 +4566,8 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
 
         try:
             async with ollama_chat(
-                node.url, preferred_model, messages_for_node, stream=True, timeout=120,
+                node.url, preferred_model, messages_for_node, stream=True, timeout=node_stream_timeout(),
+                first_chunk_timeout=NODE_FIRST_CHUNK_TIMEOUT, idle_timeout=NODE_IDLE_TIMEOUT,
                 num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
                 options=chat_node_options(node, preferred_model),
                 keep_alive=chat_keep_alive(conversation),

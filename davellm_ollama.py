@@ -44,6 +44,7 @@ the call sites' existing ``except`` ladders keep producing today's strings.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from contextlib import AsyncExitStack
@@ -250,7 +251,7 @@ async def ollama_chat_bounded(
     messages: Sequence[Mapping[str, Any]],
     *,
     tools: Optional[Sequence[Mapping[str, Any]]],
-    timeout: float,
+    timeout: Union[float, httpx.Timeout],
     max_bytes: int,
     num_predict: Optional[int] = None,
     temperature: Optional[float] = None,
@@ -351,12 +352,29 @@ class OllamaChatStream:
     line leaves ``completed`` false; the caller decides what that means.
     The context manager closes the response and the client, including on a
     UI abort in the middle of the stream.
+
+    DL-TIME-01: ``first_chunk_timeout`` bounds the wait from the request start
+    to the first NDJSON line (model load plus prompt reading), and
+    ``idle_timeout`` bounds each gap after that. Either one expiring raises
+    ``httpx.ReadTimeout``, the same exception an httpx read timeout raises, so
+    callers keep their existing handling. ``None`` leaves that deadline off.
     """
 
-    def __init__(self, endpoint: str, payload: dict, timeout: float) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        payload: dict,
+        timeout: Union[float, httpx.Timeout],
+        *,
+        first_chunk_timeout: Optional[float] = None,
+        idle_timeout: Optional[float] = None,
+    ) -> None:
         self.endpoint = endpoint
         self.payload = payload
         self.timeout = timeout
+        self.first_chunk_timeout = first_chunk_timeout
+        self.idle_timeout = idle_timeout
+        self._started: Optional[float] = None
         self.content = ""
         self.thinking = ""
         self.tool_calls: list[dict] = []
@@ -369,11 +387,16 @@ class OllamaChatStream:
     async def __aenter__(self) -> "OllamaChatStream":
         stack = AsyncExitStack()
         await stack.__aenter__()
+        self._started = asyncio.get_running_loop().time()
         try:
             client = await stack.enter_async_context(httpx.AsyncClient(timeout=self.timeout))
-            response = await stack.enter_async_context(
-                client.stream("POST", self.endpoint, json=self.payload)
-            )
+            try:
+                response = await asyncio.wait_for(
+                    stack.enter_async_context(client.stream("POST", self.endpoint, json=self.payload)),
+                    self.first_chunk_timeout,
+                )
+            except asyncio.TimeoutError:
+                raise httpx.ReadTimeout("No response from the node before the first-chunk deadline") from None
             if not response.is_success:
                 await response.aread()  # so .response.text / .content are available to the handler
                 response.raise_for_status()
@@ -392,7 +415,23 @@ class OllamaChatStream:
     async def __aiter__(self) -> AsyncIterator[OllamaChatChunk]:
         if self._response is None:
             raise RuntimeError("OllamaChatStream must be entered with 'async with' before iterating")
-        async for line in self._response.aiter_lines():
+        lines = self._response.aiter_lines()
+        first = True
+        while True:
+            if first and self.first_chunk_timeout is not None:
+                wait: Optional[float] = max(
+                    0.0, self.first_chunk_timeout - (asyncio.get_running_loop().time() - (self._started or 0.0))
+                )
+            else:
+                wait = self.idle_timeout
+            try:
+                line = await asyncio.wait_for(lines.__anext__(), wait)
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError:
+                which = "first-chunk" if first else "idle"
+                raise httpx.ReadTimeout(f"The node stopped sending before the {which} deadline") from None
+            first = False
             chunk = parse_ollama_chat_line(line)
             if chunk is None:
                 continue
@@ -417,7 +456,7 @@ def ollama_chat_complete(
     model: str,
     messages: Sequence[Mapping[str, Any]],
     *,
-    timeout: float,
+    timeout: Union[float, httpx.Timeout],
     num_predict: Optional[int] = None,
     temperature: Optional[float] = None,
     options: Optional[Mapping[str, Any]] = None,
@@ -450,25 +489,30 @@ def ollama_chat_stream(
     model: str,
     messages: Sequence[Mapping[str, Any]],
     *,
-    timeout: float,
+    timeout: Union[float, httpx.Timeout],
     num_predict: Optional[int] = None,
     temperature: Optional[float] = None,
     options: Optional[Mapping[str, Any]] = None,
     keep_alive: Optional[KeepAlive] = None,
     think: Optional[Think] = None,
+    first_chunk_timeout: Optional[float] = None,
+    idle_timeout: Optional[float] = None,
 ) -> OllamaChatStream:
     """A not-yet-entered ``OllamaChatStream`` for ``async with``; no I/O here."""
     payload = build_ollama_chat_payload(
         model, messages, stream=True, num_predict=num_predict, temperature=temperature,
         options=options, keep_alive=keep_alive, think=think,
     )
-    return OllamaChatStream(_endpoint(node_url), payload, timeout)
+    return OllamaChatStream(
+        _endpoint(node_url), payload, timeout,
+        first_chunk_timeout=first_chunk_timeout, idle_timeout=idle_timeout,
+    )
 
 
 @overload
 def ollama_chat(
     node_url: str, model: str, messages: Sequence[Mapping[str, Any]], *, stream: Literal[False],
-    timeout: float, num_predict: Optional[int] = None, temperature: Optional[float] = None,
+    timeout: Union[float, httpx.Timeout], num_predict: Optional[int] = None, temperature: Optional[float] = None,
     options: Optional[Mapping[str, Any]] = None, keep_alive: Optional[KeepAlive] = None,
     think: Optional[Think] = None,
 ) -> OllamaChatResult: ...
@@ -477,9 +521,10 @@ def ollama_chat(
 @overload
 def ollama_chat(
     node_url: str, model: str, messages: Sequence[Mapping[str, Any]], *, stream: Literal[True],
-    timeout: float, num_predict: Optional[int] = None, temperature: Optional[float] = None,
+    timeout: Union[float, httpx.Timeout], num_predict: Optional[int] = None, temperature: Optional[float] = None,
     options: Optional[Mapping[str, Any]] = None, keep_alive: Optional[KeepAlive] = None,
-    think: Optional[Think] = None,
+    think: Optional[Think] = None, first_chunk_timeout: Optional[float] = None,
+    idle_timeout: Optional[float] = None,
 ) -> OllamaChatStream: ...
 
 
@@ -489,12 +534,14 @@ def ollama_chat(
     messages: Sequence[Mapping[str, Any]],
     *,
     stream: bool,
-    timeout: float,
+    timeout: Union[float, httpx.Timeout],
     num_predict: Optional[int] = None,
     temperature: Optional[float] = None,
     options: Optional[Mapping[str, Any]] = None,
     keep_alive: Optional[KeepAlive] = None,
     think: Optional[Think] = None,
+    first_chunk_timeout: Optional[float] = None,
+    idle_timeout: Optional[float] = None,
 ) -> Union[OllamaChatResult, OllamaChatStream]:
     """The shared plain-chat entry point; dispatches on ``stream``.
 
@@ -502,12 +549,17 @@ def ollama_chat(
     reply). ``stream=True`` is ``ollama_chat_stream`` (returns an un-entered
     ``OllamaChatStream`` for ``async with ... as stream: async for chunk in stream``).
     ``node_url`` is a validated ``NodeConfig.url``; ``messages`` are already in
-    native shape (see ``ollama_user_message``).
+    native shape (see ``ollama_user_message``). ``timeout`` is a number or an
+    ``httpx.Timeout``; the stream-only ``first_chunk_timeout`` / ``idle_timeout``
+    are ignored for a complete (non-streaming) call, whose ``timeout`` covers it.
     """
     kwargs = dict(
         timeout=timeout, num_predict=num_predict, temperature=temperature,
         options=options, keep_alive=keep_alive, think=think,
     )
     if stream:
-        return ollama_chat_stream(node_url, model, messages, **kwargs)
+        return ollama_chat_stream(
+            node_url, model, messages, **kwargs,
+            first_chunk_timeout=first_chunk_timeout, idle_timeout=idle_timeout,
+        )
     return ollama_chat_complete(node_url, model, messages, **kwargs)
