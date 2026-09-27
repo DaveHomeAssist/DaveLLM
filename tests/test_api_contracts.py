@@ -1615,3 +1615,12 @@ def test_a_warm_follow_up_counts_only_its_new_message(router_factory):
         router.NODE_ACTIVITY.finish(router.NODE_CONFIGS[0].url)
         assert "prompt_token_limit" in first_event(mock, "and again", loaded)
 
+
+def test_a_long_conversation_is_never_treated_as_warm(router_factory):
+    # Past 10 messages the history window slides each turn, so the cached prefix no longer matches.
+    router, _, _ = router_factory()
+    short = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}] * 5
+    assert router.chat_prompt_key("m", "c", None, short) == "m\nc"
+    assert router.chat_prompt_key("m", "c", None, short + [{"role": "user", "content": "q"}]) is None
+    assert router.chat_prompt_key("m", "c", "project-1", short[:2]) is None
+

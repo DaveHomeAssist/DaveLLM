@@ -2378,9 +2378,18 @@ def prompt_size_warning(node: NodeConfig, model_id: str, messages: List[Dict]) -
 NODE_ACTIVITY = NodeActivity()  # DL-ROUTE-04: this router's requests in flight, keyed by node URL
 NODE_PS_TIMEOUT = 2.0  # DL-ROUTE-03: the residency probe must never hold a chat up for long
 
-def chat_prompt_key(model_id: str, conversation_id: str, project_id: Optional[str]) -> Optional[str]:
-    """What a plain chat leaves in the node's prompt cache; project chats retrieve new context each turn."""
-    return None if project_id else f"{model_id}\n{conversation_id}"
+def chat_prompt_key(
+    model_id: str, conversation_id: str, project_id: Optional[str], raw_history: List[dict],
+) -> Optional[str]:
+    """What a plain chat leaves in the node's prompt cache, or ``None`` when the next turn cannot reuse it.
+
+    Project chats retrieve new context each turn, and past ``prune_conversation_history``'s
+    10 messages the history window slides, so either way the prompt's prefix changes.
+    """
+    unpinned = raw_history[len(get_leading_system_messages(raw_history)):]
+    if project_id or len(unpinned) > 10:
+        return None
+    return f"{model_id}\n{conversation_id}"
 
 async def waiting_status(
     node: NodeConfig, model_id: str, messages: List[Dict], others_in_flight: int, prefix_cached: bool,
@@ -4433,7 +4442,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     # Call the selected Ollama node through its native chat endpoint.
     try:
         start = time.time()
-        with NODE_ACTIVITY.track(node.url, chat_prompt_key(preferred_model, req.conversation_id, project_id)):
+        with NODE_ACTIVITY.track(node.url, chat_prompt_key(preferred_model, req.conversation_id, project_id, raw_history)):
             result = ollama_chat(
                 node.url, preferred_model, messages_for_node, stream=False, timeout=node_complete_timeout(),
                 total_timeout=NODE_TOTAL_TIMEOUT,
@@ -4632,7 +4641,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     if spent + est_cost > budget:
         raise HTTPException(402, f"Budget exceeded. Spent ${spent:.4f} / ${budget:.4f}.")
 
-    prompt_key = chat_prompt_key(preferred_model, req.conversation_id, project_id)
+    prompt_key = chat_prompt_key(preferred_model, req.conversation_id, project_id, raw_history)
 
     async def stream_generator():
         """
