@@ -1,5 +1,7 @@
 import importlib
 import json
+import os
+import shutil
 import sys
 
 import httpx
@@ -56,6 +58,30 @@ def hostile_git(tmp_path):
     tree = build_hostile_git(tmp_path / "hostile-git")
     yield tree
     assert tree.fired() == [], f"a read-only Git tool ran planted programs: {tree.fired()}"
+
+
+@pytest.fixture
+def background_git(monkeypatch, tmp_path):
+    """Report the maintenance or gc processes Git starts while the test runs.
+
+    A shim first on PATH turns on trace2 for every Git process, and Git's own children inherit it.
+    Auto-maintenance can outlive the command that started it, so a setup that starts one has not
+    finished when it returns.
+    """
+    real, shim, trace = shutil.which("git"), tmp_path / "git-shim", tmp_path / "git-trace2.jsonl"
+    shim.mkdir()
+    (shim / "git").write_text(f"#!/bin/sh\nGIT_TRACE2_EVENT='{trace}' exec '{real}' \"$@\"\n")
+    (shim / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{shim}{os.pathsep}{os.environ['PATH']}")
+
+    def started():
+        events = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
+        assert any(event["event"] == "start" and event["argv"][1:2] == ["commit"] for event in events), \
+            "the trace shim saw no git commit"
+        return [event["argv"] for event in events
+                if event["event"] == "child_start" and event["argv"][1:2] in (["maintenance"], ["gc"])]
+
+    return started
 
 
 @pytest.fixture
