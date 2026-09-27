@@ -2310,6 +2310,7 @@ def build_project_messages_for_node(
     system_prompt: str,
     history: List[dict],
     capture_brain: bool = False,
+    window: Optional[int] = None,
 ) -> tuple[List[dict], dict]:
     """Assemble the P4 order and reserve exact room for all four components."""
     if not project_id:
@@ -2318,7 +2319,8 @@ def build_project_messages_for_node(
     base_tokens = sum(content_token_count(message.get("content")) for message in base_messages)
     project_instruction_tokens = estimate_project_tokens(project.get("system_prompt") or "")
     non_project_tokens = max(0, base_tokens - project_instruction_tokens)
-    context_window = get_model_context_window(model_id)
+    # Plain chat passes chat_num_ctx (the num_ctx it sends); agent runs on /v1 send none and keep the model window.
+    context_window = window if window is not None else get_model_context_window(model_id)
     safety_margin = max(512, round(context_window * 0.05))
     available_project_tokens = (
         context_window
@@ -2352,19 +2354,41 @@ from davellm_ollama import (  # native /api/chat transport, kept below the handl
     ollama_user_message,
 )
 
+CHAT_NUM_CTX_FLOOR = 8192  # smallest window that still leaves project context room after output and safety reserves
+
+def _chat_num_ctx_cap() -> int:
+    try:
+        return max(CHAT_NUM_CTX_FLOOR, int(os.getenv("DAVE_CHAT_NUM_CTX", "16384")))
+    except ValueError:
+        return 16384
+
+CHAT_NUM_CTX = _chat_num_ctx_cap()  # DL-CTX-01: context the router asks Ollama for; node app sliders no longer decide it
+CHAT_KEEP_ALIVE = os.getenv("DAVE_CHAT_KEEP_ALIVE", "30m").strip() or None  # DL-KEEP-01: empty means server default
+
+def chat_num_ctx(model_id: str) -> int:
+    """The context window for plain chat with this model: its configured window, capped at DAVE_CHAT_NUM_CTX.
+
+    build_project_messages_for_node budgets with the same number, so the router never
+    assembles more than it asked Ollama to hold. Ollama still clamps a model to its own
+    trained context (llama3 stays at 8192).
+    """
+    return min(get_model_context_window(model_id), CHAT_NUM_CTX)
+
 def chat_node_options(node: NodeConfig, model_id: str) -> dict | None:
     """Ollama `options` for plain chat on this node/model, merged over num_predict/temperature.
 
-    None sends nothing beyond those two. DL-CTX-01 lands here (for example
-    {"num_ctx": get_model_context_window(model_id)}). Every plain-chat call site,
-    including the summary, goes through this hook so one model never alternates
-    num_ctx values: a different Runner-level option forces a model reload.
+    Every plain-chat call site, including the summary, goes through this hook so one
+    model never alternates num_ctx values: a different Runner-level option forces a
+    model reload.
     """
-    return None
+    return {"num_ctx": chat_num_ctx(model_id)}
 
 def chat_keep_alive(conversation: dict | None) -> str | int | float | None:
-    """Ollama `keep_alive` for plain chat. None sends nothing (server default). DL-KEEP-01 lands here."""
-    return None
+    """Ollama `keep_alive` for plain chat: DAVE_CHAT_KEEP_ALIVE while a conversation is active.
+
+    The summary call (no conversation) and an empty setting send nothing, so the server default applies.
+    """
+    return CHAT_KEEP_ALIVE if conversation is not None else None
 
 V1_DEFAULT_TEMPERATURE = 1.0  # what Ollama's OpenAI layer substituted for an absent or null `temperature`
 
@@ -3225,6 +3249,7 @@ def preview_project_context(
             query=req.query,
             system_prompt=system_prompt,
             history=prepared_history,
+            window=chat_num_ctx(model_id),
         )
     except ProjectContextError as exc:
         raise context_http_error(exc)
@@ -4312,6 +4337,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
             query=user_text,
             system_prompt=system_prompt,
             history=history,
+            window=chat_num_ctx(preferred_model),
         )
     except ProjectContextError as exc:
         raise context_http_error(exc)
@@ -4511,6 +4537,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
             query=user_text,
             system_prompt=system_prompt,
             history=history,
+            window=chat_num_ctx(preferred_model),
         )
     except ProjectContextError as exc:
         raise context_http_error(exc)

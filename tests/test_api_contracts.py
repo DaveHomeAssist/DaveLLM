@@ -517,7 +517,7 @@ def test_title_and_embeddings_use_raw_history_indexes(router_factory):
             if payload["messages"][0]["content"] == "You summarize prior chat turns concisely."
         ]
         assert len(summary_payloads) == 1
-        assert summary_payloads[0]["options"] == {"top_p": 1.0, "num_predict": 150, "temperature": 0.3}
+        assert summary_payloads[0]["options"] == {"top_p": 1.0, "num_predict": 150, "temperature": 0.3, "num_ctx": 16384}
         assert summary_payloads[0]["stream"] is False
 
     with sqlite3.connect(router.VECTOR_DB) as connection:
@@ -656,7 +656,8 @@ def test_malformed_node_env_registers_no_nodes_loudly(monkeypatch, tmp_path, cap
 # --- DL-TRANSPORT-01a: native /api/chat parity for the plain chat paths ---
 
 
-OPENAI_ONLY_KEYS = ("max_tokens", "temperature", "keep_alive", "think", "tools", "images")
+OPENAI_ONLY_KEYS = ("max_tokens", "temperature", "think", "tools", "images")
+CHAT_KEEP_ALIVE_DEFAULT = "30m"  # DL-KEEP-01: sent for chats that belong to a conversation
 # The node timeouts the transport migration must not change (DL-TRANSPORT-01a); httpx records
 # the value each call site passes as request.extensions["timeout"].
 CHAT_NODE_TIMEOUT = httpx.Timeout(120).as_dict()
@@ -683,7 +684,7 @@ def test_chat_sends_native_options_and_no_openai_keys(router_factory):
     assert response.json()["response"] == "native"
     payload = json.loads(route.calls.last.request.content)
     # top_p 1.0 keeps /v1 sampling parity on the native endpoint.
-    assert payload["options"] == {"top_p": 1.0, "num_predict": 64, "temperature": 0.2}
+    assert payload["options"] == {"top_p": 1.0, "num_predict": 64, "temperature": 0.2, "num_ctx": 16384}
     assert payload["stream"] is False
     for absent in OPENAI_ONLY_KEYS:
         assert absent not in payload
@@ -710,7 +711,7 @@ def test_chat_stream_sends_native_options_and_no_openai_keys(router_factory):
     assert 'data: {"token": "native", "done": false}\n\n' in response.text
     payload = json.loads(route.calls.last.request.content)
     assert payload["model"] == MODEL_ID
-    assert payload["options"] == {"top_p": 1.0, "num_predict": 48, "temperature": 0.4}
+    assert payload["options"] == {"top_p": 1.0, "num_predict": 48, "temperature": 0.4, "num_ctx": 16384}
     assert payload["stream"] is True
     for absent in OPENAI_ONLY_KEYS:
         assert absent not in payload
@@ -733,7 +734,7 @@ def test_null_temperature_keeps_v1_default_and_null_max_tokens_omits_num_predict
         )
         assert response.status_code == 200
         payload = json.loads(route.calls.last.request.content)
-        assert payload["options"] == {"top_p": 1.0, "temperature": 1.0}
+        assert payload["options"] == {"top_p": 1.0, "temperature": 1.0, "num_ctx": 16384}
 
         route.mock(
             return_value=ollama_chat_ndjson(
@@ -746,13 +747,13 @@ def test_null_temperature_keeps_v1_default_and_null_max_tokens_omits_num_predict
         )
         assert response.status_code == 200
         payload = json.loads(route.calls.last.request.content)
-        assert payload["options"] == {"top_p": 1.0, "temperature": 1.0}
+        assert payload["options"] == {"top_p": 1.0, "temperature": 1.0, "num_ctx": 16384}
 
         # A request that omits both fields still gets the ChatRequest defaults.
         response = client.post("/chat/stream", headers=AUTH, json=chat_body("default-temp-stream"))
         assert response.status_code == 200
         payload = json.loads(route.calls.last.request.content)
-        assert payload["options"] == {"top_p": 1.0, "num_predict": 2048, "temperature": 0.7}
+        assert payload["options"] == {"top_p": 1.0, "num_predict": 2048, "temperature": 0.7, "num_ctx": 16384}
 
 
 def test_policy_hooks_reach_the_node_payload_on_every_plain_chat_path(router_factory, monkeypatch):
@@ -994,7 +995,7 @@ def test_summary_uses_native_chat_and_falls_back(router_factory):
         payload = json.loads(route.calls.last.request.content)
         assert payload["model"] == MODEL_ID
         assert payload["stream"] is False
-        assert payload["options"] == {"top_p": 1.0, "num_predict": 150, "temperature": 0.3}
+        assert payload["options"] == {"top_p": 1.0, "num_predict": 150, "temperature": 0.3, "num_ctx": 16384}
         assert "keep_alive" not in payload
         assert route.calls.last.request.extensions["timeout"] == SUMMARY_NODE_TIMEOUT
         assert [m["role"] for m in payload["messages"]] == ["system", "user"]
@@ -1224,3 +1225,97 @@ def test_tool_call_only_notice_echoes_only_plain_tool_names(router_factory):
     assert unnamed["tools"] == []
     assert unnamed["notice"].startswith("The model tried to use a tool instead of replying.")
     assert unnamed["notice"].endswith("use the Run tools button (web.search, web.read).")
+
+
+# DL-CTX-01 / DL-KEEP-01 --------------------------------------------------------------------------
+
+def test_chat_and_stream_send_router_context_and_keep_alive(router_factory):
+    router, client, _ = router_factory()
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_json("ok"))
+        assert client.post("/chat", headers=AUTH, json=chat_body("ctx-chat")).status_code == 200
+        chat_payload = json.loads(route.calls.last.request.content)
+        route.mock(return_value=ollama_chat_ndjson(
+            {"message": {"role": "assistant", "content": "ok"}, "done": False},
+            {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"},
+        ))
+        assert client.post("/chat/stream", headers=AUTH, json=chat_body("ctx-stream")).status_code == 200
+        stream_payload = json.loads(route.calls.last.request.content)
+    for payload in (chat_payload, stream_payload):
+        # The router, not the node's own default (131072 on the Windows app), decides the window.
+        assert payload["options"]["num_ctx"] == router.CHAT_NUM_CTX == 16384
+        assert payload["keep_alive"] == CHAT_KEEP_ALIVE_DEFAULT
+
+
+def test_chat_context_is_the_smaller_of_model_window_and_cap(router_factory, monkeypatch):
+    monkeypatch.setenv("DAVE_MODEL_CONTEXT_WINDOWS", json.dumps({"small:1b": 4096, "big:70b": 65536}))
+    router, _, _ = router_factory()
+    assert router.chat_num_ctx("small:1b") == 4096
+    assert router.chat_num_ctx("big:70b") == 16384
+    assert router.chat_num_ctx("unlisted:7b") == 16384  # default window 32768, capped
+
+    monkeypatch.setenv("DAVE_CHAT_NUM_CTX", "32768")
+    router, _, _ = router_factory()
+    assert router.chat_num_ctx("big:70b") == 32768
+    assert router.chat_num_ctx("small:1b") == 4096
+
+    monkeypatch.setenv("DAVE_CHAT_NUM_CTX", "not-a-number")
+    router, _, _ = router_factory()
+    assert router.CHAT_NUM_CTX == 16384
+
+    # Below the floor there is no room for project context after the output and safety reserves.
+    monkeypatch.setenv("DAVE_CHAT_NUM_CTX", "512")
+    router, _, _ = router_factory()
+    assert router.CHAT_NUM_CTX == router.CHAT_NUM_CTX_FLOOR == 8192
+
+
+def test_keep_alive_setting_and_its_empty_value(router_factory, monkeypatch):
+    monkeypatch.setenv("DAVE_CHAT_KEEP_ALIVE", "1h")
+    router, _, _ = router_factory()
+    assert router.chat_keep_alive({"id": "c"}) == "1h"
+    assert router.chat_keep_alive(None) is None  # the summary never pins a model
+
+    monkeypatch.setenv("DAVE_CHAT_KEEP_ALIVE", "  ")
+    router, _, _ = router_factory()
+    assert router.chat_keep_alive({"id": "c"}) is None  # empty: server default, nothing sent
+
+
+def test_project_budget_uses_chat_window_for_plain_chat_and_model_window_for_agents(router_factory, monkeypatch):
+    monkeypatch.setenv("DAVE_MODEL_CONTEXT_WINDOWS", json.dumps({MODEL_ID: 65536}))
+    router, _, _ = router_factory()
+    monkeypatch.setattr(
+        router.PROJECT_CONTEXT, "build_context_messages",
+        lambda project_id, *, query, available_tokens: {"messages": [], "budget": {}},
+    )
+    common = dict(project_id="p1", project={}, model_id=MODEL_ID, output_reserve=2048,
+                  query="q", system_prompt="s", history=[])
+    _, chat_budget = router.build_project_messages_for_node(**common, window=router.chat_num_ctx(MODEL_ID))
+    _, agent_budget = router.build_project_messages_for_node(**common)
+    # Plain chat plans for the num_ctx it sends; agent runs (/v1, no num_ctx) keep the model window.
+    assert chat_budget["model_context_window"] == 16384
+    assert agent_budget["model_context_window"] == 65536
+
+
+def test_plain_chat_call_sites_pass_the_chat_window(router_factory, monkeypatch):
+    router, client, _ = router_factory()
+    windows = []
+    real = router.build_project_messages_for_node
+
+    def spy(**kwargs):
+        windows.append(kwargs.get("window"))
+        return real(**kwargs)
+
+    monkeypatch.setattr(router, "build_project_messages_for_node", spy)
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_json("ok"))
+        client.post("/chat", headers=AUTH, json=chat_body("win-chat"))
+        route.mock(return_value=ollama_chat_ndjson(
+            {"message": {"role": "assistant", "content": "ok"}, "done": False},
+            {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"},
+        ))
+        client.post("/chat/stream", headers=AUTH, json=chat_body("win-stream"))
+    assert windows == [router.chat_num_ctx(MODEL_ID)] * 2

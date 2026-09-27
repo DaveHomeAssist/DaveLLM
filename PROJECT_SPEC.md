@@ -277,6 +277,8 @@ Conversation JSON and core project metadata remain compatibility stores. A full 
 | `DAVE_BUDGET_DEFAULT` | No | Default synthetic cost budget; `100`. |
 | `DAVE_USER_BUDGETS` | No | JSON map of per-user synthetic budgets. |
 | `DAVE_MODEL_CONTEXT_DEFAULT` | No | Fallback model window; 32,768 tokens. |
+| `DAVE_CHAT_NUM_CTX` | No | Largest context the router requests for plain chat (`options.num_ctx`); the model window is capped at it; values below 8,192 are raised to 8,192; 16,384. Plain chat and the context preview budget with this window; agent runs keep the uncapped model window. |
+| `DAVE_CHAT_KEEP_ALIVE` | No | `keep_alive` sent for plain chats in a conversation; empty uses the Ollama server default; `30m`. |
 | `DAVE_MODEL_CONTEXT_WINDOWS` | No | JSON map of model IDs to windows of at least 4,096 tokens. Sizes the project-context budget only; not sent to Ollama as `num_ctx`. |
 | `DAVE_PROJECT_CONTEXT_TOKENS` | No | New-project context budget; 16,384 tokens. |
 | `DAVE_BRAIN_COMPACT_TOKENS` | No | New-project compaction threshold; 3,072 tokens. |
