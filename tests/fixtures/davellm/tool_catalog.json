@@ -396,6 +396,16 @@
       "first_line": 1465,
       "last_line": 1466,
       "source_sha256": "f040a420e928e1a4ae5a0e8c8811e1a2a9c8d3e06aa1c23377bdac3e313aac87"
+    },
+    "web.read": {
+      "first_line": 1517,
+      "last_line": 1521,
+      "source_sha256": "d285720e910ff89f7a6a543b420588854b096d56d784282c4ca7484ea9a76540"
+    },
+    "web.search": {
+      "first_line": 1513,
+      "last_line": 1514,
+      "source_sha256": "a0bf2396b0a0aa116d77e3e412b6ea075ac63d807867a3b13fc0a169d28ab635"
     }
   },
   "extended_tools": {
@@ -959,6 +969,68 @@
       },
       "permission": "read",
       "timeout_seconds": 10.0
+    },
+    "web.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a public web page as plain text, with scripts, styles and markup removed; for example a web.search result. Private and local addresses are refused.",
+      "handler": "app.tool_web_read",
+      "handler_version": "",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "description": "An http or https URL."
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "public_network",
+      "timeout_seconds": 10.0
+    },
+    "web.search": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Search the web through this router's private search service and return the top results as title, URL and snippet. Open a result with web.read.",
+      "handler": "app.tool_web_search",
+      "handler_version": "",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "What to search for."
+          },
+          "max_results": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 10,
+            "default": 5,
+            "description": "How many results to return."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "public_network",
+      "timeout_seconds": 10.0
     }
   },
   "handler_code": {
@@ -990,7 +1062,7 @@
     "web.fetch": {
       "first_line": 1209,
       "last_line": 1246,
-      "source_sha256": "4d6be254d7618acbb9e1286984fcdb57be25162e5141277a026d4ad772a684f6"
+      "source_sha256": "4d792e7fffc6f3262c9bdb440e3272f0407931b3b6f53dfa6100951bd4df6bd6"
     }
   }
 }

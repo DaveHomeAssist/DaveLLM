@@ -99,7 +99,7 @@ Terminal event:
 data: {"token":"","done":true,"message_count":2}
 ```
 
-Tool-call-only reply (see `POST /chat`): one notice event, then the normal terminal event, with no reply persisted. The renderer shows the notice in place of the empty assistant bubble.
+Tool-call-only reply (see `POST /chat`): one notice event, then the normal terminal event, with no reply persisted. Both chat endpoints save the retained user turn before returning the notice, so it survives a restart without needing a later successful reply. The renderer shows the notice in place of the empty assistant bubble.
 
 ```text
 data: {"notice":"The model tried to use a tool (browser.run) instead of replying. ...","reason":"tool_call_only","tools":["browser.run"],"done":false}

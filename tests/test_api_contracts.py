@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 
 from conftest import TEST_API_KEY, TEST_NODE_URL, ollama_chat_json, ollama_chat_ndjson
@@ -1167,6 +1168,37 @@ def test_replies_with_content_keep_the_existing_contract_even_with_a_tool_call(r
         "message_count": 2,
         "model": MODEL_ID,
     }
+
+
+@pytest.mark.parametrize("endpoint", ["/chat", "/chat/stream"])
+@pytest.mark.parametrize("existing", [False, True])
+def test_tool_call_only_notice_retains_user_turn_after_disk_reload(router_factory, monkeypatch, endpoint, existing):
+    router, client, _ = router_factory()
+    conversation_id = "durable-notice"
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
+        if existing:
+            route.mock(return_value=ollama_chat_json("Earlier answer"))
+            assert client.post("/chat", headers=AUTH, json=chat_body(conversation_id, prompt="Earlier question")).status_code == 200
+        writes = record_side_writes(router, monkeypatch)
+        cost_before = router.COST_LOG.read_bytes() if router.COST_LOG.exists() else None
+        message = {"role": "assistant", "content": "", "tool_calls": [TOOL_CALL]}
+        route.mock(return_value=(ollama_chat_json("", message=message) if endpoint == "/chat"
+                                 else ollama_chat_ndjson({"message": message, "done": True})))
+        response = client.post(endpoint, headers=AUTH, json=chat_body(conversation_id, prompt="Retain this question"))
+    assert response.status_code == 200
+    assert "tool_call_only" in response.text
+    memory = router.CONVERSATIONS[conversation_id]
+    # Use the startup loader before any later reply or unrelated save can mask the defect.
+    reloaded = router.load_conversations()[conversation_id]
+    assert reloaded == memory
+    expected = ([{"role": "user", "content": "Earlier question"},
+                 {"role": "assistant", "content": "Earlier answer"}] if existing else [])
+    assert reloaded["messages"] == expected + [{"role": "user", "content": "Retain this question"}]
+    assert writes == []
+    assert (router.COST_LOG.read_bytes() if router.COST_LOG.exists() else None) == cost_before
 
 
 def test_tool_call_only_notice_echoes_only_plain_tool_names(router_factory):
