@@ -6,6 +6,11 @@ that is specific to the native endpoint: the request payload, the per-message
 base64 ``images`` list, NDJSON line parsing, the final-line timing metrics,
 and two thin executors behind one entry point, ``ollama_chat(..., stream=...)``.
 
+Plain chat sends no ``tools``, but a model can still reply with only a tool
+call (gpt-oss does, with a hallucinated ``browser.*`` call and empty content).
+The parsers keep ``message.tool_calls`` as-is on every chunk and result so the
+router can tell that apart from an empty reply; nothing here runs a tool.
+
 Why native and not ``/v1/chat/completions``: Ollama's OpenAI-compatible layer
 ignores ``options.num_ctx`` and ``keep_alive`` (verified on Ollama 0.33.3). The
 native endpoint honours both, streams ``message.content`` and
@@ -108,6 +113,7 @@ class OllamaChatChunk:
     done_reason: Optional[str]
     metrics: Optional[OllamaMetrics]
     raw: dict
+    tool_calls: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -121,6 +127,26 @@ class OllamaChatResult:
     model: Optional[str]
     created_at: Optional[str]
     raw: dict
+    tool_calls: tuple[dict, ...] = ()
+
+
+def _message_tool_calls(message: Mapping[str, Any]) -> tuple[dict, ...]:
+    """The object entries of ``message.tool_calls``; anything else is ignored, never raised."""
+    calls = message.get("tool_calls")
+    if not isinstance(calls, list):
+        return ()
+    return tuple(call for call in calls if isinstance(call, dict))
+
+
+def ollama_tool_call_names(tool_calls: Iterable[Mapping[str, Any]]) -> list[str]:
+    """The ``function.name`` of each native tool call, in order; calls without a string name are skipped."""
+    names = []
+    for call in tool_calls:
+        function = call.get("function")
+        name = function.get("name") if isinstance(function, Mapping) else None
+        if isinstance(name, str):
+            names.append(name)
+    return names
 
 
 def ollama_image_data(images: Iterable[str]) -> list[str]:
@@ -205,6 +231,7 @@ def parse_ollama_chat_line(line: str) -> Optional[OllamaChatChunk]:
         done_reason=data.get("done_reason") if done else None,
         metrics=OllamaMetrics.from_payload(data) if done else None,
         raw=data,
+        tool_calls=_message_tool_calls(message),
     )
 
 
@@ -232,6 +259,7 @@ def parse_ollama_chat_response(data: object) -> OllamaChatResult:
         model=data.get("model"),
         created_at=data.get("created_at"),
         raw=data,
+        tool_calls=_message_tool_calls(message),
     )
 
 
@@ -239,8 +267,8 @@ class OllamaChatStream:
     """A streamed ``/api/chat`` reply: async context manager plus async iterator.
 
     No I/O happens until ``__aenter__``. Iteration yields one
-    ``OllamaChatChunk`` per NDJSON line, accumulates ``content`` and
-    ``thinking`` on the object, records ``done_reason`` and ``metrics`` from
+    ``OllamaChatChunk`` per NDJSON line, accumulates ``content``,
+    ``thinking`` and ``tool_calls`` on the object, records ``done_reason`` and ``metrics`` from
     the ``done`` line, and stops there. A stream that ends without a ``done``
     line leaves ``completed`` false; the caller decides what that means.
     The context manager closes the response and the client, including on a
@@ -253,6 +281,7 @@ class OllamaChatStream:
         self.timeout = timeout
         self.content = ""
         self.thinking = ""
+        self.tool_calls: list[dict] = []
         self.done_reason: Optional[str] = None
         self.metrics: Optional[OllamaMetrics] = None
         self.completed = False
@@ -291,6 +320,7 @@ class OllamaChatStream:
                 continue
             self.content += chunk.content
             self.thinking += chunk.thinking
+            self.tool_calls.extend(chunk.tool_calls)
             if chunk.done:
                 self.done_reason = chunk.done_reason
                 self.metrics = chunk.metrics

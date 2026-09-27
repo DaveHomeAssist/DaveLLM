@@ -17,7 +17,7 @@ import threading
 import shutil
 import numpy as np
 from itertools import cycle
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Sequence
 from urllib.parse import urljoin, urlparse
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -26,7 +26,7 @@ import requests
 import re
 from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 import httpx
@@ -2348,7 +2348,8 @@ def build_project_messages_for_node(
     )
 
 from davellm_ollama import (  # native /api/chat transport, kept below the handlers (see tests/test_tool_catalog_provenance.py)
-    OllamaResponseError, OllamaStreamError, ollama_chat, ollama_image_data, ollama_user_message,
+    OllamaResponseError, OllamaStreamError, ollama_chat, ollama_image_data, ollama_tool_call_names,
+    ollama_user_message,
 )
 
 def chat_node_options(node: NodeConfig, model_id: str) -> dict | None:
@@ -2378,6 +2379,41 @@ def chat_temperature(requested: float | None) -> float:
     helper does. The summary passes its fixed 0.3 and never comes through here.
     """
     return V1_DEFAULT_TEMPERATURE if requested is None else requested
+
+TOOL_CALL_ONLY_REASON = "tool_call_only"
+_NOTICE_TOOL_NAME = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
+_NOTICE_TOOL_LIMIT = 4
+
+def tool_call_only_notice(content: str, tool_calls: Sequence[dict]) -> dict | None:
+    """The notice for a plain-chat reply that is only a tool call, or None for any other reply.
+
+    Plain chat sends no tools and runs none, yet a model can answer with blank
+    content and a `message.tool_calls` entry (gpt-oss:20b emits a hallucinated
+    `browser.run`). Persisting that as an empty assistant turn showed a blank
+    bubble and taught every later turn in the conversation to answer lookups
+    the same way, so `chat` and `chat_stream` persist no assistant message for
+    it and return this notice instead. A reply with any visible content, or
+    with no tool calls, returns None and keeps the existing contract.
+
+    Tool names come from the model, so only plain identifiers are echoed (at
+    most four, deduplicated) and arguments are never quoted.
+    """
+    if content.strip() or not tool_calls:
+        return None
+    tools: List[str] = []
+    for name in ollama_tool_call_names(tool_calls):
+        if _NOTICE_TOOL_NAME.fullmatch(name) and name not in tools:
+            tools.append(name)
+    tools = tools[:_NOTICE_TOOL_LIMIT]
+    attempted = f" ({', '.join(tools)})" if tools else ""
+    return {
+        "notice": (
+            f"The model tried to use a tool{attempted} instead of replying. Plain chat can't run "
+            "tools, so no reply was saved. For lookups, use the Run tools button (web.search, web.read)."
+        ),
+        "reason": TOOL_CALL_ONLY_REASON,
+        "tools": tools,
+    }
 
 def generate_conversation_summary(older_messages: List[dict]) -> str:
     """Use a cheap local model to summarize older turns."""
@@ -4321,6 +4357,19 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
         raise HTTPException(500, f"Unexpected node error: {str(e)}")
 
     # result.thinking, result.metrics and result.done_reason are available here (DL-UX-01).
+    notice = tool_call_only_notice(result.content, result.tool_calls)
+    if notice is not None:
+        # Keep the user turn durable without an assistant message, cost, embedding, or title.
+        conversation["updated_at"] = datetime.now().isoformat()
+        save_conversations(CONVERSATIONS)
+        return JSONResponse({
+            "response": notice["notice"],
+            "node": node.name,
+            "conversation_id": req.conversation_id,
+            "message_count": len(raw_history),
+            "model": preferred_model,
+            **notice,
+        })
     assistant_msg = result.content
 
     # Sanitize: strip any base64-looking image blobs
@@ -4486,6 +4535,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         Streams the node reply with httpx.AsyncClient on the event loop.
         """
         full_response = ""
+        tool_calls: List[dict] = []
         start_time = time.time()
         had_error = False
 
@@ -4497,6 +4547,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                 keep_alive=chat_keep_alive(conversation),
             ) as stream:
                 async for chunk in stream:
+                    tool_calls.extend(chunk.tool_calls)
                     if chunk.content:
                         full_response += chunk.content
                         yield f"data: {json.dumps({'token': chunk.content, 'done': False})}\n\n"
@@ -4522,8 +4573,15 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
             yield f"data: {json.dumps({'error': f'Unexpected: {str(e)}', 'done': True})}\n\n"
             had_error = True
 
+        # A tool-call-only reply gets a visible notice and saves only the user turn.
+        notice = None if had_error else tool_call_only_notice(full_response, tool_calls)
+        if notice is not None:
+            conversation["updated_at"] = datetime.now().isoformat()
+            save_conversations(CONVERSATIONS)
+            yield f"data: {json.dumps({**notice, 'done': False})}\n\n"
+
         # Post-process and persist only if we actually got a response (and no fatal stream error)
-        if not had_error:
+        if not had_error and notice is None:
             try:
                 full_response = re.sub(
                     r"data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9\/+=]+",
