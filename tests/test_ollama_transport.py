@@ -169,7 +169,9 @@ async def test_timeout_kwarg_reaches_httpx_on_both_paths():
         route = mock.post(f"{NODE_URL}/api/chat").mock(
             return_value=httpx.Response(200, json={"message": {"role": "assistant", "content": "ok"}, "done": True})
         )
-        await asyncio.to_thread(ollama_chat, NODE_URL, "m", MESSAGES, stream=False, timeout=7)
+        # The background summarizer also calls the no-total path directly from an event loop.
+        result = ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=7)
+        assert result.content == "ok"
         assert route.calls.last.request.extensions["timeout"] == httpx.Timeout(7).as_dict()
 
         route.mock(

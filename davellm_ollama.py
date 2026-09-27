@@ -508,7 +508,7 @@ def ollama_chat_complete(
     think: Optional[Think] = None,
     total_timeout: Optional[float] = None,
 ) -> OllamaChatResult:
-    """One blocking ``/api/chat`` request backed by cancellable async I/O.
+    """One blocking ``/api/chat`` request, cancellable when a total is set.
 
     Blocking by design: ``chat`` runs in FastAPI's threadpool and the summary
     is synchronous. From async code, wrap it in ``asyncio.to_thread`` (01b).
@@ -541,7 +541,13 @@ def ollama_chat_complete(
                 request=httpx.Request("POST", _endpoint(node_url)),
             ) from None
 
-    response = asyncio.run(complete())
+    if total_timeout is None:
+        # The background summarizer calls this synchronous path from its event
+        # loop. Preserve that path; asyncio.run() is only for deadline-bound chat.
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(_endpoint(node_url), json=payload, headers={"Accept-Encoding": "identity"})
+    else:
+        response = asyncio.run(complete())
     response.raise_for_status()
     try:
         data = response.json()

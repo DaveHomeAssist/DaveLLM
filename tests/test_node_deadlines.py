@@ -105,6 +105,17 @@ def test_slow_drip_preserves_route_timeout_contracts(slow_node, router_factory, 
         router, client, _ = router_factory(tools=True, nodes=[{"id": "node-test", "name": "Test Ollama", "url": url}])
         # Separate the operation timeout from the total; only the wall clock may end this reply.
         monkeypatch.setattr(router, "node_complete_timeout", lambda: httpx.Timeout(2))
+        model_times = []
+        invoke = router.ollama_chat_bounded
+
+        async def timed_model(*args, **kwargs):
+            model_times.append(time.monotonic())
+            try:
+                return await invoke(*args, **kwargs)
+            finally:
+                model_times.append(time.monotonic())
+
+        monkeypatch.setattr(router, "ollama_chat_bounded", timed_model)
         with client:
             assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
             body = {"node_id": "node-test", "model": "m"}
@@ -116,14 +127,19 @@ def test_slow_drip_preserves_route_timeout_contracts(slow_node, router_factory, 
                 assert response.status_code == 504
                 assert response.json() == {"detail": "Node 'Test Ollama' timed out"}
                 assert not [m for m in router.CONVERSATIONS["deadline"]["messages"] if m["role"] == "assistant"]
+                assert TOTAL <= time.monotonic() - started < UPPER_BOUND
             else:
                 assert response.status_code == 200
                 result = response.json()
-                while result["status"] in {"created", "running"} and time.monotonic() - started < UPPER_BOUND:
+                while result["status"] in {"created", "running"} and time.monotonic() - started < 3:
                     time.sleep(0.01)
                     result = client.get(f"/tools/agent/runs/{result['run_id']}", headers=AUTH).json()
                 assert result["status"] == "model_timeout"
-            assert TOTAL <= time.monotonic() - started < UPPER_BOUND
+                # Run creation checks tool provenance before the model step. Measure
+                # the real I/O separately from that CPU work and lifecycle polling.
+                assert len(model_times) == 2
+                assert TOTAL * 0.8 <= model_times[1] - model_times[0] < UPPER_BOUND
+                assert time.monotonic() - started < 3
             assert 1 < len(sent) < len(REPLY)
             assert router.NODE_ACTIVITY.in_flight(url) == 0
 
