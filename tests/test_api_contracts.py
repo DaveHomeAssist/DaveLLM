@@ -667,6 +667,14 @@ STREAM_NODE_TIMEOUT = httpx.Timeout(None, connect=10).as_dict()
 SUMMARY_NODE_TIMEOUT = httpx.Timeout(10).as_dict()
 
 
+def contract_events(text):
+    """The SSE text minus DL-UX-01's additive status/stats events, which these contracts predate."""
+    return "".join(
+        block + "\n\n" for block in text.split("\n\n")
+        if block and not block.startswith(('data: {"status"', 'data: {"stats"'))
+    )
+
+
 def chat_body(conversation_id, **overrides):
     body = {"conversation_id": conversation_id, "prompt": "hello", "node_id": "node-test", "model": MODEL_ID}
     body.update(overrides)
@@ -878,7 +886,9 @@ def test_stream_keeps_thinking_private_and_done_line_content(router_factory):
     assert 'data: {"token": "Hel", "done": false}\n\n' in response.text
     assert 'data: {"token": "lo", "done": false}\n\n' in response.text
     assert "secret plan" not in response.text
-    assert "thinking" not in response.text
+    # Reasoning text stays private; DL-UX-01 only announces that the model is thinking.
+    assert response.text.count("thinking") == 1
+    assert 'data: {"status": "thinking", "done": false}\n\n' in response.text
     assert '"error"' not in response.text
     assert response.text.rstrip().endswith('data: {"token": "", "done": true, "message_count": 2}')
     assert router.CONVERSATIONS["think"]["messages"][1] == {"role": "assistant", "content": "Hello"}
@@ -1091,7 +1101,7 @@ def test_chat_stream_tool_call_only_reply_emits_notice_event_and_persists_no_emp
 
     assert response.status_code == 200
     # Exact bytes: one notice event, then the unchanged terminal event; no token or error events.
-    assert response.text == (
+    assert contract_events(response.text) == (
         'data: {"notice": "' + TOOL_NOTICE + '", "reason": "tool_call_only", "tools": ["browser.run"], "done": false}\n\n'
         'data: {"token": "", "done": true, "message_count": 1}\n\n'
     )
@@ -1120,7 +1130,7 @@ def test_chat_stream_tool_call_after_blank_tokens_or_error_line_still_keeps_noth
         )
         response = client.post("/chat/stream", headers=AUTH, json=chat_body("tool-blank"))
 
-    assert response.text == (
+    assert contract_events(response.text) == (
         'data: {"token": "\\n\\n", "done": false}\n\n'
         'data: {"notice": "' + TOOL_NOTICE + '", "reason": "tool_call_only", "tools": ["browser.run"], "done": false}\n\n'
         'data: {"token": "", "done": true, "message_count": 1}\n\n'
@@ -1155,12 +1165,12 @@ def test_replies_with_content_keep_the_existing_contract_even_with_a_tool_call(r
         )
         chat = client.post("/chat", headers=AUTH, json=chat_body("mixed-chat"))
 
-    assert stream.text == (
+    assert contract_events(stream.text) == (
         'data: {"token": "Let me", "done": false}\n\n'
         'data: {"token": " check.", "done": false}\n\n'
         'data: {"token": "", "done": true, "message_count": 2}\n\n'
     )
-    assert plain.text == (
+    assert contract_events(plain.text) == (
         'data: {"token": "Plain", "done": false}\n\n'
         'data: {"token": "", "done": true, "message_count": 2}\n\n'
     )
@@ -1426,3 +1436,54 @@ def test_plain_chat_and_tool_loop_get_the_wall_clock_total(router_factory, monke
                 "messages": [{"role": "user", "content": "hi"}], "node_id": "node-test", "model": MODEL_ID,
             })
     assert seen["loop"]["model_timeout_seconds"] == 600.0
+
+
+# DL-UX-01 ------------------------------------------------------------------------------------------
+
+def test_stream_announces_waiting_thinking_then_reports_stats(router_factory):
+    router, client, _ = router_factory()
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_ndjson(
+            {"message": {"role": "assistant", "content": "", "thinking": "plan"}, "done": False},
+            {"message": {"role": "assistant", "content": "", "thinking": " more"}, "done": False},
+            {"message": {"role": "assistant", "content": "Hi"}, "done": False},
+            {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop",
+             "load_duration": 1_500_000_000, "prompt_eval_count": 40, "prompt_eval_duration": 500_000_000,
+             "eval_count": 30, "eval_duration": 600_000_000, "total_duration": 2_700_000_000},
+        ))
+        text = client.post("/chat/stream", headers=AUTH, json=chat_body("ux")).text
+    events = [json.loads(block[6:]) for block in text.split("\n\n") if block.startswith("data: ")]
+    assert events[0] == {"status": "waiting", "done": False}
+    assert events[1] == {"status": "thinking", "done": False}  # once, before the first token
+    assert [e for e in events if e.get("status") == "thinking"] == [events[1]]
+    assert events[2] == {"token": "Hi", "done": False}
+    stats = events[3]["stats"]
+    assert events[3]["done"] is False
+    assert stats["gen_tokens"] == 30 and stats["gen_tps"] == 50.0
+    assert stats["prompt_tokens"] == 40 and stats["prompt_tps"] == 80.0
+    assert stats["load_s"] == 1.5 and stats["total_s"] == 2.7 and stats["ttft_s"] >= 0
+    assert events[4] == {"token": "", "done": True, "message_count": 2}
+    assert "plan" not in text and "more" not in text
+
+
+def test_no_stats_after_an_error_and_no_thinking_status_without_reasoning(router_factory):
+    router, client, _ = router_factory()
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
+        route.mock(return_value=httpx.Response(500, text="boom"))
+        failed = client.post("/chat/stream", headers=AUTH, json=chat_body("ux-err")).text
+        route.mock(return_value=ollama_chat_ndjson(
+            {"message": {"role": "assistant", "content": "ok"}, "done": False},
+            {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"},
+        ))
+        plain = client.post("/chat/stream", headers=AUTH, json=chat_body("ux-plain")).text
+    assert failed.startswith('data: {"status": "waiting", "done": false}')
+    assert '"stats"' not in failed and '"error": "Node error 500' in failed
+    assert '"thinking"' not in plain
+    # The done line carried no metrics, so only the router's own time to first token is reported.
+    stats_events = [json.loads(b[6:]) for b in plain.split("\n\n") if b.startswith('data: {"stats"')]
+    assert len(stats_events) == 1 and set(stats_events[0]["stats"]) == {"ttft_s"}

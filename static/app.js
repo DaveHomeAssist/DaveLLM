@@ -3213,6 +3213,17 @@ async function sendMessage() {
                 }
                 if (data.error) throw new Error(data.error);
 
+                if (data.status) {
+                    streamingMsg.statusText = STREAM_STATUS_TEXT[data.status] || "";
+                    renderMessages();
+                    continue;
+                }
+
+                if (data.stats) {
+                    streamingMsg.stats = data.stats;
+                    continue;
+                }
+
                 if (data.notice) {
                     // The model replied with only a tool call and the router saved no reply:
                     // show the router's notice (plain text) instead of a blank assistant bubble.
@@ -3234,6 +3245,12 @@ async function sendMessage() {
                     // A reload would replace the local notice with server history, which has no reply to show.
                     if (!sawNotice && convo.title === "New Conversation") {
                         await loadConversationHistory(state.sessionId);
+                        // Server history has no client-only stats: carry them over to the reloaded reply.
+                        const reloaded = state.conversations[state.sessionId]?.messages || [];
+                        const reply = reloaded[reloaded.length - 1];
+                        if (streamingMsg.stats && reply && reply.role === "assistant") {
+                            reply.stats = streamingMsg.stats;
+                        }
                         renderConversationList();
                     }
                     renderMessages();
@@ -3298,6 +3315,21 @@ function renderEmptyChatState() {
     empty.appendChild(detail);
     empty.appendChild(actions);
     responseBox.appendChild(empty);
+}
+
+// DL-UX-01: the router's stream status events, shown in the reply bubble until the first token.
+const STREAM_STATUS_TEXT = {
+    waiting: "Waiting for the model (loading it and reading your message)…",
+    thinking: "Thinking…",
+};
+
+function formatReplyStats(stats) {
+    const parts = [];
+    if (Number.isFinite(stats.gen_tps)) parts.push(`${stats.gen_tps.toFixed(1)} tok/s`);
+    if (Number.isFinite(stats.ttft_s)) parts.push(`first token ${stats.ttft_s.toFixed(1)} s`);
+    if (Number.isFinite(stats.gen_tokens)) parts.push(`${stats.gen_tokens} tokens`);
+    if (Number.isFinite(stats.load_s) && stats.load_s >= 1) parts.push(`model load ${stats.load_s.toFixed(1)} s`);
+    return parts.join(" · ");
 }
 
 function renderMessages() {
@@ -3431,11 +3463,27 @@ function renderMessages() {
             contentSpan.textContent = m.content;
         }
         
+        if (m.isStreaming && !m.content && m.statusText) {
+            // DL-UX-01: say what the node is doing until the first token arrives.
+            const status = document.createElement("span");
+            status.className = "message-status";
+            status.setAttribute("role", "status");
+            status.textContent = m.statusText;
+            contentSpan.appendChild(status);
+        }
+
         if (m.isStreaming) {
             const indicator = document.createElement("span");
             indicator.textContent = "▌";
             indicator.style.animation = "blink 1s infinite";
             contentSpan.appendChild(indicator);
+        }
+
+        if (!m.isStreaming && m.stats) {
+            const stats = document.createElement("div");
+            stats.className = "message-stats";
+            stats.textContent = formatReplyStats(m.stats);
+            msgDiv.appendChild(stats);
         }
         
         responseBox.appendChild(msgDiv);

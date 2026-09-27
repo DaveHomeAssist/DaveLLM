@@ -2380,6 +2380,25 @@ def node_stream_timeout() -> httpx.Timeout:
     """Streaming chat: httpx bounds only the connect; OllamaChatStream enforces first-chunk and idle per line."""
     return httpx.Timeout(None, connect=NODE_CONNECT_TIMEOUT)
 
+def stream_stats(metrics, first_token_seconds: float | None) -> dict | None:
+    """DL-UX-01: the reply's speed for the UI, from Ollama's done-line metrics plus the router's time to first token."""
+    if metrics is None:
+        return None
+    def rate(count, nanos):
+        return round(count / (nanos / 1e9), 1) if count and nanos else None
+    def secs(nanos):
+        return round(nanos / 1e9, 2) if nanos else None
+    stats = {
+        "gen_tokens": metrics.eval_count,
+        "gen_tps": rate(metrics.eval_count, metrics.eval_duration),
+        "prompt_tokens": metrics.prompt_eval_count,
+        "prompt_tps": rate(metrics.prompt_eval_count, metrics.prompt_eval_duration),
+        "load_s": secs(metrics.load_duration),
+        "total_s": secs(metrics.total_duration),
+        "ttft_s": round(first_token_seconds, 2) if first_token_seconds is not None else None,
+    }
+    return {key: value for key, value in stats.items() if value is not None} or None
+
 def chat_num_ctx(model_id: str) -> int:
     """The context window for plain chat with this model: its configured window, capped at DAVE_CHAT_NUM_CTX.
 
@@ -4572,7 +4591,12 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         tool_calls: List[dict] = []
         start_time = time.time()
         had_error = False
+        first_token_at = None
+        thinking_sent = False
+        stats = None
 
+        # DL-UX-01: additive status events; token, notice, error and terminal events are unchanged.
+        yield f"data: {json.dumps({'status': 'waiting', 'done': False})}\n\n"
         try:
             async with ollama_chat(
                 node.url, preferred_model, messages_for_node, stream=True, timeout=node_stream_timeout(),
@@ -4583,10 +4607,15 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
             ) as stream:
                 async for chunk in stream:
                     tool_calls.extend(chunk.tool_calls)
+                    if chunk.thinking and not thinking_sent and not full_response:
+                        thinking_sent = True
+                        yield f"data: {json.dumps({'status': 'thinking', 'done': False})}\n\n"
                     if chunk.content:
+                        if first_token_at is None:
+                            first_token_at = time.time()
                         full_response += chunk.content
                         yield f"data: {json.dumps({'token': chunk.content, 'done': False})}\n\n"
-                # stream.thinking / stream.metrics / stream.done_reason / stream.completed: DL-UX-01 hook
+                stats = stream_stats(stream.metrics, first_token_at - start_time if first_token_at else None)
         except OllamaStreamError as e:
             # /v1 parity: Ollama's openai.go ChatWriter.writeResponse unmarshals an in-band {"error"}
             # NDJSON line into an empty api.ChatResponse, so /v1 emitted delta.content == "" and then
@@ -4679,6 +4708,8 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
             except Exception as e:
                 record_error("stream_finalize", str(e))
 
+        if stats and not had_error and notice is None:
+            yield f"data: {json.dumps({'stats': stats, 'done': False})}\n\n"
         # Always send terminal event so client doesn’t see incomplete chunked encoding
         yield f"data: {json.dumps({'token': '', 'done': True, 'message_count': len(raw_history)})}\n\n"
     

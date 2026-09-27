@@ -1593,6 +1593,18 @@ textarea {
   margin-left: auto;
 }
 
+.message-status {
+    color: var(--muted);
+    font-style: italic;
+    margin-right: 4px;
+}
+
+.message-stats {
+    margin-top: 6px;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
 .message-content {
   display: block;
   color: var(--text);
