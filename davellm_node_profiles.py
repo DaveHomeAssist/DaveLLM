@@ -118,7 +118,10 @@ class NodeActivity:
             return self._last_prompt.get(node_key)
 
     def start(self, node_key: str, prompt_key: Optional[str] = None) -> int:
-        """Count one more request; returns how many were already in flight (the queue ahead).
+        """Count one more request; returns how many others were already in flight.
+
+        The count is not a queue position: requests reach the node in whatever order their
+        own setup finishes, so it only says the node is busy.
 
         ``prompt_key`` names the prompt this request leaves in the node's cache; ``None`` (a
         summary, a tool run, a project chat) means nothing reusable, which clears the last key.

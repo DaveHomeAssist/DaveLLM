@@ -73,7 +73,7 @@ def test_prompt_estimate_counts_every_message_text():
     assert estimate_prompt_tokens(messages, lambda text: len(text) // 4) == 110
 
 
-def test_node_activity_counts_the_queue_ahead_and_releases_on_errors():
+def test_node_activity_counts_others_in_flight_and_releases_on_errors():
     activity = NodeActivity()
     assert activity.start("a") == 0
     assert activity.start("a") == 1

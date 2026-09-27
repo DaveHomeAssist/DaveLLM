@@ -455,15 +455,18 @@ async def ollama_loaded_models(node_url: str, *, timeout: float) -> Optional[fro
     """Names of the models the node holds in memory (``GET /api/ps``); ``None`` when unknown.
 
     DL-ROUTE-03: residency is only a hint for the UI, so every failure (unreachable,
-    slow, non-2xx, unexpected body) is ``None`` and nothing is raised.
+    slow, non-2xx, unexpected body) is ``None`` and nothing is raised. ``timeout`` is
+    the wall clock for the whole probe, not just each read.
     """
-    try:
+    async def probe() -> Any:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(f"{node_url.rstrip('/')}{OLLAMA_PS_PATH}")
-        if not response.is_success:
-            return None
-        models = response.json().get("models")
-    except Exception:
+        return response.json().get("models") if response.is_success else None
+
+    try:
+        # httpx timeouts are per operation; the wall clock bounds the whole probe.
+        models = await asyncio.wait_for(probe(), timeout)
+    except Exception:  # asyncio.TimeoutError included
         return None
     if not isinstance(models, list):
         return None

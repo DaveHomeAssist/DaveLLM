@@ -436,3 +436,22 @@ def test_model_is_loaded_treats_a_bare_name_as_latest():
     assert not model_is_loaded("gpt-oss:120b", loaded) and not model_is_loaded("gpt-oss", loaded)
     assert model_is_loaded("qwen3:latest", {"qwen3"})
 
+
+class _DripPs(httpx.AsyncByteStream):
+    """An /api/ps that answers headers at once and then drips its body."""
+
+    async def __aiter__(self):
+        for piece in (b'{"models"', b': []', b'}'):
+            await asyncio.sleep(0.2)
+            yield piece
+
+
+@pytest.mark.asyncio
+async def test_the_residency_probe_is_bounded_as_a_whole():
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(f"{NODE_URL}/api/ps").mock(return_value=httpx.Response(200, stream=_DripPs()))
+        started = time.monotonic()
+        assert await ollama_loaded_models(NODE_URL, timeout=0.3) is None  # each read < 0.3 s, the whole > 0.3 s
+        assert time.monotonic() - started < 0.55
+        assert await ollama_loaded_models(NODE_URL, timeout=2) == frozenset()
+

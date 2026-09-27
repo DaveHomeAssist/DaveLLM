@@ -3325,15 +3325,15 @@ const STREAM_STATUS_TEXT = {
 };
 
 // The waiting status can carry routing hints: whether the model is already in memory (DL-ROUTE-03),
-// how many replies the node runs first (DL-ROUTE-04), and a prompt over the node's limit (DL-ROUTE-02).
+// whether the node is busy with other replies (DL-ROUTE-04), and a prompt over the node's limit (DL-ROUTE-02).
 function streamStatusText(data) {
     let text = STREAM_STATUS_TEXT[data.status] || "";
     if (data.status !== "waiting") return text;
     if (data.model_loaded === false) text = "Loading the model into memory, then reading your message…";
     else if (data.model_loaded === true) text = "Reading your message…";
-    if (Number.isInteger(data.queue_ahead) && data.queue_ahead > 0) {
-        const others = data.queue_ahead === 1 ? "1 other reply" : `${data.queue_ahead} other replies`;
-        text = `This node is finishing ${others} first. ${text}`;
+    if (Number.isInteger(data.others_in_flight) && data.others_in_flight > 0) {
+        const others = data.others_in_flight === 1 ? "1 other reply" : `${data.others_in_flight} other replies`;
+        text = `This node is also busy with ${others}, so yours may wait. ${text}`;
     }
     if (Number.isFinite(data.prompt_tokens) && Number.isFinite(data.prompt_token_limit)) {
         const size = (n) => Math.round(n).toLocaleString("en-US");

@@ -2366,12 +2366,12 @@ def chat_prompt_key(model_id: str, conversation_id: str, project_id: Optional[st
     return None if project_id else f"{model_id}\n{conversation_id}"
 
 async def waiting_status(
-    node: NodeConfig, model_id: str, messages: List[Dict], queue_ahead: int, prefix_cached: bool,
+    node: NodeConfig, model_id: str, messages: List[Dict], others_in_flight: int, prefix_cached: bool,
 ) -> dict:
     """The stream's first event (DL-UX-01), with the DL-ROUTE hints that apply.
 
-    ``model_loaded`` when the node answered ``/api/ps`` (03), ``queue_ahead`` when other
-    replies are already running on the node, which serves one at a time (04), and
+    ``model_loaded`` when the node answered ``/api/ps`` (03), ``others_in_flight`` when the node
+    is busy with other replies and serves one at a time (04; a count, not a queue position), and
     ``prompt_tokens``/``prompt_token_limit`` when the prompt is over the node's limit (02).
     A follow-up in the conversation the node last served, with the model still loaded and
     nothing ahead, reads only its new message (Ollama reuses the cached prefix), so only
@@ -2381,9 +2381,9 @@ async def waiting_status(
     loaded = await ollama_loaded_models(node.url, timeout=NODE_PS_TIMEOUT)
     if loaded is not None:
         status["model_loaded"] = model_is_loaded(model_id, loaded)
-    if queue_ahead:
-        status["queue_ahead"] = queue_ahead
-    warm = prefix_cached and status.get("model_loaded") is True and not queue_ahead
+    if others_in_flight:
+        status["others_in_flight"] = others_in_flight
+    warm = prefix_cached and status.get("model_loaded") is True and not others_in_flight
     status.update(prompt_size_warning(node, model_id, messages[-1:] if warm else messages) or {})
     return {**status, "done": False}
 
@@ -4641,9 +4641,9 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         # DL-UX-01: additive status events; token, notice, error and terminal events are unchanged.
         # The node counts as busy from here until its reply ends, however it ends (DL-ROUTE-04).
         prefix_cached = prompt_key is not None and NODE_ACTIVITY.last_prompt(node.url) == prompt_key
-        queue_ahead = NODE_ACTIVITY.start(node.url, prompt_key)
+        others_in_flight = NODE_ACTIVITY.start(node.url, prompt_key)
         try:
-            waiting = await waiting_status(node, preferred_model, messages_for_node, queue_ahead, prefix_cached)
+            waiting = await waiting_status(node, preferred_model, messages_for_node, others_in_flight, prefix_cached)
             yield f"data: {json.dumps(waiting)}\n\n"
             async with ollama_chat(
                 node.url, preferred_model, messages_for_node, stream=True, timeout=node_stream_timeout(),

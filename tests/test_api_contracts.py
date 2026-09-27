@@ -1523,7 +1523,7 @@ def test_waiting_status_says_whether_the_model_is_loaded(router_factory):
 
 def test_waiting_status_counts_replies_ahead_and_the_count_is_released(router_factory):
     router, node_url, event, _ = _stream_first_event(router_factory, busy=2)
-    assert event["queue_ahead"] == 2
+    assert event["others_in_flight"] == 2
     assert router.NODE_ACTIVITY.in_flight(node_url) == 2  # this stream finished and left
     router, node_url, _, text = _stream_first_event(router_factory, chat=httpx.Response(500, text="boom"))
     assert '"error": "Node error 500' in text
