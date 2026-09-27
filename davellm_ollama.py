@@ -456,6 +456,11 @@ class OllamaChatStream:
                 break
 
 
+def _check_total_deadline(deadline: Optional[float], request: httpx.Request) -> None:
+    if deadline is not None and time.monotonic() > deadline:
+        raise httpx.ReadTimeout("The node did not finish its reply before the total deadline", request=request)
+
+
 def _endpoint(node_url: str) -> str:
     return f"{node_url.rstrip('/')}{OLLAMA_CHAT_PATH}"
 
@@ -483,9 +488,10 @@ def ollama_chat_complete(
     httpx timeouts are per operation, so ``timeout`` alone lets a node that keeps
     sending a few bytes at a time run forever. ``total_timeout`` (seconds) is the
     wall clock for the whole reply: the body is read in chunks and the remaining
-    budget checked after each one, raising ``httpx.ReadTimeout`` once it is spent.
-    Ollama writes a non-streamed reply in one piece, so a healthy node finishes
-    within the total; a trickling one overshoots by at most one read.
+    budget checked after each one and once more at the end of the body, raising
+    ``httpx.ReadTimeout`` once it is spent, so a reply that finishes late is a
+    timeout, not a success. httpx cannot cut a read short, so a trickling node
+    can hold the caller up to one read past the total before that timeout.
     """
     payload = build_ollama_chat_payload(
         model, messages, stream=False, num_predict=num_predict, temperature=temperature,
@@ -499,10 +505,8 @@ def ollama_chat_complete(
             body = bytearray()
             for chunk in streamed.iter_raw():
                 body.extend(chunk)
-                if deadline is not None and time.monotonic() > deadline:
-                    raise httpx.ReadTimeout(
-                        "The node did not finish its reply before the total deadline", request=streamed.request,
-                    )
+                _check_total_deadline(deadline, streamed.request)
+            _check_total_deadline(deadline, streamed.request)  # the end of the body can arrive late too
     # A fully read Response, so raise_for_status() and the handler's .text work as before.
     response = httpx.Response(
         streamed.status_code, headers=streamed.headers, content=bytes(body), request=streamed.request,

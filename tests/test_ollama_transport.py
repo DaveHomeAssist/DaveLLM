@@ -413,13 +413,14 @@ async def test_bounded_chat_sends_native_tools_payload_and_caps_the_body():
 class _Trickle(httpx.SyncByteStream):
     """A node that keeps each read under the httpx read timeout but never finishes quickly."""
 
-    def __init__(self, pieces, delay):
-        self.pieces, self.delay = pieces, delay
+    def __init__(self, pieces, delay, end_delay=0.0):
+        self.pieces, self.delay, self.end_delay = pieces, delay, end_delay
 
     def __iter__(self):
         for piece in self.pieces:
             time.sleep(self.delay)
             yield piece
+        time.sleep(self.end_delay)
 
 
 class _StalledBody(httpx.AsyncByteStream):
@@ -443,6 +444,11 @@ def test_complete_call_enforces_the_total_across_trickled_reads():
         with pytest.raises(httpx.ReadTimeout, match="total deadline"):
             ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=5, total_timeout=0.2)
         assert time.monotonic() - started < 1.0  # stopped near the total, not after every piece
+
+        # Every byte in time but the end of the body late: still a timeout, not a late success.
+        route.mock(return_value=httpx.Response(200, stream=_Trickle(pieces, 0.0, end_delay=0.3)))
+        with pytest.raises(httpx.ReadTimeout, match="total deadline"):
+            ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=5, total_timeout=0.2)
 
         route.mock(return_value=httpx.Response(200, stream=_Trickle(pieces, 0.0)))
         result = ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=5, total_timeout=0.2)
