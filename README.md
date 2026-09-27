@@ -81,7 +81,7 @@ Open `http://127.0.0.1:8000`. Browser mode prompts for the key and keeps it in `
 
 ## Ollama contract
 
-The UI loads nodes from `GET /nodes`, then loads the selected node's inventory from `GET /nodes/{node_id}/models`. The router queries Ollama `GET /api/tags`. Chat requests are accepted only when `node_id` is a configured node and `model` appears in the loaded inventory for that node. Plain chat (`POST /chat`, `POST /chat/stream`, and conversation-summary generation) uses Ollama's native `POST /api/chat` through the shared helper in `davellm_ollama.py`, which accepts optional `options` (for example `num_ctx`) and `keep_alive`; both default to unset, so node behaviour is unchanged. The bounded tool loop (`POST /tools/agent/run` and the lifecycle run routes) still uses the OpenAI-compatible `POST /v1/chat/completions` because it exchanges tool schemas and `tool_calls` (DL-TRANSPORT-01b). Ollama's OpenAI-compatible endpoint ignores `num_ctx` and `keep_alive` (verified on Ollama 0.33.3). Sampling is unchanged: `/v1` sent `top_p` 1.0, so the native payload sends `top_p` 1.0 too instead of the model's Modelfile default. Request-field mapping is in [INTEGRATION.md](INTEGRATION.md).
+The UI loads nodes from `GET /nodes`, then loads the selected node's inventory from `GET /nodes/{node_id}/models`. The router queries Ollama `GET /api/tags`. Chat requests are accepted only when `node_id` is a configured node and `model` appears in the loaded inventory for that node. Plain chat (`POST /chat`, `POST /chat/stream`, and conversation-summary generation) uses Ollama's native `POST /api/chat` through the shared helper in `davellm_ollama.py`, which sends the router's own `num_ctx` (the model's window capped at `DAVE_CHAT_NUM_CTX`, default `16384`) and `keep_alive` (`DAVE_CHAT_KEEP_ALIVE`, default `30m`, for chats in a conversation), so a node's own default context no longer decides plain chat. The bounded tool loop (`POST /tools/agent/run` and the lifecycle run routes) still uses the OpenAI-compatible `POST /v1/chat/completions` because it exchanges tool schemas and `tool_calls` (DL-TRANSPORT-01b). Ollama's OpenAI-compatible endpoint ignores `num_ctx` and `keep_alive` (verified on Ollama 0.33.3). Sampling is unchanged: `/v1` sent `top_p` 1.0, so the native payload sends `top_p` 1.0 too instead of the model's Modelfile default. Request-field mapping is in [INTEGRATION.md](INTEGRATION.md).
 
 The repository intentionally contains no real node addresses or verified model inventory. Cluster reachability and installed models remain runtime-dependent.
 
@@ -147,7 +147,9 @@ python scripts/project_context_cli.py restore <project-id> 2
 Project-context configuration:
 
 - `DAVE_MODEL_CONTEXT_DEFAULT` — fallback model window, default `32768`.
-- `DAVE_MODEL_CONTEXT_WINDOWS` — JSON object of model IDs to context-window tokens. These windows size the project-context budget only; they are not sent to Ollama as `num_ctx`.
+- `DAVE_MODEL_CONTEXT_WINDOWS` — JSON object of model IDs to context-window tokens. For plain chat the router sends each window, capped at `DAVE_CHAT_NUM_CTX`, to Ollama as `num_ctx`, and sizes the project-context budget with the same capped number.
+- `DAVE_CHAT_NUM_CTX` — largest context the router requests for plain chat, default `16384` (minimum 512).
+- `DAVE_CHAT_KEEP_ALIVE` — how long Ollama keeps a model loaded after a chat in a conversation, default `30m`; empty uses the server default.
 - `DAVE_PROJECT_CONTEXT_TOKENS` — new-project context budget, default `16384`.
 - `DAVE_BRAIN_COMPACT_TOKENS` — new-project compaction threshold, default `3072`.
 - `DAVE_BRAIN_RECOVERY_DAYS` — soft-delete recovery window, default `30`.
