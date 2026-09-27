@@ -1394,3 +1394,35 @@ def test_node_deadline_settings_fall_back_on_bad_values(router_factory, monkeypa
     router, _, _ = router_factory()
     assert router.node_complete_timeout().as_dict() == httpx.Timeout(900, connect=3.5).as_dict()
     assert router.node_stream_timeout().as_dict() == httpx.Timeout(None, connect=3.5).as_dict()
+    assert router.HARNESS.model_timeout_seconds == 900  # the tool loop's per-step wall clock
+    monkeypatch.setenv("DAVE_NODE_TOTAL_TIMEOUT", "inf")
+    router, _, _ = router_factory()
+    assert router.NODE_TOTAL_TIMEOUT == 600.0
+
+
+def test_plain_chat_and_tool_loop_get_the_wall_clock_total(router_factory, monkeypatch):
+    router, client, _ = router_factory(tools=True)
+    assert router.HARNESS.model_timeout_seconds == router.NODE_TOTAL_TIMEOUT == 600.0
+    seen = {}
+
+    def fake_chat(*args, **kwargs):
+        seen["chat"] = kwargs
+        raise httpx.ReadTimeout("The node did not finish its reply before the total deadline")
+
+    async def fake_loop(*args, **kwargs):
+        seen["loop"] = kwargs
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(router, "ollama_chat", fake_chat)
+    monkeypatch.setattr(router, "run_executor_loop", fake_loop)
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        response = client.post("/chat", headers=AUTH, json=chat_body("total"))
+        assert response.status_code == 504
+        assert seen["chat"]["total_timeout"] == 600.0
+        with pytest.raises(RuntimeError, match="stop here"):
+            client.post("/tools/agent/run", headers=AUTH, json={
+                "messages": [{"role": "user", "content": "hi"}], "node_id": "node-test", "model": MODEL_ID,
+            })
+    assert seen["loop"]["model_timeout_seconds"] == 600.0
