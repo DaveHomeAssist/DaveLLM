@@ -50,7 +50,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Iterable, Literal, Mapping, Optional, Sequence, Union, overload
@@ -492,11 +491,6 @@ def model_is_loaded(model_id: str, loaded: Iterable[str]) -> bool:
     return canonical(model_id) in {canonical(name) for name in loaded}
 
 
-def _check_total_deadline(deadline: Optional[float], request: httpx.Request) -> None:
-    if deadline is not None and time.monotonic() > deadline:
-        raise httpx.ReadTimeout("The node did not finish its reply before the total deadline", request=request)
-
-
 def _endpoint(node_url: str) -> str:
     return f"{node_url.rstrip('/')}{OLLAMA_CHAT_PATH}"
 
@@ -514,7 +508,7 @@ def ollama_chat_complete(
     think: Optional[Think] = None,
     total_timeout: Optional[float] = None,
 ) -> OllamaChatResult:
-    """One blocking ``/api/chat`` request on ``httpx.Client(timeout)``.
+    """One blocking ``/api/chat`` request, cancellable when a total is set.
 
     Blocking by design: ``chat`` runs in FastAPI's threadpool and the summary
     is synchronous. From async code, wrap it in ``asyncio.to_thread`` (01b).
@@ -523,30 +517,37 @@ def ollama_chat_complete(
 
     httpx timeouts are per operation, so ``timeout`` alone lets a node that keeps
     sending a few bytes at a time run forever. ``total_timeout`` (seconds) is the
-    wall clock for the whole reply: the body is read in chunks and the remaining
-    budget checked after each one and once more at the end of the body, raising
-    ``httpx.ReadTimeout`` once it is spent, so a reply that finishes late is a
-    timeout, not a success. httpx cannot cut a read short, so a trickling node
-    can hold the caller up to one read past the total before that timeout.
+    wall clock for the whole reply, including headers and body completion.
+    One async deadline cancels an in-progress read; it does not restart when
+    bytes arrive or leave a blocking request running in a background thread.
     """
     payload = build_ollama_chat_payload(
         model, messages, stream=False, num_predict=num_predict, temperature=temperature,
         options=options, keep_alive=keep_alive, think=think,
     )
-    deadline = None if total_timeout is None else time.monotonic() + total_timeout
-    with httpx.Client(timeout=timeout) as client:
-        with client.stream(
-            "POST", _endpoint(node_url), json=payload, headers={"Accept-Encoding": "identity"},
-        ) as streamed:
-            body = bytearray()
-            for chunk in streamed.iter_raw():
-                body.extend(chunk)
-                _check_total_deadline(deadline, streamed.request)
-            _check_total_deadline(deadline, streamed.request)  # the end of the body can arrive late too
-    # A fully read Response, so raise_for_status() and the handler's .text work as before.
-    response = httpx.Response(
-        streamed.status_code, headers=streamed.headers, content=bytes(body), request=streamed.request,
-    )
+    async def request() -> httpx.Response:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            # post() includes the entire body read, even for a non-2xx response.
+            return await client.post(
+                _endpoint(node_url), json=payload, headers={"Accept-Encoding": "identity"},
+            )
+
+    async def complete() -> httpx.Response:
+        try:
+            return await asyncio.wait_for(request(), total_timeout)
+        except asyncio.TimeoutError:
+            raise httpx.ReadTimeout(
+                "The node did not finish its reply before the total deadline",
+                request=httpx.Request("POST", _endpoint(node_url)),
+            ) from None
+
+    if total_timeout is None:
+        # The background summarizer calls this synchronous path from its event
+        # loop. Preserve that path; asyncio.run() is only for deadline-bound chat.
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(_endpoint(node_url), json=payload, headers={"Accept-Encoding": "identity"})
+    else:
+        response = asyncio.run(complete())
     response.raise_for_status()
     try:
         data = response.json()

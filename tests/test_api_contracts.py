@@ -998,7 +998,9 @@ def test_chat_rejects_openai_shaped_body(router_factory):
     assert router.MODEL_HEALTH == {}  # a malformed body is not a node failure
 
 
-def test_summary_uses_native_chat_and_falls_back(router_factory):
+@pytest.mark.asyncio
+async def test_summary_uses_native_chat_and_falls_back(router_factory):
+    # Match background_summarizer: this synchronous helper is called on an active event loop.
     router, _, _ = router_factory()
     router.MODEL_INVENTORY["node-test"] = {MODEL_ID}
     older = [{"role": "user", "content": "a"}] * 3
@@ -1623,4 +1625,3 @@ def test_a_long_conversation_is_never_treated_as_warm(router_factory):
     assert router.chat_prompt_key("m", "c", None, short) == "m\nc"
     assert router.chat_prompt_key("m", "c", None, short + [{"role": "user", "content": "q"}]) is None
     assert router.chat_prompt_key("m", "c", "project-1", short[:2]) is None
-
