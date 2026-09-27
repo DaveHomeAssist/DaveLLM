@@ -150,6 +150,10 @@ Project-context configuration:
 - `DAVE_MODEL_CONTEXT_WINDOWS` — JSON object of model IDs to context-window tokens. For plain chat the router sends each window, capped at `DAVE_CHAT_NUM_CTX`, to Ollama as `num_ctx`, and sizes plain chat's project-context budget (and the context preview) with the same capped number. Agent runs, which still use `/v1` and send no `num_ctx`, budget with the uncapped window.
 - `DAVE_CHAT_NUM_CTX` — largest context the router requests for plain chat, default `16384`; values below `8192` are raised to `8192`, the smallest window that leaves room for project context after the output and safety reserves.
 - `DAVE_CHAT_KEEP_ALIVE` — how long Ollama keeps a model loaded after a chat in a conversation, default `30m`; empty uses the server default.
+- `DAVE_NODE_CONNECT_TIMEOUT` — seconds to connect to a node before giving up, default `10`.
+- `DAVE_NODE_FIRST_CHUNK_TIMEOUT` — seconds a streamed chat may wait for its first line (model load plus prompt reading), default `300`.
+- `DAVE_NODE_IDLE_TIMEOUT` — seconds a streamed chat may wait between lines once tokens flow, default `120`.
+- `DAVE_NODE_TOTAL_TIMEOUT` — seconds for a whole non-streaming reply (`/chat` and each tool-loop model turn), default `600`.
 - `DAVE_PROJECT_CONTEXT_TOKENS` — new-project context budget, default `16384`.
 - `DAVE_BRAIN_COMPACT_TOKENS` — new-project compaction threshold, default `3072`.
 - `DAVE_BRAIN_RECOVERY_DAYS` — soft-delete recovery window, default `30`.
