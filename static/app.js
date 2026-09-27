@@ -3245,6 +3245,12 @@ async function sendMessage() {
                     // A reload would replace the local notice with server history, which has no reply to show.
                     if (!sawNotice && convo.title === "New Conversation") {
                         await loadConversationHistory(state.sessionId);
+                        // Server history has no client-only stats: carry them over to the reloaded reply.
+                        const reloaded = state.conversations[state.sessionId]?.messages || [];
+                        const reply = reloaded[reloaded.length - 1];
+                        if (streamingMsg.stats && reply && reply.role === "assistant") {
+                            reply.stats = streamingMsg.stats;
+                        }
                         renderConversationList();
                     }
                     renderMessages();
