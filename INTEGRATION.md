@@ -87,6 +87,22 @@ Plain chat sends no tools and runs none. When the node replies with blank conten
 
 ### `POST /chat/stream`
 
+Progress events (DL-UX-01). The stream opens with a status event, before the node has answered:
+
+```text
+data: {"status":"waiting","done":false}
+```
+
+If the model sends reasoning before its first token, one `{"status":"thinking","done":false}` follows. The reasoning text itself is never forwarded. The renderer shows the status in the empty reply bubble until the first token arrives.
+
+After a successful reply, just before the terminal event, the router sends the reply's speed. It comes from Ollama's `done` line plus the router's own time to first token. Fields the node did not report are left out:
+
+```text
+data: {"stats":{"gen_tokens":256,"gen_tps":58.2,"prompt_tokens":1200,"prompt_tps":2600.0,"load_s":1.5,"total_s":6.1,"ttft_s":1.9},"done":false}
+```
+
+No `stats` event follows an error or a tool-call-only notice. The renderer shows the stats as one line under the reply. They are not persisted, so reloading the conversation drops them. Clients that do not know these events can ignore any event without `token`, `notice` or `error`.
+
 Success token:
 
 ```text
