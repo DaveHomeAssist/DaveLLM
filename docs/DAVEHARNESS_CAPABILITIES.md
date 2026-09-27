@@ -8,9 +8,9 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 
 ## Summary
 
-- 21 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 15 from `DAVE_ENABLE_EXTENDED_TOOLS`.
+- 23 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 17 from `DAVE_ENABLE_EXTENDED_TOOLS`.
 - Exact-call approval required: `file.append`, `file.edit`, `file.write`, `shell.exec`.
-- Tools by permission: `execute_process` 1; `public_network` 1; `read` 4; `read_files` 10; `read_system` 2; `write_files` 3.
+- Tools by permission: `execute_process` 1; `public_network` 3; `read` 4; `read_files` 10; `read_system` 2; `write_files` 3.
 - Every tool schema rejects unknown arguments (`additionalProperties: false`).
 - Definition fingerprints are not listed: they depend on the checkout path and Python version. `tests/fixtures/davellm/tool_catalog.json` pins their portable inputs.
 
@@ -20,7 +20,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 |---|---|---|---|
 | `DAVE_ENABLE_TOOLS` | `false` | `file.append`, `file.read`, `file.write`, `system.info`, `web.fetch` | Turns on tool execution and the core tools. |
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | `shell.exec` | Registers shell.exec. Execution still needs DAVE_ENABLE_TOOLS. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | `chat.search`, `cluster.status`, `file.edit`, `file.list`, `file.read_lines`, `file.search`, `git.diff`, `git.log`, `git.show`, `git.status`, `md.outline`, `md.section`, `project.artifacts`, `project.brain.read`, `project.notepad.read` | Registers the extended tools: bounded reads, plus file.edit, which needs approval for every call. Honored only with DAVE_ENABLE_TOOLS. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | `chat.search`, `cluster.status`, `file.edit`, `file.list`, `file.read_lines`, `file.search`, `git.diff`, `git.log`, `git.show`, `git.status`, `md.outline`, `md.section`, `project.artifacts`, `project.brain.read`, `project.notepad.read`, `web.read`, `web.search` | Registers the extended tools: bounded reads, web.search and web.read, plus file.edit, which needs approval for every call. Honored only with DAVE_ENABLE_TOOLS. |
 | `DAVE_TOOL_ROOTS` | `[]` | — | JSON array of absolute folders that file and Git tools may use. |
 
 ## Tools
@@ -48,6 +48,8 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`shell.exec`](#shellexec) | `DAVE_ENABLE_SHELL_TOOL` | `execute_process` | exact call | `6` | `bounded` | sync, run context | **`command`** |
 | [`system.info`](#systeminfo) | `DAVE_ENABLE_TOOLS` | `read_system` | — | `10.0` | `bounded` | sync | `type` |
 | [`web.fetch`](#webfetch) | `DAVE_ENABLE_TOOLS` | `public_network` | — | `10.0` | `bounded` | async | **`url`** |
+| [`web.read`](#webread) | `DAVE_ENABLE_EXTENDED_TOOLS` | `public_network` | — | `10.0` | `bounded` | async | **`url`** |
+| [`web.search`](#websearch) | `DAVE_ENABLE_EXTENDED_TOOLS` | `public_network` | — | `10.0` | `bounded` | async | **`query`**, `max_results` |
 
 Required arguments are in bold. Every tool also needs `DAVE_ENABLE_TOOLS` to run.
 
@@ -238,6 +240,23 @@ Fetch a bounded public HTTP or HTTPS text response.
 |---|---|---|---|---|
 | `url` | string | yes | minLength `1` | — |
 
+### web.read
+
+Read a public web page as plain text, with scripts, styles and markup removed; for example a web.search result. Private and local addresses are refused.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `url` | string | yes | maxLength `4096`, minLength `1` | An http or https URL. |
+
+### web.search
+
+Search the web through this router's private search service and return the top results as title, URL and snippet. Open a result with web.read.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `query` | string | yes | maxLength `500`, minLength `1` | What to search for. |
+| `max_results` | integer or null | no | default `5`, maximum `10`, minimum `1` | How many results to return. |
+
 ## Runs
 
 ### Lifecycle run request
@@ -301,7 +320,7 @@ DaveHarness's default ceiling for any JSON payload it admits.
 | `max_harness_input_bytes` | `1000000` |
 | `max_harness_model_response_bytes` | `1000000` |
 | `harness_store_headroom_bytes` | `4000000` |
-| `async_handler_allowlist` | `["web.fetch"]` |
+| `async_handler_allowlist` | `["web.fetch", "web.read", "web.search"]` |
 | `harness_store.max_runs` | `32` |
 | `harness_store.max_bytes` | `268435456` |
 | `harness_store.ttl_seconds` | `3600` |
@@ -502,3 +521,16 @@ Public constants each module defines, including the fixed refusal messages.
 | `NO_CHANGE` | `old_text and new_text are the same` |
 | `TEMP_PREFIX` | `.davellm-edit-` |
 | `TEXT_NOT_FOUND` | `old_text was not found in the file; nothing was written` |
+
+### davellm_web
+
+| Name | Value |
+|---|---|
+| `HTML_TYPES` | `["text/html", "application/xhtml+xml"]` |
+| `REDIRECT_CODES` | `[301, 302, 303, 307, 308]` |
+| `TEXT_TYPES` | `["text/plain", "application/json", "text/markdown", "text/csv"]` |
+| `WEB_SEARCH_DEFAULT_RESULTS` | `5` |
+| `WEB_SEARCH_MAX_QUERY_CHARS` | `500` |
+| `WEB_SEARCH_MAX_RESULTS` | `10` |
+| `WEB_SNIPPET_CHARS` | `300` |
+| `WEB_TIMEOUT_SECONDS` | `10.0` |

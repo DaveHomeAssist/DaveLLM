@@ -322,12 +322,36 @@
         "wc"
       ],
       "SHELL_OUTPUT_LIMIT": 2000
+    },
+    "davellm_web": {
+      "HTML_TYPES": [
+        "text/html",
+        "application/xhtml+xml"
+      ],
+      "REDIRECT_CODES": [
+        301,
+        302,
+        303,
+        307,
+        308
+      ],
+      "TEXT_TYPES": [
+        "text/plain",
+        "application/json",
+        "text/markdown",
+        "text/csv"
+      ],
+      "WEB_SEARCH_DEFAULT_RESULTS": 5,
+      "WEB_SEARCH_MAX_QUERY_CHARS": 500,
+      "WEB_SEARCH_MAX_RESULTS": 10,
+      "WEB_SNIPPET_CHARS": 300,
+      "WEB_TIMEOUT_SECONDS": 10.0
     }
   },
   "flags": {
     "DAVE_ENABLE_EXTENDED_TOOLS": {
       "default": false,
-      "description": "Registers the extended tools: bounded reads, plus file.edit, which needs approval for every call. Honored only with DAVE_ENABLE_TOOLS.",
+      "description": "Registers the extended tools: bounded reads, web.search and web.read, plus file.edit, which needs approval for every call. Honored only with DAVE_ENABLE_TOOLS.",
       "tools": [
         "chat.search",
         "cluster.status",
@@ -343,7 +367,9 @@
         "md.section",
         "project.artifacts",
         "project.brain.read",
-        "project.notepad.read"
+        "project.notepad.read",
+        "web.read",
+        "web.search"
       ]
     },
     "DAVE_ENABLE_SHELL_TOOL": {
@@ -373,7 +399,9 @@
   "generated_by": "scripts/generate_capabilities_manifest.py",
   "host": {
     "async_handler_allowlist": [
-      "web.fetch"
+      "web.fetch",
+      "web.read",
+      "web.search"
     ],
     "harness_store": {
       "max_bytes": 268435456,
@@ -1338,6 +1366,74 @@
       "permission": "public_network",
       "requires_flags": [
         "DAVE_ENABLE_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "web.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a public web page as plain text, with scripts, styles and markup removed; for example a web.search result. Private and local addresses are refused.",
+      "family": "web",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "description": "An http or https URL.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
+      ],
+      "timeout_seconds": 10.0
+    },
+    "web.search": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Search the web through this router's private search service and return the top results as title, URL and snippet. Open a result with web.read.",
+      "family": "web",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_results": {
+            "default": 5,
+            "description": "How many results to return.",
+            "maximum": 10,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "query": {
+            "description": "What to search for.",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_EXTENDED_TOOLS"
       ],
       "timeout_seconds": 10.0
     }

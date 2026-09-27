@@ -55,8 +55,24 @@ def test_macos_launcher_enables_tools_but_not_shell_or_roots():
 
     # Tools are on for the desktop app (overridable); the shell tool and file roots stay opt-in.
     assert 'DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}"' in launcher
+    assert 'DAVE_ENABLE_EXTENDED_TOOLS="${DAVE_ENABLE_EXTENDED_TOOLS:-true}"' in launcher
     assert "DAVE_ENABLE_SHELL_TOOL" not in launcher
     assert "DAVE_TOOL_ROOTS" not in launcher
+
+
+def test_macos_launcher_adds_web_search_only_when_searxng_is_healthy():
+    launcher = LAUNCHER.read_text()
+
+    for required in (
+        'search_candidate="${DAVE_SEARCH_URL:-http://${dominic_ip}:${DAVE_SEARCH_PORT:-8890}}"',
+        '"${search_candidate}/healthz"',
+        'search_url="$search_candidate"',
+        "optional web search unavailable",
+        'DAVE_SEARCH_URL="$search_url"',
+    ):
+        assert required in launcher
+    # The log line never carries the search address.
+    assert not re.search(r"unavailable[^\n]*search_(?:url|candidate)", launcher)
 
 
 def test_macos_installer_generates_a_key_and_one_click_app_without_printing_it():

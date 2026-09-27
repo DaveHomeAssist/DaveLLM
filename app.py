@@ -1299,7 +1299,7 @@ def tool_shell_exec(params: Dict, context=None):
         return ToolResult(tool="shell.exec", status="error", result="", error=str(e))
 
 
-ASYNC_TOOL_HANDLER_ALLOWLIST = frozenset({"web.fetch"})
+ASYNC_TOOL_HANDLER_ALLOWLIST = frozenset({"web.fetch", "web.search", "web.read"})
 TOOL_REGISTRY = ToolRegistry(
     async_handler_allowlist=ASYNC_TOOL_HANDLER_ALLOWLIST,
 )
@@ -1490,6 +1490,35 @@ from davellm_edit import (  # PR-06 approved edits, kept below the PR-05 handler
 def tool_file_edit(params: Dict) -> ToolResult:
     return _run_extended_file_tool("file.edit", edit_file, params)
 
+
+from davellm_web import (  # web search and readable pages, kept below the PR-06 handler
+    WEB_SEARCH_DEFAULT_RESULTS, WEB_SEARCH_MAX_QUERY_CHARS, WEB_SEARCH_MAX_RESULTS,
+    WebToolError, normalize_search_url, read_page, search_web,
+)
+
+SEARCH_URL = normalize_search_url(os.getenv("DAVE_SEARCH_URL"))
+
+
+async def _run_web_tool(name: str, work) -> ToolResult:
+    """Only WebToolError messages reach the model; anything else becomes a fixed message."""
+    try:
+        result = await work
+    except WebToolError as exc:
+        return ToolResult(tool=name, status="error", result="", error=str(exc))
+    except Exception:
+        return ToolResult(tool=name, status="error", result="", error=f"{name} failed")
+    return ToolResult(tool=name, status="success", result=result)
+
+
+async def tool_web_search(params: Dict) -> ToolResult:
+    return await _run_web_tool("web.search", search_web(SEARCH_URL, params, output_limit=MAX_TOOL_OUTPUT))
+
+
+async def tool_web_read(params: Dict) -> ToolResult:
+    return await _run_web_tool("web.read", read_page(
+        params, validate_public_url=validate_public_url, max_bytes=MAX_WEB_FETCH_BYTES,
+        max_redirects=MAX_WEB_FETCH_REDIRECTS, output_limit=MAX_TOOL_OUTPUT,
+    ))
 
 from davellm_public_http import public_http_client, public_stream
 
@@ -1835,6 +1864,55 @@ def extended_tool_definitions() -> List[ToolDefinition]:
             permission="write_files",
             approval_required=True,
             cancellation="bounded",
+        ),
+        ToolDefinition(
+            name="web.search",
+            description=(
+                "Search the web through this router's private search service and return the top results "
+                "as title, URL and snippet. Open a result with web.read."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string", "minLength": 1, "maxLength": WEB_SEARCH_MAX_QUERY_CHARS,
+                        "description": "What to search for.",
+                    },
+                    "max_results": _optional({
+                        "type": "integer", "minimum": 1, "maximum": WEB_SEARCH_MAX_RESULTS,
+                        "default": WEB_SEARCH_DEFAULT_RESULTS,
+                        "description": "How many results to return.",
+                    }),
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            handler=tool_web_search,
+            permission="public_network",
+            cancellation="bounded",
+            async_handler=True,
+        ),
+        ToolDefinition(
+            name="web.read",
+            description=(
+                "Read a public web page as plain text, with scripts, styles and markup removed; for example a "
+                "web.search result. Private and local addresses are refused."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string", "minLength": 1, "maxLength": 4096,
+                        "description": "An http or https URL.",
+                    },
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            handler=tool_web_read,
+            permission="public_network",
+            cancellation="bounded",
+            async_handler=True,
         ),
     ]
 

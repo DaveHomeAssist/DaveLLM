@@ -34,10 +34,29 @@ Tools stay off unless configured. Every file tool is confined to the listed abso
 ```bash
 export DAVE_ENABLE_TOOLS=true
 export DAVE_TOOL_ROOTS='["/absolute/path/to/project"]'
-export DAVE_ENABLE_EXTENDED_TOOLS=true   # optional: file, Markdown, Git, and native read tools, plus approved file.edit
+export DAVE_ENABLE_EXTENDED_TOOLS=true   # optional: file, Markdown, Git, native read and web tools, plus approved file.edit
+export DAVE_SEARCH_URL='http://<searxng-host>:8890'   # optional: enables web.search
 ```
 
 `DAVE_ENABLE_SHELL_TOOL=true` separately enables `shell.exec`. See [DaveLLM tools](DAVELLM_TOOLS.md) for arguments, limits, and protected paths.
+
+### Web search
+
+`web.search` needs a SearXNG instance the router can reach, with the JSON format enabled. A minimal `settings.yml`:
+
+```yaml
+use_default_settings: true
+server:
+  secret_key: "<generate on the host, e.g. openssl rand -hex 32>"
+  limiter: false          # private instance used only by the router
+  image_proxy: false
+  public_instance: false
+search:
+  safe_search: 1
+  formats: [html, json]
+```
+
+Run it with the host's other containers (image `searxng/searxng`, container port `8080`, config mounted at `/etc/searxng`), then check `curl http://<searxng-host>:8890/healthz` and `curl 'http://<searxng-host>:8890/search?q=test&format=json'` from the router host. The macOS launcher probes `/healthz` on Dominic at port `8890` (override with `DAVE_SEARCH_URL` or `DAVE_SEARCH_PORT`) and leaves search off, with one log line, when it does not answer.
 
 ## Launch the Electron client
 

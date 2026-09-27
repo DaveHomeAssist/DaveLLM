@@ -144,3 +144,8 @@ def test_edit_handler_sits_below_the_native_handlers():
     code = BASELINE["extended_handler_code"]
     native = ("project.notepad.read", "project.brain.read", "project.artifacts", "chat.search", "cluster.status")
     assert code["file.edit"]["first_line"] > max(code[name]["last_line"] for name in native)
+
+
+def test_web_handlers_sit_below_the_edit_handler():
+    code = BASELINE["extended_handler_code"]
+    assert min(code[name]["first_line"] for name in ("web.search", "web.read")) > code["file.edit"]["last_line"]

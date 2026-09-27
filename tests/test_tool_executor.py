@@ -314,6 +314,9 @@ async def test_executor_pauses_before_unapproved_mutation():
     assert executed is False
 
 
+EXTENDED_ASYNC_TOOLS = frozenset({"web.search", "web.read"})
+
+
 def test_first_party_handlers_require_named_async_opt_in(router_factory):
     router, _client, _ = router_factory(tools=True)
     async_names = set()
@@ -327,7 +330,7 @@ def test_first_party_handlers_require_named_async_opt_in(router_factory):
             async_names.add(name)
             assert name in router.ASYNC_TOOL_HANDLER_ALLOWLIST
 
-    assert async_names == router.ASYNC_TOOL_HANDLER_ALLOWLIST
+    assert async_names == router.ASYNC_TOOL_HANDLER_ALLOWLIST - EXTENDED_ASYNC_TOOLS
     assert inspect.iscoroutinefunction(router.tool_web_fetch)
     for handler in (
         router.tool_system_info,
@@ -806,3 +809,14 @@ def test_resume_endpoint_preserves_auth_and_tools_default_off(router_factory):
 
     _, enabled_client, _ = router_factory(tools=True)
     assert enabled_client.post("/tools/agent/resume", json=request).status_code == 401
+
+
+def test_extended_web_tools_are_async_and_allowlisted(router_factory, monkeypatch):
+    monkeypatch.setenv("DAVE_ENABLE_EXTENDED_TOOLS", "true")
+    router, _client, _ = router_factory(tools=True)
+    for name in EXTENDED_ASYNC_TOOLS:
+        definition = router.TOOL_REGISTRY.get(name)
+        assert definition is not None, name
+        assert definition.async_handler is True
+        assert inspect.iscoroutinefunction(definition.handler)
+        assert name in router.ASYNC_TOOL_HANDLER_ALLOWLIST

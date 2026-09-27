@@ -284,7 +284,8 @@ Conversation JSON and core project metadata remain compatibility stores. A full 
 | `DAVE_ENABLE_TOOLS` | No | Enables the bounded tool registry; false. |
 | `DAVE_TOOL_ROOTS` | With file tools | JSON array of explicit absolute roots. |
 | `DAVE_ENABLE_SHELL_TOOL` | No | Second opt-in for `shell.exec`; false. |
-| `DAVE_ENABLE_EXTENDED_TOOLS` | No | Opt-in for the read-only `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, `git.show`, `project.notepad.read`, `project.brain.read`, `project.artifacts`, `chat.search`, and `cluster.status`, plus `file.edit`, which needs exact-call approval for every call; honored only with `DAVE_ENABLE_TOOLS`; false. See `docs/DAVELLM_TOOLS.md`. |
+| `DAVE_ENABLE_EXTENDED_TOOLS` | No | Opt-in for the read-only `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, `git.show`, `project.notepad.read`, `project.brain.read`, `project.artifacts`, `chat.search`, `cluster.status`, `web.search`, and `web.read`, plus `file.edit`, which needs exact-call approval for every call; honored only with `DAVE_ENABLE_TOOLS`; false. See `docs/DAVELLM_TOOLS.md`. |
+| `DAVE_SEARCH_URL` | No | Base URL of a SearXNG instance with JSON output enabled, used only by `web.search`; operator-set and not subject to the public-address check. Unset means `web.search` reports that search is not configured. |
 | `DAVE_WHISPER_BIN` | No | Alternate `whisper-cli` path. |
 | `DAVE_WHISPER_MODEL` | No | Alternate Whisper model path. |
 | `FFMPEG_BIN` | No | Alternate ffmpeg path. |
@@ -362,7 +363,7 @@ A DaveLLM release is acceptable only when all applicable checks below pass:
 Repository verification commands:
 
 ```bash
-python -m py_compile app.py project_context.py davellm_ollama.py scripts/project_context_cli.py tool_executor.py
+python -m py_compile app.py project_context.py davellm_ollama.py davellm_web.py scripts/project_context_cli.py tool_executor.py
 python -m compileall -q daveharness
 python -m pytest -q
 node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js

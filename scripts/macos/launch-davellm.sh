@@ -102,6 +102,15 @@ nodes_json="$($JQ_BIN -cn \
         {id: "walter", name: "Walter", url: $walter_url}
     ] + if $duncan_node == null then [] else [$duncan_node] end)')"
 
+# Optional web search: a SearXNG instance on Dominic. Never a startup dependency.
+search_url=""
+search_candidate="${DAVE_SEARCH_URL:-http://${dominic_ip}:${DAVE_SEARCH_PORT:-8890}}"
+if /usr/bin/curl --fail --silent --max-time 4 "${search_candidate}/healthz" >/dev/null 2>&1; then
+    search_url="$search_candidate"
+else
+    print -u2 -- "DaveLLM launcher: optional web search unavailable"
+fi
+
 if /usr/sbin/lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
     fail "TCP port 8000 is already in use; stop the existing DaveLLM/browser-mode process first"
 fi
@@ -114,4 +123,6 @@ exec /usr/bin/env \
     DAVE_NODES="$nodes_json" \
     DAVE_DATA_DIR="$DATA_DIR" \
     DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}" \
+    DAVE_ENABLE_EXTENDED_TOOLS="${DAVE_ENABLE_EXTENDED_TOOLS:-true}" \
+    DAVE_SEARCH_URL="$search_url" \
     "$NPM_BIN" start

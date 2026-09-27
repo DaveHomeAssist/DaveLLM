@@ -43,7 +43,9 @@ def dns_answer(address, port):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scheme", ["http", "https"])
-async def test_fetch_pins_dns_and_preserves_host_and_tls_identity(router_factory, monkeypatch, scheme):
+@pytest.mark.parametrize("tool", ["web.fetch", "web.read"])
+async def test_fetch_pins_dns_and_preserves_host_and_tls_identity(router_factory, monkeypatch, scheme, tool):
+    monkeypatch.setenv("DAVE_ENABLE_EXTENDED_TOOLS", "true")
     router, _, _ = router_factory(tools=True)
     # An environment proxy must never receive or independently resolve a public-tool URL.
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9999")
@@ -61,7 +63,7 @@ async def test_fetch_pins_dns_and_preserves_host_and_tls_identity(router_factory
 
     monkeypatch.setattr(socket, "getaddrinfo", dns)
     monkeypatch.setattr(httpcore.AnyIOBackend, "connect_tcp", connect)
-    result = await router.tool_web_fetch({"url": f"{scheme}://rebind.test:8443/page"})
+    result = await router.TOOL_REGISTRY.get(tool).handler({"url": f"{scheme}://rebind.test:8443/page"})
     assert result.status == "success", result
     assert result.result == "public page"
     assert lookups == ["rebind.test"]
@@ -72,7 +74,9 @@ async def test_fetch_pins_dns_and_preserves_host_and_tls_identity(router_factory
 
 
 @pytest.mark.asyncio
-async def test_redirect_revalidates_same_hostname_before_another_connection(router_factory, monkeypatch):
+@pytest.mark.parametrize("tool", ["web.fetch", "web.read"])
+async def test_redirect_revalidates_same_hostname_before_another_connection(router_factory, monkeypatch, tool):
+    monkeypatch.setenv("DAVE_ENABLE_EXTENDED_TOOLS", "true")
     router, _, _ = router_factory(tools=True)
     lookups, connections = [], []
     wire = WireStream(status=b"302 Found", headers=b"Location: /private\r\n")
@@ -87,7 +91,7 @@ async def test_redirect_revalidates_same_hostname_before_another_connection(rout
 
     monkeypatch.setattr(socket, "getaddrinfo", dns)
     monkeypatch.setattr(httpcore.AnyIOBackend, "connect_tcp", connect)
-    result = await router.tool_web_fetch({"url": "http://rebind.test/public"})
+    result = await router.TOOL_REGISTRY.get(tool).handler({"url": "http://rebind.test/public"})
     assert result.status == "error"
     assert "not public" in result.error
     assert lookups == ["rebind.test", "rebind.test"]
@@ -95,7 +99,9 @@ async def test_redirect_revalidates_same_hostname_before_another_connection(rout
 
 
 @pytest.mark.asyncio
-async def test_mixed_public_private_dns_answers_never_connect(router_factory, monkeypatch):
+@pytest.mark.parametrize("tool", ["web.fetch", "web.read"])
+async def test_mixed_public_private_dns_answers_never_connect(router_factory, monkeypatch, tool):
+    monkeypatch.setenv("DAVE_ENABLE_EXTENDED_TOOLS", "true")
     router, _, _ = router_factory(tools=True)
     monkeypatch.setattr(socket, "getaddrinfo", lambda host, port, **kw: [
         dns_answer("93.184.216.34", port), dns_answer("100.64.0.1", port),
@@ -105,7 +111,7 @@ async def test_mixed_public_private_dns_answers_never_connect(router_factory, mo
         pytest.fail("mixed DNS answers must be refused before connecting")
 
     monkeypatch.setattr(httpcore.AnyIOBackend, "connect_tcp", forbidden)
-    result = await router.tool_web_fetch({"url": "http://mixed.test/page"})
+    result = await router.TOOL_REGISTRY.get(tool).handler({"url": "http://mixed.test/page"})
     assert result.status == "error"
     assert "not public" in result.error
 
