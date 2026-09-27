@@ -36,6 +36,9 @@ supplies them, and DaveLLM never did. The native endpoint would apply the
 model's Modelfile default for ``top_p``, so the payload builder sends 1.0 to
 keep sampling identical; a caller can override it through ``options``.
 
+``ollama_loaded_models`` (DL-ROUTE-03) reads ``GET /api/ps`` as a best-effort hint
+and never raises.
+
 The module is stateless, reads no environment, and never imports ``app``.
 It raises only ``httpx`` exceptions, ``ValueError`` from the tool-loop byte cap,
 plus the module exceptions below, so
@@ -54,6 +57,7 @@ from typing import Any, AsyncIterator, Iterable, Literal, Mapping, Optional, Seq
 import httpx
 
 OLLAMA_CHAT_PATH = "/api/chat"
+OLLAMA_PS_PATH = "/api/ps"
 # Media-type parameters are allowed before ";base64," (RFC 2397), e.g. ";charset=utf-8".
 _DATA_URL_PREFIX = re.compile(r"^data:[^,]*;base64,", re.IGNORECASE)
 # /v1 sent top_p 1.0 on every request; keep that so the transport swap does not change sampling.
@@ -445,6 +449,35 @@ class OllamaChatStream:
             yield chunk
             if chunk.done:
                 break
+
+
+async def ollama_loaded_models(node_url: str, *, timeout: float) -> Optional[frozenset[str]]:
+    """Names of the models the node holds in memory (``GET /api/ps``); ``None`` when unknown.
+
+    DL-ROUTE-03: residency is only a hint for the UI, so every failure (unreachable,
+    slow, non-2xx, unexpected body) is ``None`` and nothing is raised.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(f"{node_url.rstrip('/')}{OLLAMA_PS_PATH}")
+        if not response.is_success:
+            return None
+        models = response.json().get("models")
+    except Exception:
+        return None
+    if not isinstance(models, list):
+        return None
+    return frozenset(
+        item[key] for item in models if isinstance(item, dict)
+        for key in ("name", "model") if isinstance(item.get(key), str)
+    )
+
+
+def model_is_loaded(model_id: str, loaded: Iterable[str]) -> bool:
+    """Whether ``model_id`` is among ``loaded``; ``llama3`` and ``llama3:latest`` are one model."""
+    def canonical(name: str) -> str:
+        return name if ":" in name else f"{name}:latest"
+    return canonical(model_id) in {canonical(name) for name in loaded}
 
 
 def _endpoint(node_url: str) -> str:

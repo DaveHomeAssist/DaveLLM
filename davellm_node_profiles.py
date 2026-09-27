@@ -16,14 +16,22 @@ advisory. DaveLLM never reroutes a request, because the user picks the node and 
 a prompt over the limit still goes to that node, and the router tells the UI why the
 reply will be slow.
 
-A malformed profile is dropped with a warning and the node stays registered. The module
-reads no environment and never imports ``app``.
+A malformed profile is dropped with a warning and the node stays registered.
+
+``NodeActivity`` (DL-ROUTE-04) counts the requests the router has in flight on each node.
+Ollama nodes run one request at a time, so a count above zero means a new reply waits
+behind the others; the UI says so instead of looking stuck. Only this router's requests
+are counted.
+
+The module reads no environment and never imports ``app``.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Dict, Literal, Mapping, Optional, Sequence
+import threading
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Iterator, Literal, Mapping, Optional, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError
 
@@ -89,3 +97,38 @@ def prompt_size_check(profile: Optional[NodeProfile], model_id: str, prompt_toke
     if limit is None or prompt_tokens <= limit:
         return None
     return {"prompt_tokens": prompt_tokens, "prompt_token_limit": limit}
+
+
+class NodeActivity:
+    """Requests in flight per node; safe from the threadpool and the event loop alike."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._counts: Dict[str, int] = {}
+
+    def in_flight(self, node_key: str) -> int:
+        with self._lock:
+            return self._counts.get(node_key, 0)
+
+    def start(self, node_key: str) -> int:
+        """Count one more request; returns how many were already in flight (the queue ahead)."""
+        with self._lock:
+            ahead = self._counts.get(node_key, 0)
+            self._counts[node_key] = ahead + 1
+            return ahead
+
+    def finish(self, node_key: str) -> None:
+        with self._lock:
+            left = self._counts.get(node_key, 0) - 1
+            if left > 0:
+                self._counts[node_key] = left
+            else:
+                self._counts.pop(node_key, None)
+
+    @contextmanager
+    def track(self, node_key: str) -> Iterator[int]:
+        ahead = self.start(node_key)
+        try:
+            yield ahead
+        finally:
+            self.finish(node_key)

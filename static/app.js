@@ -3324,15 +3324,23 @@ const STREAM_STATUS_TEXT = {
     thinking: "Thinking…",
 };
 
-// DL-ROUTE-02: a waiting status for a prompt over the node's limit carries the estimate and the limit.
+// The waiting status can carry routing hints: whether the model is already in memory (DL-ROUTE-03),
+// how many replies the node runs first (DL-ROUTE-04), and a prompt over the node's limit (DL-ROUTE-02).
 function streamStatusText(data) {
-    const text = STREAM_STATUS_TEXT[data.status] || "";
-    if (data.status !== "waiting" || !Number.isFinite(data.prompt_tokens) || !Number.isFinite(data.prompt_token_limit)) {
-        return text;
+    let text = STREAM_STATUS_TEXT[data.status] || "";
+    if (data.status !== "waiting") return text;
+    if (data.model_loaded === false) text = "Loading the model into memory, then reading your message…";
+    else if (data.model_loaded === true) text = "Reading your message…";
+    if (Number.isInteger(data.queue_ahead) && data.queue_ahead > 0) {
+        const others = data.queue_ahead === 1 ? "1 other reply" : `${data.queue_ahead} other replies`;
+        text = `This node is finishing ${others} first. ${text}`;
     }
-    const size = (n) => Math.round(n).toLocaleString("en-US");
-    return `${text} This prompt is about ${size(data.prompt_tokens)} tokens and this node reads about `
-        + `${size(data.prompt_token_limit)} in reasonable time, so the reply may take several minutes.`;
+    if (Number.isFinite(data.prompt_tokens) && Number.isFinite(data.prompt_token_limit)) {
+        const size = (n) => Math.round(n).toLocaleString("en-US");
+        text += ` This prompt is about ${size(data.prompt_tokens)} tokens and this node reads about `
+            + `${size(data.prompt_token_limit)} in reasonable time, so the reply may take several minutes.`;
+    }
+    return text;
 }
 
 function formatReplyStats(stats) {

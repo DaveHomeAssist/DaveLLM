@@ -99,6 +99,17 @@ When the prompt is over the node's prompt limit for that model (DL-ROUTE-02, see
 data: {"status":"waiting","prompt_tokens":4100,"prompt_token_limit":1300,"done":false}
 ```
 
+Two more hints can ride on the same event:
+
+- `model_loaded` (DL-ROUTE-03) is `true` or `false` when the node answered a quick `GET /api/ps` probe (2 s limit). It is left out when residency is unknown.
+- `queue_ahead` (DL-ROUTE-04) is the number of other requests this router already has running on that node. Nodes serve one request at a time, so those finish first.
+
+The count covers streamed and plain chat, summaries and tool-loop model turns, and it is released however the reply ends.
+
+```text
+data: {"status":"waiting","model_loaded":false,"queue_ahead":1,"done":false}
+```
+
 If the model sends reasoning before its first token, one `{"status":"thinking","done":false}` follows. The reasoning text itself is never forwarded. The renderer shows the status in the empty reply bubble until the first token arrives.
 
 After a successful reply, just before the terminal event, the router sends the reply's speed. It comes from Ollama's `done` line plus the router's own time to first token. Fields the node did not report are left out:
