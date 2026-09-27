@@ -169,7 +169,7 @@ async def test_timeout_kwarg_reaches_httpx_on_both_paths():
         route = mock.post(f"{NODE_URL}/api/chat").mock(
             return_value=httpx.Response(200, json={"message": {"role": "assistant", "content": "ok"}, "done": True})
         )
-        ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=7)
+        await asyncio.to_thread(ollama_chat, NODE_URL, "m", MESSAGES, stream=False, timeout=7)
         assert route.calls.last.request.extensions["timeout"] == httpx.Timeout(7).as_dict()
 
         route.mock(
@@ -461,17 +461,21 @@ async def test_the_residency_probe_is_bounded_as_a_whole():
 
 # DL-TIME-01 review: wall-clock deadlines where httpx only has per-operation timeouts ------------
 
-class _Trickle(httpx.SyncByteStream):
+class _Trickle(httpx.AsyncByteStream):
     """A node that keeps each read under the httpx read timeout but never finishes quickly."""
 
     def __init__(self, pieces, delay, end_delay=0.0):
         self.pieces, self.delay, self.end_delay = pieces, delay, end_delay
+        self.closed = False
 
-    def __iter__(self):
+    async def __aiter__(self):
         for piece in self.pieces:
-            time.sleep(self.delay)
+            await asyncio.sleep(self.delay)
             yield piece
-        time.sleep(self.end_delay)
+        await asyncio.sleep(self.end_delay)
+
+    async def aclose(self):
+        self.closed = True
 
 
 class _StalledBody(httpx.AsyncByteStream):
@@ -479,10 +483,19 @@ class _StalledBody(httpx.AsyncByteStream):
 
     def __init__(self, delay, body=b"late error"):
         self.delay, self.body = delay, body
+        self.closed = False
+        self.cancelled = False
 
     async def __aiter__(self):
-        await asyncio.sleep(self.delay)
+        try:
+            await asyncio.sleep(self.delay)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
         yield self.body
+
+    async def aclose(self):
+        self.closed = True
 
 
 def test_complete_call_enforces_the_total_across_trickled_reads():
@@ -490,11 +503,13 @@ def test_complete_call_enforces_the_total_across_trickled_reads():
     pieces = [reply[i:i + 8] for i in range(0, len(reply), 8)]
     with respx.mock(assert_all_called=True) as mock:
         route = mock.post(f"{NODE_URL}/api/chat")
-        route.mock(return_value=httpx.Response(200, stream=_Trickle(pieces, 0.05)))
+        body = _Trickle(pieces, 0.05)
+        route.mock(return_value=httpx.Response(200, stream=body))
         started = time.monotonic()
         with pytest.raises(httpx.ReadTimeout, match="total deadline"):
             ollama_chat(NODE_URL, "m", MESSAGES, stream=False, timeout=5, total_timeout=0.2)
         assert time.monotonic() - started < 1.0  # stopped near the total, not after every piece
+        assert body.closed
 
         # Every byte in time but the end of the body late: still a timeout, not a late success.
         route.mock(return_value=httpx.Response(200, stream=_Trickle(pieces, 0.0, end_delay=0.3)))
@@ -516,12 +531,14 @@ def test_complete_call_enforces_the_total_across_trickled_reads():
 async def test_stream_error_body_is_read_within_the_first_chunk_budget():
     with respx.mock(assert_all_called=True) as mock:
         route = mock.post(f"{NODE_URL}/api/chat")
-        route.mock(return_value=httpx.Response(500, stream=_StalledBody(2.0)))
+        body = _StalledBody(2.0)
+        route.mock(return_value=httpx.Response(500, stream=body))
         started = time.monotonic()
         with pytest.raises(httpx.ReadTimeout, match="first-chunk deadline"):
             async with OllamaChatStream(f"{NODE_URL}/api/chat", {}, httpx.Timeout(None), first_chunk_timeout=0.2):
                 pass
         assert time.monotonic() - started < 1.5
+        assert body.cancelled and body.closed
 
         # Without a first-chunk budget the idle budget bounds it instead.
         route.mock(return_value=httpx.Response(500, stream=_StalledBody(2.0)))
