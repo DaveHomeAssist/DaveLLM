@@ -9,10 +9,13 @@ import pytest
 import respx
 
 from davellm_ollama import (
+    OllamaChatError,
     OllamaResponseError,
     OllamaStreamError,
     build_ollama_chat_payload,
+    native_tool_messages,
     ollama_chat,
+    ollama_chat_bounded,
     ollama_image_data,
     ollama_tool_call_names,
     ollama_user_message,
@@ -321,11 +324,11 @@ async def test_stream_accumulates_tool_calls_across_lines():
     assert stream.completed is True
 
 
-def test_harness_paths_still_post_to_openai_compatible_endpoint():
-    """The tool loop keeps /v1 (it exchanges tool schemas and tool_calls) until DL-TRANSPORT-01b.
+def test_no_app_code_posts_to_the_openai_compatible_endpoint():
+    """DL-TRANSPORT-01b: the tool loop uses native /api/chat too, so /v1 is gone from app.py code.
 
-    Only string constants in code count: a comment or docstring may mention the endpoint, but
-    the two harness functions must post to it and no other code in app.py may.
+    Only string constants in code count (a comment or docstring may still name /v1), and both
+    harness functions must go through ollama_chat_bounded.
     """
     source = (ROOT / "app.py").read_text()
     tree = ast.parse(source)
@@ -337,9 +340,7 @@ def test_harness_paths_still_post_to_openai_compatible_endpoint():
     }
     assert set(harness) == {"invoke_harness_model", "run_agent_endpoint"}
     for name, (start, end) in harness.items():
-        body = "\n".join(lines[start - 1:end])
-        assert "/v1/chat/completions" in body, name
-        assert "ollama_chat(" not in body, name
+        assert "ollama_chat_bounded(" in "\n".join(lines[start - 1:end]), name
 
     docstring_lines = set()
     for node in ast.walk(tree):
@@ -353,6 +354,52 @@ def test_harness_paths_still_post_to_openai_compatible_endpoint():
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
         and "/v1/chat/completions" in node.value and node.lineno not in docstring_lines
     )
-    assert code_hits, "the harness call sites must be real string constants"
-    for lineno in code_hits:
-        assert any(start <= lineno <= end for start, end in harness.values()), f"app.py:{lineno} posts to /v1 outside the harness"
+    assert code_hits == [], f"app.py posts to /v1 at lines {code_hits}"
+
+
+def test_native_tool_messages_converts_only_arguments_and_tool_name():
+    transcript = [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": "u"},
+        {"role": "assistant", "content": "", "thinking": "plan", "tool_calls": [
+            {"id": "call_1", "type": "function", "function": {"name": "web.search", "arguments": '{"query":"gas"}'}},
+            {"id": "call_2", "type": "function", "function": {"name": "system.info", "arguments": {"type": "all"}}},
+        ]},
+        {"role": "tool", "tool_call_id": "call_1", "name": "web.search", "content": "{}"},
+    ]
+    native = native_tool_messages(transcript)
+    assert native[:2] == transcript[:2]
+    calls = native[2]["tool_calls"]
+    assert calls[0]["function"]["arguments"] == {"query": "gas"}  # string decoded
+    assert calls[1]["function"]["arguments"] == {"type": "all"}   # object untouched
+    assert calls[0]["id"] == "call_1" and native[2]["thinking"] == "plan"
+    assert native[3] == {**transcript[3], "tool_name": "web.search"}
+    assert transcript[2]["tool_calls"][0]["function"]["arguments"] == '{"query":"gas"}'  # input not mutated
+    with pytest.raises(OllamaChatError):
+        native_tool_messages([{"role": "assistant", "tool_calls": [{"function": {"name": "x", "arguments": "{bad"}}]}])
+
+
+@pytest.mark.asyncio
+async def test_bounded_chat_sends_native_tools_payload_and_caps_the_body():
+    schema = {"type": "function", "function": {"name": "web.search", "parameters": {"type": "object"}}}
+    with respx.mock(assert_all_called=True) as mock:
+        route = mock.post(f"{NODE_URL}/api/chat").mock(return_value=httpx.Response(
+            200, json={"message": {"role": "assistant", "content": "ok"}, "done": True}))
+        reply = await ollama_chat_bounded(
+            NODE_URL, "m", [{"role": "user", "content": "q"}], tools=[schema], timeout=5, max_bytes=10_000,
+            num_predict=64, temperature=0.2, options={"num_ctx": 16384}, keep_alive="30m",
+        )
+        assert reply["message"]["content"] == "ok"
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [schema] and body["stream"] is False and body["keep_alive"] == "30m"
+        assert body["options"] == {"top_p": 1.0, "num_predict": 64, "temperature": 0.2, "num_ctx": 16384}
+        for openai_only in ("tool_choice", "max_tokens", "temperature"):
+            assert openai_only not in body
+        assert route.calls.last.request.headers["accept-encoding"] == "identity"
+
+        route.mock(return_value=httpx.Response(200, content=b"x" * 5000))
+        with pytest.raises(ValueError, match="byte limit"):
+            await ollama_chat_bounded(NODE_URL, "m", [], tools=None, timeout=5, max_bytes=1000)
+        route.mock(return_value=httpx.Response(500, text="boom"))
+        with pytest.raises(httpx.HTTPStatusError):
+            await ollama_chat_bounded(NODE_URL, "m", [], tools=None, timeout=5, max_bytes=1000)

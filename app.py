@@ -2073,27 +2073,13 @@ async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dic
     binding = HOST_RUN_CONTEXT.get()
     if binding is None:
         raise RuntimeError("Run model binding is unavailable")
-    payload = {
-        "model": binding.model,
-        "messages": messages,
-        "tools": schemas,
-        "tool_choice": "auto",
-        "max_tokens": binding.max_tokens,
-        "temperature": binding.temperature,
-        "stream": False,
-    }
-    async with httpx.AsyncClient(timeout=120) as client:
-        async with client.stream(
-            "POST", f"{binding.node_url}/v1/chat/completions", json=payload,
-            headers={"Accept-Encoding": "identity"},
-        ) as response:
-            response.raise_for_status()
-            body = bytearray()
-            async for chunk in response.aiter_raw(chunk_size=65_536):
-                if len(body) + len(chunk) > MAX_HARNESS_MODEL_RESPONSE_BYTES:
-                    raise ValueError("Model response exceeds the tool run byte limit")
-                body.extend(chunk)
-        return json.loads(body)
+    # DL-TRANSPORT-01b: native /api/chat, so the run gets the router's num_ctx and keep_alive.
+    return await ollama_chat_bounded(
+        binding.node_url, binding.model, messages, tools=schemas, timeout=120,
+        max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
+        temperature=chat_temperature(binding.temperature),
+        options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
+    )
 
 
 HARNESS = Harness(
@@ -2319,7 +2305,7 @@ def build_project_messages_for_node(
     base_tokens = sum(content_token_count(message.get("content")) for message in base_messages)
     project_instruction_tokens = estimate_project_tokens(project.get("system_prompt") or "")
     non_project_tokens = max(0, base_tokens - project_instruction_tokens)
-    # Plain chat passes chat_num_ctx (the num_ctx it sends); agent runs on /v1 send none and keep the model window.
+    # Every caller passes chat_num_ctx (the num_ctx it sends to Ollama); without it, the configured model window.
     context_window = window if window is not None else get_model_context_window(model_id)
     safety_margin = max(512, round(context_window * 0.05))
     available_project_tokens = (
@@ -2350,7 +2336,7 @@ def build_project_messages_for_node(
     )
 
 from davellm_ollama import (  # native /api/chat transport, kept below the handlers (see tests/test_tool_catalog_provenance.py)
-    OllamaResponseError, OllamaStreamError, ollama_chat, ollama_image_data, ollama_tool_call_names,
+    OllamaResponseError, OllamaStreamError, ollama_chat, ollama_chat_bounded, ollama_image_data, ollama_tool_call_names,
     ollama_user_message,
 )
 
@@ -3574,22 +3560,12 @@ async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key
         )
 
     async def invoke_model(messages: List[Dict], schemas: List[Dict]):
-        payload = {
-            "model": req.model,
-            "messages": messages,
-            "tools": schemas,
-            "tool_choice": "auto",
-            "max_tokens": req.max_tokens,
-            "temperature": req.temperature,
-            "stream": False,
-        }
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                f"{node.url}/v1/chat/completions",
-                json=payload,
-            )
-            response.raise_for_status()
-            return response.json()
+        return await ollama_chat_bounded(
+            node.url, req.model, messages, tools=schemas, timeout=120,
+            max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=req.max_tokens,
+            temperature=chat_temperature(req.temperature),
+            options={"num_ctx": chat_num_ctx(req.model)}, keep_alive=CHAT_KEEP_ALIVE,
+        )
 
     outcome = await run_executor_loop(
         req.messages,
@@ -3695,7 +3671,7 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
                 project_id=project_id, project=project, model_id=req.model,
                 output_reserve=req.max_tokens, query=query,
                 system_prompt=system_prompt, history=history,
-                capture_brain=True,
+                capture_brain=True, window=chat_num_ctx(req.model),
             )
         except ProjectContextError as exc:
             raise context_http_error(exc)

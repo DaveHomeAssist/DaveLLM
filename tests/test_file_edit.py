@@ -416,21 +416,21 @@ def inventory(client, mock):
 
 
 def edit_call(arguments):
-    return httpx.Response(200, json={"choices": [{"message": {
+    return httpx.Response(200, json={"message": {
         "role": "assistant", "content": "Editing",
         "tool_calls": [{"id": "call_edit", "type": "function", "function": {
             "name": "file.edit", "arguments": json.dumps(arguments),
         }}],
-    }}]})
+    }, "done": True})
 
 
 def paused_edit(client, mock, arguments):
     """Start a run whose model asks for ``arguments``; return the run id, pending call, and model route."""
     inventory(client, mock)
-    route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions")
+    route = mock.post(f"{TEST_NODE_URL}/api/chat")
     route.side_effect = [
         edit_call(arguments),
-        httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "Finished"}}]}),
+        httpx.Response(200, json={"message": {"role": "assistant", "content": "Finished"}, "done": True}),
     ]
     created = client.post("/tools/agent/runs", headers=AUTH, json={
         "messages": [{"role": "user", "content": "Mark the plan final"}], "node_id": "node-test", "model": MODEL,

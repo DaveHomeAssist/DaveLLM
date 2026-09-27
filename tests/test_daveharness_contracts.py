@@ -239,9 +239,9 @@ def test_agent_endpoint_keeps_legacy_response_fields(router_factory):
             return_value=httpx.Response(200, json={"models": [{"name": "model:latest"}]})
         )
         assert client.get("/nodes/node-test/models", headers={"X-API-Key": TEST_API_KEY}).status_code == 200
-        mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(
             return_value=httpx.Response(
-                200, json={"choices": [{"message": {"role": "assistant", "content": "done"}}]}
+                200, json={"message": {"role": "assistant", "content": "done"}, "done": True}
             )
         )
         response = client.post(

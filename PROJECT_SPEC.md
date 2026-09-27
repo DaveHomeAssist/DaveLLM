@@ -104,7 +104,7 @@ The application is standalone. It is not an Open WebUI fork, wrapper, or plugin.
 | FR-03 | Node configuration | `DAVE_NODES` is the only live inventory override. Malformed JSON registers zero nodes and emits a startup explanation. Source placeholders are never evidence of a working node. |
 | FR-04 | Model discovery | The router reads Ollama `GET /api/tags`, publishes the exact model IDs returned, and retains the last good inventory across a transient refresh failure. |
 | FR-05 | Model validation | Chat rejects an unknown node, an inventory not yet loaded, or a model absent from that node's loaded inventory. |
-| FR-06 | Chat transport | The router supports complete and server-sent-event streaming chat through Ollama's native `POST /api/chat`: `max_tokens` and `temperature` travel as `options`, extra `options` and `keep_alive` are sent only when the `app.py` policy hooks set them, and image attachments become per-message base64 `images`. The bounded tool loop still uses the OpenAI-compatible `POST /v1/chat/completions` (DL-TRANSPORT-01b). |
+| FR-06 | Chat transport | The router supports complete and server-sent-event streaming chat through Ollama's native `POST /api/chat`: `max_tokens` and `temperature` travel as `options`, extra `options` and `keep_alive` are sent only when the `app.py` policy hooks set them, and image attachments become per-message base64 `images`. The bounded tool loop uses the same native endpoint with `tools`, `num_ctx`, `keep_alive`, and a response byte cap (DL-TRANSPORT-01b). |
 | FR-07 | Manual control | Normal chat uses the visible node and model selection. Local suggestions may propose actions but cannot silently send or change context. |
 | FR-08 | Conversation lifecycle | The app lists, loads, creates, renames, clears, deletes, searches, exports, and project-attaches conversations. |
 | FR-09 | Templates | New conversations may use `general`, `code_review`, or `brainstorm`; template CRUD is not provided. |
@@ -191,8 +191,7 @@ FastAPI router on 127.0.0.1
   |-- Local ffmpeg + whisper-cli transcription
   |
   +---- Ollama /api/tags              (inventory)
-  +---- Ollama /api/chat              (chat, stream, summary)
-  +---- Ollama /v1/chat/completions   (tool loop; DL-TRANSPORT-01b)
+  +---- Ollama /api/chat              (chat, stream, summary, tool loop)
            on DAVE_NODES
 ```
 
@@ -200,7 +199,7 @@ FastAPI router on 127.0.0.1
 
 | Component | Source | Responsibility |
 |---|---|---|
-| FastAPI router | `app.py` | Auth, routes, tool-loop Ollama transport (`/v1`), plain-chat policy hooks, persistence integration, dictation, monitoring, routing advice, and tool registration. |
+| FastAPI router | `app.py` | Auth, routes, chat and tool-loop policy hooks (`num_ctx`, `keep_alive`), persistence integration, dictation, monitoring, routing advice, and tool registration. |
 | Ollama chat transport | `davellm_ollama.py` | Native `/api/chat` payload, per-message images, NDJSON parsing, metrics, and the sync/stream executors behind `ollama_chat`. |
 | Project context store | `project_context.py` | Normalized project components, quotas, retrieval, BRAIN revisions, and exact request assembly. |
 | DaveHarness | `daveharness/` | Versioned public API, registry, schemas, validation, approvals, timing, error handling, and bounded model/tool loop. |

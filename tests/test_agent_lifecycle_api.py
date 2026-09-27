@@ -54,10 +54,10 @@ def test_lifecycle_auth_tools_off_validation_and_completed_events(router_factory
     with respx.mock(assert_all_called=True) as mock:
         inventory(client, mock)
         assert new_run(client, model="absent").status_code == 400
-        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
-            return_value=httpx.Response(200, json={"choices": [{"message": {
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(
+            return_value=httpx.Response(200, json={"message": {
                 "role": "assistant", "content": "Done."
-            }}]}),
+            }, "done": True}),
         )
         created = new_run(client)
         assert created.status_code == 200, created.text
@@ -93,19 +93,19 @@ def test_brain_snapshot_survives_approval_and_later_edit(router_factory):
     )
     with respx.mock(assert_all_called=True) as mock:
         inventory(client, mock)
-        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions")
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
         route.side_effect = [
-            httpx.Response(200, json={"choices": [{"message": {
+            httpx.Response(200, json={"message": {
                 "role": "assistant", "content": "Need permission",
                 "tool_calls": [{"id": "call_one", "type": "function", "function": {
                     "name": "file.write", "arguments": json.dumps({
                         "path": "/outside/not-allowed", "content": "blocked",
                     }),
                 }}],
-            }}]}),
-            httpx.Response(200, json={"choices": [{"message": {
+            }, "done": True}),
+            httpx.Response(200, json={"message": {
                 "role": "assistant", "content": "Finished",
-            }}]}),
+            }, "done": True}),
         ]
         created = new_run(client, project_id=project_id)
         assert created.status_code == 200, created.text
@@ -149,19 +149,19 @@ def test_approved_resume_uses_frozen_brain_messages(router_factory, tmp_path):
     target = tmp_path / "approved.txt"
     with respx.mock(assert_all_called=True) as mock:
         inventory(client, mock)
-        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions")
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
         route.side_effect = [
-            httpx.Response(200, json={"choices": [{"message": {
+            httpx.Response(200, json={"message": {
                 "role": "assistant", "content": "Writing",
                 "tool_calls": [{"id": "call_approved", "type": "function", "function": {
                     "name": "file.write", "arguments": json.dumps({
                         "path": str(target), "content": "approved",
                     }),
                 }}],
-            }}]}),
-            httpx.Response(200, json={"choices": [{"message": {
+            }, "done": True}),
+            httpx.Response(200, json={"message": {
                 "role": "assistant", "content": "Complete",
-            }}]}),
+            }, "done": True}),
         ]
         created = new_run(client, project_id=project_id)
         assert created.status_code == 200, created.text
@@ -198,10 +198,10 @@ def test_run_captures_conversation_instruction_layers_and_project_attachment(rou
     with respx.mock(assert_all_called=True) as mock:
         inventory(client, mock)
         assert new_run(client, conversation_id=conversation_id).status_code == 409
-        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
-            return_value=httpx.Response(200, json={"choices": [{"message": {
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(
+            return_value=httpx.Response(200, json={"message": {
                 "role": "assistant", "content": "Done",
-            }}]}),
+            }, "done": True}),
         )
         started = new_run(client, project_id=project_id, conversation_id=conversation_id)
         assert started.status_code == 200, started.text
@@ -222,17 +222,17 @@ def test_shell_opt_in_keeps_legacy_route_and_uses_cancellable_lifecycle_runner(r
     assert legacy.json()["result"].strip() == str(tmp_path)
     with respx.mock(assert_all_called=True) as mock:
         inventory(client, mock)
-        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions")
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
         route.side_effect = [
-            httpx.Response(200, json={"choices": [{"message": {
+            httpx.Response(200, json={"message": {
                 "role": "assistant", "content": "Checking root",
                 "tool_calls": [{"id": "call_pwd", "type": "function", "function": {
                     "name": "shell.exec", "arguments": json.dumps({"command": "pwd"}),
                 }}],
-            }}]}),
-            httpx.Response(200, json={"choices": [{"message": {
+            }, "done": True}),
+            httpx.Response(200, json={"message": {
                 "role": "assistant", "content": "Complete",
-            }}]}),
+            }, "done": True}),
         ]
         created = new_run(client)
         assert created.status_code == 200, created.text
@@ -267,7 +267,7 @@ async def test_concurrent_runs_keep_separate_model_bindings(router_factory):
         binding = router.HOST_RUN_CONTEXT.get()
         await asyncio.sleep(0.02)
         observed.append(binding.model)
-        return {"choices": [{"message": {"role": "assistant", "content": binding.model}}]}
+        return {"message": {"role": "assistant", "content": binding.model}, "done": True}
 
     router.HARNESS.invoke_model = fake_model
     requests = [router.LifecycleRunRequest(
@@ -294,7 +294,7 @@ async def test_run_admission_preserves_active_ledger_at_capacity(router_factory)
         if messages[-1]["content"] == "hold":
             entered.set()
             await release.wait()
-        return {"choices": [{"message": {"role": "assistant", "content": "Done"}}]}
+        return {"message": {"role": "assistant", "content": "Done"}, "done": True}
 
     router.HARNESS.invoke_model = fake_model
 
@@ -334,7 +334,7 @@ async def test_run_admission_caps_parallel_model_work(router_factory):
         nonlocal entered
         entered += 1
         await release.wait()
-        return {"choices": [{"message": {"role": "assistant", "content": "Done"}}]}
+        return {"message": {"role": "assistant", "content": "Done"}, "done": True}
 
     router.HARNESS.invoke_model = fake_model
     request = router.LifecycleRunRequest(
@@ -372,7 +372,7 @@ async def test_model_response_byte_limit_stops_chunk_consumption(router_factory)
     token = router.HOST_RUN_CONTEXT.set(binding)
     try:
         with respx.mock(assert_all_called=True) as mock:
-            mock.post(f"{TEST_NODE_URL}/v1/chat/completions").mock(
+            mock.post(f"{TEST_NODE_URL}/api/chat").mock(
                 return_value=httpx.Response(200, stream=OversizedStream()),
             )
             with pytest.raises(ValueError, match="byte limit"):
