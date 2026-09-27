@@ -100,7 +100,10 @@ def test_complete_deadline_interrupts_real_http_reads(slow_node, mode, status):
 
 @pytest.mark.parametrize("endpoint", ["/chat", "/tools/agent/run", "/tools/agent/runs"])
 def test_slow_drip_preserves_route_timeout_contracts(slow_node, router_factory, monkeypatch, endpoint):
-    monkeypatch.setenv("DAVE_NODE_TOTAL_TIMEOUT", str(TOTAL))
+    # Agent payloads include the full tool catalog. Allow their serialization and
+    # client setup under coverage, but expire before the >2 s dripped reply ends.
+    budget, upper = (TOTAL, UPPER_BOUND) if endpoint == "/chat" else (1.0, 1.7)
+    monkeypatch.setenv("DAVE_NODE_TOTAL_TIMEOUT", str(budget))
     with slow_node("drip") as (url, sent):
         router, client, _ = router_factory(tools=True, nodes=[{"id": "node-test", "name": "Test Ollama", "url": url}])
         # Separate the operation timeout from the total; only the wall clock may end this reply.
@@ -138,7 +141,7 @@ def test_slow_drip_preserves_route_timeout_contracts(slow_node, router_factory, 
                 # Run creation checks tool provenance before the model step. Measure
                 # the real I/O separately from that CPU work and lifecycle polling.
                 assert len(model_times) == 2
-                assert TOTAL * 0.8 <= model_times[1] - model_times[0] < UPPER_BOUND
+                assert budget * 0.8 <= model_times[1] - model_times[0] < upper
                 assert time.monotonic() - started < 3
             assert 1 < len(sent) < len(REPLY)
             assert router.NODE_ACTIVITY.in_flight(url) == 0
