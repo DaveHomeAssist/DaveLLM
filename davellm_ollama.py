@@ -1,4 +1,4 @@
-"""Native Ollama ``POST /api/chat`` transport for plain chat (DL-TRANSPORT-01a).
+"""Native Ollama ``POST /api/chat`` transport for plain chat and the tool loop (DL-TRANSPORT-01a/01b).
 
 DaveLLM's plain chat paths (``POST /chat``, ``POST /chat/stream`` and the
 conversation summary) talk to a node through this module. It owns everything
@@ -16,12 +16,16 @@ ignores ``options.num_ctx`` and ``keep_alive`` (verified on Ollama 0.33.3). The
 native endpoint honours both, streams ``message.content`` and
 ``message.thinking`` as separate fields, and reports timing on the ``done``
 line. ``keep_alive`` and ``think`` default to ``None`` here, which means the
-key is not sent at all; ``options`` defaults to ``None`` too, which adds
-nothing beyond the ``num_predict``/``temperature`` keys the call sites pass
-(each omitted when ``None``), so the node applies its own defaults for
-everything else. The tool loop (``invoke_harness_model``, ``run_agent_endpoint``) stays on ``/v1``
-because it exchanges tool schemas and OpenAI-shaped ``tool_calls``
-(DL-TRANSPORT-01b).
+key is not sent at all; the router's hooks supply ``num_ctx`` and
+``keep_alive`` (DL-CTX-01, DL-KEEP-01).
+
+The tool loop (``invoke_harness_model``, ``run_agent_endpoint``) uses
+``ollama_chat_bounded`` (DL-TRANSPORT-01b): it sends the tool schemas, reads the
+reply with a byte cap, and returns the native response, whose top-level
+``message`` DaveHarness reads directly (native tool calls carry an ``id`` and
+object ``arguments``). ``native_tool_messages`` converts the only two fields
+DaveHarness writes differently on the way in: string arguments and ``name``
+on tool results.
 
 Sampling note: ``/v1`` forced ``top_p`` to 1.0 on every request, and would
 have forced ``temperature`` to 1.0 for a request that omitted or nulled it
@@ -33,7 +37,8 @@ model's Modelfile default for ``top_p``, so the payload builder sends 1.0 to
 keep sampling identical; a caller can override it through ``options``.
 
 The module is stateless, reads no environment, and never imports ``app``.
-It raises only ``httpx`` exceptions plus the two module exceptions below, so
+It raises only ``httpx`` exceptions, ``ValueError`` from the tool-loop byte cap,
+plus the module exceptions below, so
 the call sites' existing ``except`` ladders keep producing today's strings.
 """
 
@@ -176,6 +181,7 @@ def build_ollama_chat_payload(
     options: Optional[Mapping[str, Any]] = None,
     keep_alive: Optional[KeepAlive] = None,
     think: Optional[Think] = None,
+    tools: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> dict:
     """The ``/api/chat`` request body.
 
@@ -183,7 +189,8 @@ def build_ollama_chat_payload(
     OpenAI ``max_tokens`` and ``temperature``). ``top_p`` starts at the /v1
     value. Caller ``options`` are merged last so they win; ``None`` values
     inside them are dropped. ``keep_alive`` and ``think`` pass through verbatim
-    and are omitted when ``None``.
+    and are omitted when ``None``; ``tools`` (function schemas, the same shape
+    as OpenAI's) is sent only when non-empty.
     """
     payload: dict = {"model": model, "messages": list(messages), "stream": bool(stream)}
     opts: dict = {"top_p": V1_TOP_P}
@@ -199,7 +206,78 @@ def build_ollama_chat_payload(
         payload["keep_alive"] = keep_alive
     if think is not None:
         payload["think"] = think
+    if tools:
+        payload["tools"] = [dict(tool) for tool in tools]
     return payload
+
+
+def native_tool_messages(messages: Sequence[Mapping[str, Any]]) -> list[dict]:
+    """A DaveHarness transcript in the shape native ``/api/chat`` accepts.
+
+    DaveHarness writes tool calls OpenAI-style: ``function.arguments`` is a
+    JSON string and tool results name their tool under ``name``. Native
+    ``/api/chat`` rejects string arguments (HTTP 400) and reads the tool name
+    from ``tool_name``, which gpt-oss's template needs to place the result.
+    Only those two fields change; everything else passes through.
+    """
+    converted: list[dict] = []
+    for message in messages:
+        item = dict(message)
+        calls = item.get("tool_calls")
+        if item.get("role") == "assistant" and isinstance(calls, list):
+            native_calls = []
+            for call in calls:
+                call = dict(call) if isinstance(call, Mapping) else call
+                function = call.get("function") if isinstance(call, dict) else None
+                if isinstance(function, Mapping) and isinstance(function.get("arguments"), str):
+                    function = dict(function)
+                    try:
+                        function["arguments"] = json.loads(function["arguments"] or "{}")
+                    except ValueError as exc:
+                        raise OllamaChatError("Tool call arguments are not valid JSON") from exc
+                    call["function"] = function
+                native_calls.append(call)
+            item["tool_calls"] = native_calls
+        if item.get("role") == "tool" and "tool_name" not in item and isinstance(item.get("name"), str):
+            item["tool_name"] = item["name"]
+        converted.append(item)
+    return converted
+
+
+async def ollama_chat_bounded(
+    node_url: str,
+    model: str,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    tools: Optional[Sequence[Mapping[str, Any]]],
+    timeout: float,
+    max_bytes: int,
+    num_predict: Optional[int] = None,
+    temperature: Optional[float] = None,
+    options: Optional[Mapping[str, Any]] = None,
+    keep_alive: Optional[KeepAlive] = None,
+) -> dict:
+    """One non-streaming ``/api/chat`` call for the tool loop, read with a byte cap.
+
+    Returns the native response object unchanged (DaveHarness reads its top-level
+    ``message``). Raises ``httpx.HTTPStatusError`` on non-2xx and ``ValueError``
+    when the body exceeds ``max_bytes`` or is not JSON.
+    """
+    payload = build_ollama_chat_payload(
+        model, native_tool_messages(messages), stream=False, num_predict=num_predict,
+        temperature=temperature, options=options, keep_alive=keep_alive, tools=tools,
+    )
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream(
+            "POST", _endpoint(node_url), json=payload, headers={"Accept-Encoding": "identity"},
+        ) as response:
+            response.raise_for_status()
+            body = bytearray()
+            async for chunk in response.aiter_raw(chunk_size=65_536):
+                if len(body) + len(chunk) > max_bytes:
+                    raise ValueError("Model response exceeds the tool run byte limit")
+                body.extend(chunk)
+    return json.loads(body)
 
 
 def parse_ollama_chat_line(line: str) -> Optional[OllamaChatChunk]:

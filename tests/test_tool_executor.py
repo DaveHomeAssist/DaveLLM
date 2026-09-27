@@ -628,14 +628,11 @@ def test_agent_endpoint_sends_schemas_on_every_model_step(router_factory):
             )
         )
         assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
-        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions")
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
         route.side_effect = [
             httpx.Response(
                 200,
-                json={
-                    "choices": [
-                        {
-                            "message": {
+                json={"message": {
                                 "role": "assistant",
                                 "content": "",
                                 "tool_calls": [
@@ -648,18 +645,11 @@ def test_agent_endpoint_sends_schemas_on_every_model_step(router_factory):
                                         },
                                     }
                                 ],
-                            }
-                        }
-                    ]
-                },
+                            }, "done": True},
             ),
             httpx.Response(
                 200,
-                json={
-                    "choices": [
-                        {"message": {"role": "assistant", "content": "Inventory checked."}}
-                    ]
-                },
+                json={"message": {"role": "assistant", "content": "Inventory checked."}, "done": True},
             ),
         ]
         response = client.post(
@@ -709,14 +699,11 @@ def test_resume_endpoint_denies_exact_call_and_continues(router_factory, tmp_pat
             )
         )
         assert client.get("/nodes/node-test/models", headers=AUTH).status_code == 200
-        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions")
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
         route.side_effect = [
             httpx.Response(
                 200,
-                json={
-                    "choices": [
-                        {
-                            "message": {
+                json={"message": {
                                 "role": "assistant",
                                 "content": "Requesting a write.",
                                 "tool_calls": [
@@ -734,23 +721,14 @@ def test_resume_endpoint_denies_exact_call_and_continues(router_factory, tmp_pat
                                         },
                                     }
                                 ],
-                            }
-                        }
-                    ]
-                },
+                            }, "done": True},
             ),
             httpx.Response(
                 200,
-                json={
-                    "choices": [
-                        {
-                            "message": {
+                json={"message": {
                                 "role": "assistant",
                                 "content": "The operator denied the write.",
-                            }
-                        }
-                    ]
-                },
+                            }, "done": True},
             ),
         ]
         pending_response = client.post(

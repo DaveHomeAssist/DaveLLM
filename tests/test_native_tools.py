@@ -268,20 +268,20 @@ def test_brain_read_inside_a_real_run_uses_the_revision_captured_at_start(native
     # One event loop for the whole test, so the run keeps going between requests.
     with client, respx.mock(assert_all_called=True) as mock:
         inventory(client, mock)
-        route = mock.post(f"{TEST_NODE_URL}/v1/chat/completions")
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
 
         def respond(request):
             messages = json.loads(request.content)["messages"]
             if messages[-1]["role"] != "tool":
                 # The BRAIN moves on after the run started but before the tool runs.
                 router.PROJECT_CONTEXT.update_brain(project_id, pinned_text="Decision B", expected_revision=2)
-                return httpx.Response(200, json={"choices": [{"message": {
+                return httpx.Response(200, json={"message": {
                     "role": "assistant", "content": "", "tool_calls": [{
                         "id": "call_brain", "type": "function",
                         "function": {"name": "project.brain.read", "arguments": "{}"},
                     }],
-                }}]})
-            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "Done"}}]})
+                }, "done": True})
+            return httpx.Response(200, json={"message": {"role": "assistant", "content": "Done"}, "done": True})
 
         route.side_effect = respond
         created = new_run(client, project_id=project_id)

@@ -8,7 +8,7 @@
 4. The UI loads `GET /nodes`.
 5. The UI loads `GET /nodes/{node_id}/models`; the router queries that Ollama node at `GET /api/tags` and records the returned inventory.
 6. The UI submits `/chat` or `/chat/stream` only with the selected configured node and a model in that node's loaded inventory.
-7. For `/chat`, `/chat/stream`, and summary generation the router sends a native Ollama request to the selected node at `POST /api/chat` (NDJSON when streaming; `message.content` is forwarded, `message.thinking` is parsed but not yet surfaced). The tool-loop routes under `/tools/agent/*` still send OpenAI-compatible requests to that node's `/v1/chat/completions` until DL-TRANSPORT-01b.
+7. For `/chat`, `/chat/stream`, and summary generation the router sends a native Ollama request to the selected node at `POST /api/chat` (NDJSON when streaming; `message.content` is forwarded, `message.thinking` is parsed but not yet surfaced). The tool-loop routes under `/tools/agent/*` use the same native endpoint (DL-TRANSPORT-01b) with the tool schemas in `tools`; the router converts DaveHarness's string tool-call arguments to objects and its tool-result `name` to `tool_name` before sending, and returns Ollama's native reply to DaveHarness unchanged.
 
 There is no `/api` prefix.
 
