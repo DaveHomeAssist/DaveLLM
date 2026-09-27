@@ -41,6 +41,11 @@ HOOKS = ("post-index-change", "reference-transaction", "post-checkout", "pre-com
 SECRET_TEXT = "hostile-git-sentinel::dotenv"
 UNIQUE_FACT = "The rollback token is heron-31."
 AUTHOR = "Fixture Author"
+# Building Git must be finished when it returns: no auto-maintenance left running in the
+# background (holding objects/maintenance.lock or writing packs) during a snapshot comparison.
+NO_AUTO_MAINTENANCE = {"GIT_CONFIG_COUNT": "2",
+                       "GIT_CONFIG_KEY_0": "maintenance.auto", "GIT_CONFIG_VALUE_0": "false",
+                       "GIT_CONFIG_KEY_1": "gc.auto", "GIT_CONFIG_VALUE_1": "0"}
 
 
 @dataclass(frozen=True)
@@ -91,6 +96,7 @@ class _Builder:
             "LC_ALL": "C",
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": os.devnull,
+            **NO_AUTO_MAINTENANCE,
             "GIT_AUTHOR_NAME": AUTHOR,
             "GIT_AUTHOR_EMAIL": "author@example.invalid",
             "GIT_COMMITTER_NAME": AUTHOR,
