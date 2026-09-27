@@ -1087,9 +1087,9 @@ class ToolResult(BaseModel):
     termination: Optional[str] = None
 
 
-def validate_public_url(url: str) -> None:
+def validate_public_url(url: str) -> tuple[str, ...]:
     """Resolve a URL hostname and reject every non-public address."""
-    parsed = urlparse(url)
+    parsed = urlparse(str(httpx.URL(url)))
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Only absolute http/https URLs are allowed")
     if parsed.username or parsed.password:
@@ -1115,7 +1115,7 @@ def validate_public_url(url: str) -> None:
             or not address.is_global
         ):
             raise ValueError(f"Resolved address is not public: {address}")
-
+    return tuple(dict.fromkeys(entry[4][0] for entry in resolved))
 
 def resolve_tool_path(path: str) -> Path:
     """Resolve a tool path and require containment in an explicit root."""
@@ -1214,10 +1214,10 @@ async def tool_web_fetch(params: Dict) -> ToolResult:
             return ToolResult(tool="web.fetch", status="error", result="", error="Missing url")
 
         current_url = url
-        async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
+        async with public_http_client(timeout=10) as client:
             for redirect_count in range(MAX_WEB_FETCH_REDIRECTS + 1):
-                await asyncio.to_thread(validate_public_url, current_url)
-                async with client.stream("GET", current_url) as resp:
+                addresses = await asyncio.to_thread(validate_public_url, current_url)
+                async with public_stream(client, current_url, addresses) as resp:
                     if resp.status_code in {301, 302, 303, 307, 308}:
                         location = resp.headers.get("location")
                         if not location:
@@ -1490,6 +1490,8 @@ from davellm_edit import (  # PR-06 approved edits, kept below the PR-05 handler
 def tool_file_edit(params: Dict) -> ToolResult:
     return _run_extended_file_tool("file.edit", edit_file, params)
 
+
+from davellm_public_http import public_http_client, public_stream
 
 EXTENDED_PATH_SCHEMA = {
     "type": "string",

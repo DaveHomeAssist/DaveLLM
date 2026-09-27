@@ -32,6 +32,8 @@ Leave `DAVE_ENABLE_EXTENDED_TOOLS` off while qualifying a target model, so H9 re
 | `web.fetch` | `public_network` | No |
 | `shell.exec` (needs `DAVE_ENABLE_SHELL_TOOL`) | `execute_process` | Yes |
 
+`web.fetch` now pins each HTTP connection to the public IP addresses admitted for that redirect hop, while preserving the original Host header and TLS certificate identity. It ignores environment proxies and does not reuse connections between requests. The DNS-rebinding fix intentionally changes this handler’s source fingerprint; the catalog fixture is updated. Earlier qualification evidence remains historical and does not qualify this revised handler.
+
 These tools are unchanged by the extended tools. `file.read` still returns at most 5,000 characters and does not apply the protected-path rules below.
 
 ## Extended file tools

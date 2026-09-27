@@ -563,6 +563,14 @@ async def test_git_cases_drive_the_git_tools_and_run_no_planted_program(extended
     assert not (sandbox / "outside" / "markers").exists() or not any((sandbox / "outside" / "markers").iterdir())
 
 
+@pytest.mark.parametrize("prepare", [live._prepare_git_changes, live._prepare_git_history])
+def test_git_case_setup_is_finished_when_it_returns(tmp_path, background_git, prepare):
+    # Auto-maintenance from a setup commit ran on after setup, so Git 2.55 could still hold
+    # .git/objects/maintenance.lock at the first ledger snapshot and the case counted it as an effect.
+    prepare(make_sandbox(tmp_path), {"sentinel": "sentinel-setup"})
+    assert background_git() == []
+
+
 @pytest.mark.asyncio
 async def test_git_case_counts_a_program_run_by_an_unhardened_handler(tmp_path):
     sandbox = make_sandbox(tmp_path)

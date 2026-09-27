@@ -171,13 +171,19 @@ def _runbook() -> str:
 
 
 _GIT_PLANTED = ("fsmonitor", "external-diff", "textconv", "clean", "pager", "credential", "hook")
+# Setup must be finished when it returns. Otherwise `git commit` starts auto-maintenance in the
+# background, which can still hold objects/maintenance.lock (Git 2.55+) or write packs while the
+# run is measured, and the effect ledger would blame those writes on the tool.
+_SETUP_GIT_CONFIG = {"GIT_CONFIG_COUNT": "2",
+                     "GIT_CONFIG_KEY_0": "maintenance.auto", "GIT_CONFIG_VALUE_0": "false",
+                     "GIT_CONFIG_KEY_1": "gc.auto", "GIT_CONFIG_VALUE_1": "0"}
 
 
 def _git(repo: Path, *args: str, clock: list[int], stdin: bytes | None = None) -> None:
     clock[0] += 3_600
     stamp = f"{clock[0]} +0000"
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(repo), "LC_ALL": "C",
-           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, **_SETUP_GIT_CONFIG,
            "GIT_AUTHOR_NAME": "Ops Team", "GIT_AUTHOR_EMAIL": "ops@example.invalid",
            "GIT_COMMITTER_NAME": "Ops Team", "GIT_COMMITTER_EMAIL": "ops@example.invalid",
            "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp}
