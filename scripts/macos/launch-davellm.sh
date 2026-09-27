@@ -113,4 +113,5 @@ exec /usr/bin/env \
     DAVE_API_KEY="$api_key" \
     DAVE_NODES="$nodes_json" \
     DAVE_DATA_DIR="$DATA_DIR" \
+    DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}" \
     "$NPM_BIN" start

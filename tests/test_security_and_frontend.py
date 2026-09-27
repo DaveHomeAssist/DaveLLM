@@ -92,7 +92,7 @@ def test_web_fetch_validates_redirects_and_response_size(router_factory, monkeyp
 
     monkeypatch.setattr(router.socket, "getaddrinfo", public_dns)
     with respx.mock(assert_all_called=False) as mock:
-        mock.get("http://public.test/redirect").mock(
+        mock.get("http://93.184.216.34/redirect").mock(
             return_value=httpx.Response(302, headers={"location": "http://127.0.0.1/private"})
         )
         redirected = client.post(
@@ -103,7 +103,7 @@ def test_web_fetch_validates_redirects_and_response_size(router_factory, monkeyp
         assert redirected["status"] == "error"
         assert "not public" in redirected["error"]
 
-        mock.get("http://public.test/large").mock(
+        mock.get("http://93.184.216.34/large").mock(
             return_value=httpx.Response(200, content=b"x" * (router.MAX_WEB_FETCH_BYTES + 1))
         )
         oversized = client.post(
