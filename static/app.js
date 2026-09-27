@@ -3189,6 +3189,7 @@ async function sendMessage() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let sawNotice = false;
         
         streamLoop: while (true) {
             const { done, value } = await reader.read();
@@ -3212,6 +3213,17 @@ async function sendMessage() {
                 }
                 if (data.error) throw new Error(data.error);
 
+                if (data.notice) {
+                    // The model replied with only a tool call and the router saved no reply:
+                    // show the router's notice (plain text) instead of a blank assistant bubble.
+                    streamingMsg.role = "system";
+                    streamingMsg.content = String(data.notice);
+                    streamingMsg.isStreaming = false;
+                    sawNotice = true;
+                    renderMessages();
+                    continue;
+                }
+
                 if (data.token && !data.done) {
                     streamingMsg.content += data.token;
                     renderMessages();
@@ -3219,7 +3231,8 @@ async function sendMessage() {
 
                 if (data.done) {
                     streamingMsg.isStreaming = false;
-                    if (convo.title === "New Conversation") {
+                    // A reload would replace the local notice with server history, which has no reply to show.
+                    if (!sawNotice && convo.title === "New Conversation") {
                         await loadConversationHistory(state.sessionId);
                         renderConversationList();
                     }

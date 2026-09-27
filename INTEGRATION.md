@@ -83,6 +83,8 @@ The body is validated by Pydantic. Existing templates remain `general`, `code_re
 
 `node_id` and `model` are required at runtime. An unloaded inventory returns `409`; an unavailable model returns `400`; an unknown node returns `404`. Attached text and the Support prefix are incorporated into one effective prompt used both for display and the backend request. `images` holds base64 image strings; a `data:<type>;base64,` prefix is accepted and stripped, and the router sends them as the user message's `images` list on the native request. `max_tokens` and `temperature` reach the node as `options.num_predict` and `options.temperature`; an explicit `"temperature": null` becomes 1.0 (the value the previous `/v1` transport substituted) and an explicit `"max_tokens": null` omits `num_predict`, as before.
 
+Plain chat sends no tools and runs none. When the node replies with blank content and at least one `message.tool_calls` entry (gpt-oss, for example, emits a hallucinated `browser.run` call), the router keeps no assistant message, cost, embedding, artifact, or title for that turn; the user message stays, as it does after a node error. `/chat` then answers `200` with the usual five fields, where `response` is a notice rather than model output, plus `notice` (the same text), `reason: "tool_call_only"`, and `tools` (the attempted tool names, plain identifiers only, at most four). The notice tells the user to use the Run tools button (`web.search`, `web.read`) for lookups. A reply with any visible content keeps the unchanged contract, even if it also carries a tool call.
+
 ### `POST /chat/stream`
 
 Success token:
@@ -95,6 +97,13 @@ Terminal event:
 
 ```text
 data: {"token":"","done":true,"message_count":2}
+```
+
+Tool-call-only reply (see `POST /chat`): one notice event, then the normal terminal event, with no reply persisted. The renderer shows the notice in place of the empty assistant bubble.
+
+```text
+data: {"notice":"The model tried to use a tool (browser.run) instead of replying. ...","reason":"tool_call_only","tools":["browser.run"],"done":false}
+data: {"token":"","done":true,"message_count":1}
 ```
 
 Node failures (timeout, connection refused, non-2xx status, unexpected exception) are returned as SSE error events. The renderer promotes `error` events into the visible chat error state rather than treating them as JSON parse failures. An in-band Ollama `{"error": ...}` NDJSON line at any point, including before the first token, is not an error event: the stream ends with the normal terminal event and the partial reply (possibly empty) is persisted, exactly as the `/v1` transport behaved (its OpenAI layer rendered that line as an empty delta). The router records it as a `stream_node_error` entry in `GET /monitoring/health` `recent_errors`; DL-UX-01 owns turning it into a visible error.

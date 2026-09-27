@@ -313,6 +313,24 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert ".message:hover .message-actions" in style_source
 
 
+def test_stream_notice_replaces_the_blank_bubble_and_is_not_reloaded_away():
+    """A tool-call-only reply arrives as a `notice` event; the renderer shows it as plain text."""
+    app_source = (Path(__file__).resolve().parents[1] / "static" / "app.js").read_text()
+    error_check = app_source.index("if (data.error) throw new Error(data.error);")
+    notice = app_source.index("if (data.notice) {")
+    token = app_source.index("if (data.token && !data.done) {")
+    assert error_check < notice < token
+    handler = app_source[notice:token]
+    assert 'streamingMsg.role = "system";' in handler
+    assert "streamingMsg.content = String(data.notice);" in handler
+    assert "streamingMsg.isStreaming = false;" in handler
+    assert "sawNotice = true;" in handler
+    # The router saved no reply, so reloading history on done would erase the notice.
+    assert 'if (!sawNotice && convo.title === "New Conversation") {' in app_source
+    # Run tools builds its transcript from user and assistant turns only, never the notice.
+    assert '.filter((item) => ["user", "assistant"].includes(item.role) && typeof item.content === "string")' in app_source
+
+
 def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_hatch():
     repo = Path(__file__).resolve().parents[1]
     style_source = (repo / "static" / "style.css").read_text()

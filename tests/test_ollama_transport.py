@@ -14,6 +14,7 @@ from davellm_ollama import (
     build_ollama_chat_payload,
     ollama_chat,
     ollama_image_data,
+    ollama_tool_call_names,
     ollama_user_message,
     parse_ollama_chat_line,
     parse_ollama_chat_response,
@@ -257,6 +258,67 @@ async def test_stream_error_line_and_status_error():
         assert stream.content == "cut"
         assert stream.completed is False
         assert stream.metrics is None
+
+
+TOOL_CALL = {"function": {"name": "browser.run", "arguments": {"query": "weather"}}}
+
+
+def test_tool_calls_are_surfaced_on_lines_and_results_and_malformed_ones_are_ignored():
+    line = parse_ollama_chat_line(json.dumps({
+        "message": {"role": "assistant", "content": "", "tool_calls": [TOOL_CALL, "junk", 3]}, "done": False,
+    }))
+    assert line.content == ""
+    assert line.tool_calls == (TOOL_CALL,)
+
+    plain = parse_ollama_chat_line(json.dumps({"message": {"role": "assistant", "content": "x"}, "done": False}))
+    assert plain.tool_calls == ()
+    for malformed in ({}, "browser.run", None, {"function": {"name": "x"}}):
+        chunk = parse_ollama_chat_line(json.dumps({"message": {"content": "", "tool_calls": malformed}, "done": False}))
+        assert chunk.tool_calls == ()
+
+    result = parse_ollama_chat_response({
+        "message": {"role": "assistant", "content": "", "tool_calls": [TOOL_CALL]}, "done": True, "done_reason": "stop",
+    })
+    assert (result.content, result.tool_calls) == ("", (TOOL_CALL,))
+    assert parse_ollama_chat_response({"message": {"role": "assistant", "content": "Hi"}}).tool_calls == ()
+
+
+def test_tool_call_names_keep_order_and_skip_calls_without_a_string_name():
+    calls = [
+        TOOL_CALL,
+        {"function": {"name": "web.search"}},
+        {"function": {"name": 7}},
+        {"function": "browser.open"},
+        {"name": "top-level-is-not-native"},
+        {},
+    ]
+    assert ollama_tool_call_names(calls) == ["browser.run", "web.search"]
+    assert ollama_tool_call_names([]) == []
+
+
+@pytest.mark.asyncio
+async def test_stream_accumulates_tool_calls_across_lines():
+    second = {"function": {"name": "browser.open", "arguments": {}}}
+    with respx.mock(assert_all_called=True) as mock:
+        mock.post(f"{NODE_URL}/api/chat").mock(
+            return_value=httpx.Response(
+                200,
+                content=ndjson(
+                    {"message": {"role": "assistant", "content": "", "thinking": "search"}, "done": False},
+                    {"message": {"role": "assistant", "content": "", "tool_calls": [TOOL_CALL]}, "done": False},
+                    {"message": {"role": "assistant", "content": "", "tool_calls": [second]}, "done": True, "done_reason": "stop"},
+                ),
+                headers={"content-type": "application/x-ndjson"},
+            )
+        )
+        seen = []
+        async with ollama_chat(NODE_URL, "m", MESSAGES, stream=True, timeout=5) as stream:
+            async for chunk in stream:
+                seen.append(chunk.tool_calls)
+    assert seen == [(), (TOOL_CALL,), (second,)]
+    assert stream.tool_calls == [TOOL_CALL, second]
+    assert stream.content == ""
+    assert stream.completed is True
 
 
 def test_harness_paths_still_post_to_openai_compatible_endpoint():

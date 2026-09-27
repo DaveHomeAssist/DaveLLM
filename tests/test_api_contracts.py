@@ -1002,3 +1002,193 @@ def test_summary_uses_native_chat_and_falls_back(router_factory):
         route.mock(return_value=httpx.Response(503, text="node offline"))
         assert router.generate_conversation_summary(older) == "[Earlier conversation summary over 3 messages]"
     assert router.generate_conversation_summary([]) == ""
+
+
+# --- Tool-call-only replies: plain chat runs no tools, so it must not keep an empty assistant turn ---
+
+
+TOOL_CALL = {"function": {"name": "browser.run", "arguments": {"query": "weather in Philadelphia"}}}
+TOOL_NOTICE = (
+    "The model tried to use a tool (browser.run) instead of replying. Plain chat can't run "
+    "tools, so no reply was saved. For lookups, use the Run tools button (web.search, web.read)."
+)
+
+
+def record_side_writes(router, monkeypatch):
+    """Record every embedding and project-artifact write a chat path attempts."""
+    writes = []
+    monkeypatch.setattr(router, "store_message_embedding", lambda *a, **k: writes.append(("embedding", a)))
+    monkeypatch.setattr(router, "capture_project_artifact", lambda *a, **k: writes.append(("artifact", a)))
+    return writes
+
+
+def test_chat_tool_call_only_reply_returns_notice_and_persists_no_empty_turn(router_factory, monkeypatch):
+    router, client, _ = router_factory()
+    writes = record_side_writes(router, monkeypatch)
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(
+            return_value=ollama_chat_json("", message={"role": "assistant", "content": "", "tool_calls": [TOOL_CALL]})
+        )
+        response = client.post("/chat", headers=AUTH, json=chat_body("tool-only", prompt="weather in Philadelphia?"))
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "response": TOOL_NOTICE,
+            "node": "Test Ollama",
+            "conversation_id": "tool-only",
+            "message_count": 1,
+            "model": MODEL_ID,
+            "notice": TOOL_NOTICE,
+            "reason": "tool_call_only",
+            "tools": ["browser.run"],
+        }
+        convo = router.CONVERSATIONS["tool-only"]
+        # The user turn stays, exactly as after a node error; no assistant turn of any kind is kept.
+        assert convo["messages"] == [{"role": "user", "content": "weather in Philadelphia?"}]
+        assert convo["title"] == router.DEFAULT_CONVO_TITLE
+        assert writes == []
+        assert not router.COST_LOG.exists()
+        assert router.MODEL_HEALTH == {}  # the node answered; this is not a node failure
+
+        # The next turn gives the model no empty assistant turn to imitate, and persists normally.
+        route.mock(return_value=ollama_chat_json("Probably mild."))
+        follow_up = client.post("/chat", headers=AUTH, json=chat_body("tool-only", prompt="just guess"))
+
+    assert follow_up.status_code == 200
+    assert set(follow_up.json()) == {"response", "node", "conversation_id", "message_count", "model"}
+    assert follow_up.json()["response"] == "Probably mild."
+    sent = json.loads(route.calls.last.request.content)["messages"]
+    assert [m["role"] for m in sent] == ["system", "user", "user"]
+    saved = json.loads(router.DATA_FILE.read_text())["tool-only"]["messages"]
+    assert saved == [
+        {"role": "user", "content": "weather in Philadelphia?"},
+        {"role": "user", "content": "just guess"},
+        {"role": "assistant", "content": "Probably mild."},
+    ]
+
+
+def test_chat_stream_tool_call_only_reply_emits_notice_event_and_persists_no_empty_turn(router_factory, monkeypatch):
+    router, client, _ = router_factory()
+    writes = record_side_writes(router, monkeypatch)
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(
+            return_value=ollama_chat_ndjson(
+                {"message": {"role": "assistant", "content": "", "thinking": "I should browse"}, "done": False},
+                {"message": {"role": "assistant", "content": "", "tool_calls": [TOOL_CALL]}, "done": False},
+                {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop", "eval_count": 9},
+            )
+        )
+        response = client.post("/chat/stream", headers=AUTH, json=chat_body("tool-stream", prompt="weather?"))
+
+    assert response.status_code == 200
+    # Exact bytes: one notice event, then the unchanged terminal event; no token or error events.
+    assert response.text == (
+        'data: {"notice": "' + TOOL_NOTICE + '", "reason": "tool_call_only", "tools": ["browser.run"], "done": false}\n\n'
+        'data: {"token": "", "done": true, "message_count": 1}\n\n'
+    )
+    assert "I should browse" not in response.text
+    convo = router.CONVERSATIONS["tool-stream"]
+    assert convo["messages"] == [{"role": "user", "content": "weather?"}]
+    assert convo["title"] == router.DEFAULT_CONVO_TITLE
+    assert writes == []
+    assert not router.COST_LOG.exists()
+    assert list(router.RECENT_ERRORS) == []
+
+
+def test_chat_stream_tool_call_after_blank_tokens_or_error_line_still_keeps_nothing(router_factory, monkeypatch):
+    """Whitespace is not a reply, and an in-band error line after the call does not turn it into one."""
+    router, client, _ = router_factory()
+    writes = record_side_writes(router, monkeypatch)
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(
+            return_value=ollama_chat_ndjson(
+                {"message": {"role": "assistant", "content": "\n\n"}, "done": False},
+                {"message": {"role": "assistant", "content": "", "tool_calls": [TOOL_CALL, TOOL_CALL]}, "done": False},
+                {"error": "runner crashed"},
+            )
+        )
+        response = client.post("/chat/stream", headers=AUTH, json=chat_body("tool-blank"))
+
+    assert response.text == (
+        'data: {"token": "\\n\\n", "done": false}\n\n'
+        'data: {"notice": "' + TOOL_NOTICE + '", "reason": "tool_call_only", "tools": ["browser.run"], "done": false}\n\n'
+        'data: {"token": "", "done": true, "message_count": 1}\n\n'
+    )
+    assert router.CONVERSATIONS["tool-blank"]["messages"] == [{"role": "user", "content": "hello"}]
+    assert writes == []
+    assert [(e["event"], e["detail"]) for e in router.RECENT_ERRORS] == [("stream_node_error", "runner crashed")]
+
+
+def test_replies_with_content_keep_the_existing_contract_even_with_a_tool_call(router_factory):
+    """Byte-identical SSE and /chat JSON for any reply that has visible content."""
+    router, client, _ = router_factory()
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat")
+        route.mock(
+            return_value=ollama_chat_ndjson(
+                {"message": {"role": "assistant", "content": "Let me"}, "done": False},
+                {"message": {"role": "assistant", "content": " check.", "tool_calls": [TOOL_CALL]}, "done": False},
+                {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"},
+            )
+        )
+        stream = client.post("/chat/stream", headers=AUTH, json=chat_body("mixed-stream"))
+        route.mock(return_value=ollama_chat_ndjson(
+            {"message": {"role": "assistant", "content": "Plain"}, "done": False},
+            {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"},
+        ))
+        plain = client.post("/chat/stream", headers=AUTH, json=chat_body("plain-stream"))
+        route.mock(
+            return_value=ollama_chat_json("", message={"role": "assistant", "content": "Let me check.", "tool_calls": [TOOL_CALL]})
+        )
+        chat = client.post("/chat", headers=AUTH, json=chat_body("mixed-chat"))
+
+    assert stream.text == (
+        'data: {"token": "Let me", "done": false}\n\n'
+        'data: {"token": " check.", "done": false}\n\n'
+        'data: {"token": "", "done": true, "message_count": 2}\n\n'
+    )
+    assert plain.text == (
+        'data: {"token": "Plain", "done": false}\n\n'
+        'data: {"token": "", "done": true, "message_count": 2}\n\n'
+    )
+    assert router.CONVERSATIONS["mixed-stream"]["messages"][1] == {"role": "assistant", "content": "Let me check."}
+    assert chat.json() == {
+        "response": "Let me check.",
+        "node": "Test Ollama",
+        "conversation_id": "mixed-chat",
+        "message_count": 2,
+        "model": MODEL_ID,
+    }
+
+
+def test_tool_call_only_notice_echoes_only_plain_tool_names(router_factory):
+    router, _, _ = router_factory()
+    notice = router.tool_call_only_notice
+    assert notice("Hi", [TOOL_CALL]) is None
+    assert notice("", []) is None
+    assert notice(" \n", ()) is None
+
+    hostile = [
+        {"function": {"name": "<img src=x onerror=alert(1)>"}},
+        {"function": {"name": "x" * 65}},
+        {"function": {"name": "browser.run"}},
+        {"function": {"name": "browser.run"}},
+        {"function": {"name": "a"}}, {"function": {"name": "b"}}, {"function": {"name": "c"}}, {"function": {"name": "d"}},
+    ]
+    result = notice("", hostile)
+    assert result["tools"] == ["browser.run", "a", "b", "c"]
+    assert result["notice"].startswith("The model tried to use a tool (browser.run, a, b, c) instead of replying.")
+    assert "<img" not in result["notice"]
+
+    unnamed = notice("", [{"function": {"arguments": {}}}])
+    assert unnamed["tools"] == []
+    assert unnamed["notice"].startswith("The model tried to use a tool instead of replying.")
+    assert unnamed["notice"].endswith("use the Run tools button (web.search, web.read).")
