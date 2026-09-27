@@ -1,8 +1,11 @@
 """DL-ROUTE-01/02: node capability profiles and the advisory prompt-size check (no router import)."""
 
 import json
+import threading
 
-from davellm_node_profiles import NodeProfile, estimate_prompt_tokens, parse_node_profiles, prompt_size_check
+import pytest
+
+from davellm_node_profiles import NodeActivity, NodeProfile, estimate_prompt_tokens, parse_node_profiles, prompt_size_check
 
 
 def nodes(*entries):
@@ -68,3 +71,48 @@ def test_prompt_estimate_counts_every_message_text():
         {"role": "assistant", "content": None},
     ]
     assert estimate_prompt_tokens(messages, lambda text: len(text) // 4) == 110
+
+
+def test_node_activity_counts_others_in_flight_and_releases_on_errors():
+    activity = NodeActivity()
+    assert activity.start("a") == 0
+    assert activity.start("a") == 1
+    assert activity.start("b") == 0
+    activity.finish("a")
+    assert activity.in_flight("a") == 1
+    with pytest.raises(RuntimeError):
+        with activity.track("a") as ahead:
+            assert ahead == 1 and activity.in_flight("a") == 2
+            raise RuntimeError("node failed")
+    assert activity.in_flight("a") == 1
+    activity.finish("a")
+    activity.finish("a")  # an extra finish never goes negative
+    assert activity.in_flight("a") == 0 and activity.in_flight("b") == 1
+
+
+def test_node_activity_is_consistent_across_threads():
+    activity = NodeActivity()
+
+    def work():
+        for _ in range(500):
+            with activity.track("n"):
+                pass
+
+    threads = [threading.Thread(target=work) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert activity.in_flight("n") == 0
+
+
+def test_node_activity_remembers_the_prompt_each_node_last_started():
+    activity = NodeActivity()
+    assert activity.last_prompt("a") is None
+    with activity.track("a", "llama3\nc1"):
+        pass
+    assert activity.last_prompt("a") == "llama3\nc1"
+    with activity.track("a"):  # a summary or tool run leaves nothing reusable
+        pass
+    assert activity.last_prompt("a") is None and activity.last_prompt("b") is None
+

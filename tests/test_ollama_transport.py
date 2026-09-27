@@ -16,10 +16,12 @@ from davellm_ollama import (
     OllamaResponseError,
     OllamaStreamError,
     build_ollama_chat_payload,
+    model_is_loaded,
     native_tool_messages,
     ollama_chat,
     ollama_chat_bounded,
     ollama_image_data,
+    ollama_loaded_models,
     ollama_tool_call_names,
     ollama_user_message,
     parse_ollama_chat_line,
@@ -406,6 +408,55 @@ async def test_bounded_chat_sends_native_tools_payload_and_caps_the_body():
         route.mock(return_value=httpx.Response(500, text="boom"))
         with pytest.raises(httpx.HTTPStatusError):
             await ollama_chat_bounded(NODE_URL, "m", [], tools=None, timeout=5, max_bytes=1000)
+
+
+# DL-ROUTE-03: residency is a best-effort hint --------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_loaded_models_reads_api_ps_and_never_raises():
+    with respx.mock(assert_all_called=True) as mock:
+        route = mock.get(f"{NODE_URL}/api/ps")
+        route.mock(return_value=httpx.Response(200, json={"models": [
+            {"name": "llama3:latest", "model": "llama3:latest", "size_vram": 1},
+            {"name": "gpt-oss:20b", "model": "gpt-oss:20b"}, "junk", {"name": 7},
+        ]}))
+        assert await ollama_loaded_models(NODE_URL + "/", timeout=1) == frozenset({"llama3:latest", "gpt-oss:20b"})
+        route.mock(return_value=httpx.Response(200, json={"models": []}))
+        assert await ollama_loaded_models(NODE_URL, timeout=1) == frozenset()
+        for failure in (httpx.Response(500), httpx.Response(200, text="nope"), httpx.Response(200, json={"models": 3}),
+                        httpx.ConnectError("down"), httpx.ReadTimeout("slow")):
+            if isinstance(failure, Exception):
+                route.mock(side_effect=failure)
+            else:
+                route.mock(return_value=failure)
+            assert await ollama_loaded_models(NODE_URL, timeout=1) is None
+
+
+def test_model_is_loaded_treats_a_bare_name_as_latest():
+    loaded = {"llama3:latest", "gpt-oss:20b"}
+    assert model_is_loaded("llama3", loaded) and model_is_loaded("llama3:latest", loaded)
+    assert model_is_loaded("gpt-oss:20b", loaded)
+    assert not model_is_loaded("gpt-oss:120b", loaded) and not model_is_loaded("gpt-oss", loaded)
+    assert model_is_loaded("qwen3:latest", {"qwen3"})
+
+
+class _DripPs(httpx.AsyncByteStream):
+    """An /api/ps that answers headers at once and then drips its body."""
+
+    async def __aiter__(self):
+        for piece in (b'{"models"', b': []', b'}'):
+            await asyncio.sleep(0.2)
+            yield piece
+
+
+@pytest.mark.asyncio
+async def test_the_residency_probe_is_bounded_as_a_whole():
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(f"{NODE_URL}/api/ps").mock(return_value=httpx.Response(200, stream=_DripPs()))
+        started = time.monotonic()
+        assert await ollama_loaded_models(NODE_URL, timeout=0.3) is None  # each read < 0.3 s, the whole > 0.3 s
+        assert time.monotonic() - started < 0.55
+        assert await ollama_loaded_models(NODE_URL, timeout=2) == frozenset()
 
 
 # DL-TIME-01 review: wall-clock deadlines where httpx only has per-operation timeouts ------------

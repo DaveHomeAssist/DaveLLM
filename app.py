@@ -2090,12 +2090,13 @@ async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dic
     if binding is None:
         raise RuntimeError("Run model binding is unavailable")
     # DL-TRANSPORT-01b: native /api/chat, so the run gets the router's num_ctx and keep_alive.
-    return await ollama_chat_bounded(
-        binding.node_url, binding.model, messages, tools=schemas, timeout=node_complete_timeout(),
-        max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
-        temperature=chat_temperature(binding.temperature),
-        options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
-    )
+    with NODE_ACTIVITY.track(binding.node_url):  # DL-ROUTE-04
+        return await ollama_chat_bounded(
+            binding.node_url, binding.model, messages, tools=schemas, timeout=node_complete_timeout(),
+            max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
+            temperature=chat_temperature(binding.temperature),
+            options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
+        )
 
 
 HARNESS = Harness(
@@ -2353,10 +2354,12 @@ def build_project_messages_for_node(
     )
 
 from davellm_ollama import (  # native /api/chat transport, kept below the handlers (see tests/test_tool_catalog_provenance.py)
-    OllamaResponseError, OllamaStreamError, ollama_chat, ollama_chat_bounded, ollama_image_data, ollama_tool_call_names,
-    ollama_user_message,
+    OllamaResponseError, OllamaStreamError, model_is_loaded, ollama_chat, ollama_chat_bounded, ollama_image_data,
+    ollama_loaded_models, ollama_tool_call_names, ollama_user_message,
 )
-from davellm_node_profiles import NodeProfile, estimate_prompt_tokens, parse_node_profiles, prompt_size_check
+from davellm_node_profiles import (
+    NodeActivity, NodeProfile, estimate_prompt_tokens, parse_node_profiles, prompt_size_check,
+)
 
 NODE_PROFILES: Dict[str, NodeProfile] = parse_node_profiles(os.getenv("DAVE_NODES"))  # DL-ROUTE-01, advisory only
 
@@ -2371,6 +2374,44 @@ def node_listing(node: NodeConfig) -> dict:
 def prompt_size_warning(node: NodeConfig, model_id: str, messages: List[Dict]) -> Optional[dict]:
     """DL-ROUTE-02: waiting-status fields when this prompt is over the node's limit for the model."""
     return prompt_size_check(NODE_PROFILES.get(node.id), model_id, estimate_prompt_tokens(messages, estimate_tokens))
+
+NODE_ACTIVITY = NodeActivity()  # DL-ROUTE-04: this router's requests in flight, keyed by node URL
+NODE_PS_TIMEOUT = 2.0  # DL-ROUTE-03: the residency probe must never hold a chat up for long
+
+def chat_prompt_key(
+    model_id: str, conversation_id: str, project_id: Optional[str], raw_history: List[dict],
+) -> Optional[str]:
+    """What a plain chat leaves in the node's prompt cache, or ``None`` when the next turn cannot reuse it.
+
+    Project chats retrieve new context each turn, and past ``prune_conversation_history``'s
+    10 messages the history window slides, so either way the prompt's prefix changes.
+    """
+    unpinned = raw_history[len(get_leading_system_messages(raw_history)):]
+    if project_id or len(unpinned) > 10:
+        return None
+    return f"{model_id}\n{conversation_id}"
+
+async def waiting_status(
+    node: NodeConfig, model_id: str, messages: List[Dict], others_in_flight: int, prefix_cached: bool,
+) -> dict:
+    """The stream's first event (DL-UX-01), with the DL-ROUTE hints that apply.
+
+    ``model_loaded`` when the node answered ``/api/ps`` (03), ``others_in_flight`` when the node
+    is busy with other replies and serves one at a time (04; a count, not a queue position), and
+    ``prompt_tokens``/``prompt_token_limit`` when the prompt is over the node's limit (02).
+    A follow-up in the conversation the node last served, with the model still loaded and
+    nothing ahead, reads only its new message (Ollama reuses the cached prefix), so only
+    that message counts toward the limit.
+    """
+    status: Dict[str, Any] = {"status": "waiting"}
+    loaded = await ollama_loaded_models(node.url, timeout=NODE_PS_TIMEOUT)
+    if loaded is not None:
+        status["model_loaded"] = model_is_loaded(model_id, loaded)
+    if others_in_flight:
+        status["others_in_flight"] = others_in_flight
+    warm = prefix_cached and status.get("model_loaded") is True and not others_in_flight
+    status.update(prompt_size_warning(node, model_id, messages[-1:] if warm else messages) or {})
+    return {**status, "done": False}
 
 CHAT_NUM_CTX_FLOOR = 8192  # smallest window that still leaves project context room after output and safety reserves
 
@@ -2506,15 +2547,16 @@ def generate_conversation_summary(older_messages: List[dict]) -> str:
     summary_prompt = f"Summarize the earlier conversation in 2-3 sentences. Keep key facts and decisions.\n\n{condensed}"
 
     try:
-        result = ollama_chat(
-            node.url, summary_model,
-            [
-                {"role": "system", "content": "You summarize prior chat turns concisely."},
-                {"role": "user", "content": summary_prompt},
-            ],
-            stream=False, timeout=10, num_predict=150, temperature=0.3,
-            options=chat_node_options(node, summary_model), keep_alive=chat_keep_alive(None),
-        )
+        with NODE_ACTIVITY.track(node.url):  # DL-ROUTE-04
+            result = ollama_chat(
+                node.url, summary_model,
+                [
+                    {"role": "system", "content": "You summarize prior chat turns concisely."},
+                    {"role": "user", "content": summary_prompt},
+                ],
+                stream=False, timeout=10, num_predict=150, temperature=0.3,
+                options=chat_node_options(node, summary_model), keep_alive=chat_keep_alive(None),
+            )
         return result.content or ""
     except Exception as e:
         print(f"⚠️ Summary generation failed: {e}")
@@ -3623,12 +3665,13 @@ async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key
         )
 
     async def invoke_model(messages: List[Dict], schemas: List[Dict]):
-        return await ollama_chat_bounded(
-            node.url, req.model, messages, tools=schemas, timeout=node_complete_timeout(),
-            max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=req.max_tokens,
-            temperature=chat_temperature(req.temperature),
-            options={"num_ctx": chat_num_ctx(req.model)}, keep_alive=CHAT_KEEP_ALIVE,
-        )
+        with NODE_ACTIVITY.track(node.url):  # DL-ROUTE-04
+            return await ollama_chat_bounded(
+                node.url, req.model, messages, tools=schemas, timeout=node_complete_timeout(),
+                max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=req.max_tokens,
+                temperature=chat_temperature(req.temperature),
+                options={"num_ctx": chat_num_ctx(req.model)}, keep_alive=CHAT_KEEP_ALIVE,
+            )
 
     outcome = await run_executor_loop(
         req.messages,
@@ -4399,13 +4442,14 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
     # Call the selected Ollama node through its native chat endpoint.
     try:
         start = time.time()
-        result = ollama_chat(
-            node.url, preferred_model, messages_for_node, stream=False, timeout=node_complete_timeout(),
-            total_timeout=NODE_TOTAL_TIMEOUT,
-            num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
-            options=chat_node_options(node, preferred_model),
-            keep_alive=chat_keep_alive(conversation),
-        )
+        with NODE_ACTIVITY.track(node.url, chat_prompt_key(preferred_model, req.conversation_id, project_id, raw_history)):
+            result = ollama_chat(
+                node.url, preferred_model, messages_for_node, stream=False, timeout=node_complete_timeout(),
+                total_timeout=NODE_TOTAL_TIMEOUT,
+                num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
+                options=chat_node_options(node, preferred_model),
+                keep_alive=chat_keep_alive(conversation),
+            )
         latency_ms = (time.time() - start) * 1000
     except httpx.TimeoutException:
         track_model_failure(preferred_model, "timeout")
@@ -4597,7 +4641,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     if spent + est_cost > budget:
         raise HTTPException(402, f"Budget exceeded. Spent ${spent:.4f} / ${budget:.4f}.")
 
-    prompt_warning = prompt_size_warning(node, preferred_model, messages_for_node)
+    prompt_key = chat_prompt_key(preferred_model, req.conversation_id, project_id, raw_history)
 
     async def stream_generator():
         """
@@ -4613,9 +4657,12 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         stats = None
 
         # DL-UX-01: additive status events; token, notice, error and terminal events are unchanged.
-        # DL-ROUTE-02: over the node's prompt limit, the waiting status carries the estimate and the limit.
-        yield f"data: {json.dumps({'status': 'waiting', **(prompt_warning or {}), 'done': False})}\n\n"
+        # The node counts as busy from here until its reply ends, however it ends (DL-ROUTE-04).
+        prefix_cached = prompt_key is not None and NODE_ACTIVITY.last_prompt(node.url) == prompt_key
+        others_in_flight = NODE_ACTIVITY.start(node.url, prompt_key)
         try:
+            waiting = await waiting_status(node, preferred_model, messages_for_node, others_in_flight, prefix_cached)
+            yield f"data: {json.dumps(waiting)}\n\n"
             async with ollama_chat(
                 node.url, preferred_model, messages_for_node, stream=True, timeout=node_stream_timeout(),
                 first_chunk_timeout=NODE_FIRST_CHUNK_TIMEOUT, idle_timeout=NODE_IDLE_TIMEOUT,
@@ -4654,6 +4701,8 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         except Exception as e:
             yield f"data: {json.dumps({'error': f'Unexpected: {str(e)}', 'done': True})}\n\n"
             had_error = True
+        finally:
+            NODE_ACTIVITY.finish(node.url)
 
         # A tool-call-only reply gets a visible notice and saves only the user turn.
         notice = None if had_error else tool_call_only_notice(full_response, tool_calls)

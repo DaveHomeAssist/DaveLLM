@@ -1523,3 +1523,104 @@ def test_a_prompt_over_the_node_limit_says_so_in_the_waiting_status(router_facto
     assert event["prompt_tokens"] > 3750  # the message alone is 3,750
     assert _waiting_event(router_factory, "hi") == {"status": "waiting", "done": False}
 
+
+# DL-ROUTE-03/04 ------------------------------------------------------------------------------------
+
+def _stream_first_event(router_factory, *, ps=None, busy=0, chat=None):
+    router, client, _ = router_factory()
+    node_url = router.NODE_CONFIGS[0].url
+    for _ in range(busy):
+        router.NODE_ACTIVITY.start(node_url)
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        if ps is not None:
+            mock.get(f"{TEST_NODE_URL}/api/ps").mock(return_value=ps)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=chat or ollama_chat_ndjson(
+            {"message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "stop"},
+        ))
+        text = client.post("/chat/stream", headers=AUTH, json=chat_body("route")).text
+    return router, node_url, json.loads(text.split("\n\n")[0].removeprefix("data: ")), text
+
+
+def test_waiting_status_says_whether_the_model_is_loaded(router_factory):
+    loaded = httpx.Response(200, json={"models": [{"name": MODEL_ID, "model": MODEL_ID}]})
+    _, _, event, _ = _stream_first_event(router_factory, ps=loaded)
+    assert event == {"status": "waiting", "model_loaded": True, "done": False}
+    _, _, event, _ = _stream_first_event(router_factory, ps=httpx.Response(200, json={"models": []}))
+    assert event == {"status": "waiting", "model_loaded": False, "done": False}
+    _, _, event, _ = _stream_first_event(router_factory, ps=httpx.Response(404))
+    assert event == {"status": "waiting", "done": False}  # unknown residency adds nothing
+
+
+def test_waiting_status_counts_replies_ahead_and_the_count_is_released(router_factory):
+    router, node_url, event, _ = _stream_first_event(router_factory, busy=2)
+    assert event["others_in_flight"] == 2
+    assert router.NODE_ACTIVITY.in_flight(node_url) == 2  # this stream finished and left
+    router, node_url, _, text = _stream_first_event(router_factory, chat=httpx.Response(500, text="boom"))
+    assert '"error": "Node error 500' in text
+    assert router.NODE_ACTIVITY.in_flight(node_url) == 0
+
+
+def test_chat_and_tool_loop_count_as_busy_while_the_node_works(router_factory, monkeypatch):
+    router, client, _ = router_factory(tools=True)
+    node_url = router.NODE_CONFIGS[0].url
+    seen = []
+
+    def fake_chat(*args, **kwargs):
+        seen.append(("chat", router.NODE_ACTIVITY.in_flight(node_url)))
+        raise httpx.ConnectError("down")
+
+    async def fake_bounded(*args, **kwargs):
+        seen.append(("tool", router.NODE_ACTIVITY.in_flight(node_url)))
+        return {"message": {"role": "assistant", "content": "done"}, "done": True}
+
+    monkeypatch.setattr(router, "ollama_chat", fake_chat)
+    monkeypatch.setattr(router, "ollama_chat_bounded", fake_bounded)
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        assert client.post("/chat", headers=AUTH, json=chat_body("busy")).status_code == 503
+        run = client.post("/tools/agent/run", headers=AUTH, json={
+            "messages": [{"role": "user", "content": "hi"}], "node_id": "node-test", "model": MODEL_ID,
+        })
+    assert run.status_code == 200 and run.json()["status"] == "completed"
+    assert seen == [("chat", 1), ("tool", 1)]
+    assert router.NODE_ACTIVITY.in_flight(node_url) == 0
+
+
+def test_a_warm_follow_up_counts_only_its_new_message(router_factory):
+    router, client, _ = router_factory(nodes=[PROFILED_NODE])
+    loaded = httpx.Response(200, json={"models": [{"name": MODEL_ID}]})
+    reply = {"message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "stop"}
+
+    def first_event(mock, prompt, ps):
+        mock.get(f"{TEST_NODE_URL}/api/ps").mock(return_value=ps)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_ndjson(reply))
+        text = client.post("/chat/stream", headers=AUTH, json=chat_body("warm", prompt=prompt)).text
+        return json.loads(text.split("\n\n")[0].removeprefix("data: "))
+
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        # First turn: nothing cached yet, so the whole long prompt counts.
+        assert first_event(mock, "word " * 3000, loaded)["prompt_token_limit"] == 2000
+        # Same conversation, model still loaded: the node reads only the new message.
+        assert first_event(mock, "hi", loaded) == {"status": "waiting", "model_loaded": True, "done": False}
+        # Model unloaded since: the whole conversation is read again.
+        cold = first_event(mock, "hi again", httpx.Response(200, json={"models": []}))
+        assert cold["model_loaded"] is False and cold["prompt_tokens"] > 3750
+        # Something else used the node in between: its cache no longer holds this chat.
+        router.NODE_ACTIVITY.start(router.NODE_CONFIGS[0].url)
+        router.NODE_ACTIVITY.finish(router.NODE_CONFIGS[0].url)
+        assert "prompt_token_limit" in first_event(mock, "and again", loaded)
+
+
+def test_a_long_conversation_is_never_treated_as_warm(router_factory):
+    # Past 10 messages the history window slides each turn, so the cached prefix no longer matches.
+    router, _, _ = router_factory()
+    short = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}] * 5
+    assert router.chat_prompt_key("m", "c", None, short) == "m\nc"
+    assert router.chat_prompt_key("m", "c", None, short + [{"role": "user", "content": "q"}]) is None
+    assert router.chat_prompt_key("m", "c", "project-1", short[:2]) is None
+
