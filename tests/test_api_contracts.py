@@ -1265,6 +1265,11 @@ def test_chat_context_is_the_smaller_of_model_window_and_cap(router_factory, mon
     router, _, _ = router_factory()
     assert router.CHAT_NUM_CTX == 16384
 
+    # Below the floor there is no room for project context after the output and safety reserves.
+    monkeypatch.setenv("DAVE_CHAT_NUM_CTX", "512")
+    router, _, _ = router_factory()
+    assert router.CHAT_NUM_CTX == router.CHAT_NUM_CTX_FLOOR == 8192
+
 
 def test_keep_alive_setting_and_its_empty_value(router_factory, monkeypatch):
     monkeypatch.setenv("DAVE_CHAT_KEEP_ALIVE", "1h")
@@ -1277,20 +1282,40 @@ def test_keep_alive_setting_and_its_empty_value(router_factory, monkeypatch):
     assert router.chat_keep_alive({"id": "c"}) is None  # empty: server default, nothing sent
 
 
-def test_project_budget_uses_the_same_window_the_router_requests(router_factory, monkeypatch):
+def test_project_budget_uses_chat_window_for_plain_chat_and_model_window_for_agents(router_factory, monkeypatch):
     monkeypatch.setenv("DAVE_MODEL_CONTEXT_WINDOWS", json.dumps({MODEL_ID: 65536}))
     router, _, _ = router_factory()
-    seen = {}
-
-    def assemble(project_id, *, query, available_tokens):
-        seen["available_tokens"] = available_tokens
-        return {"messages": [], "budget": {}}
-
-    monkeypatch.setattr(router.PROJECT_CONTEXT, "build_context_messages", assemble)
-    _, budget = router.build_project_messages_for_node(
-        project_id="p1", project={}, model_id=MODEL_ID, output_reserve=2048,
-        query="q", system_prompt="s", history=[],
+    monkeypatch.setattr(
+        router.PROJECT_CONTEXT, "build_context_messages",
+        lambda project_id, *, query, available_tokens: {"messages": [], "budget": {}},
     )
-    # The assembler plans for the window the router asks Ollama for, not the larger configured one.
-    assert budget["model_context_window"] == router.chat_num_ctx(MODEL_ID) == 16384
-    assert seen["available_tokens"] < 16384
+    common = dict(project_id="p1", project={}, model_id=MODEL_ID, output_reserve=2048,
+                  query="q", system_prompt="s", history=[])
+    _, chat_budget = router.build_project_messages_for_node(**common, window=router.chat_num_ctx(MODEL_ID))
+    _, agent_budget = router.build_project_messages_for_node(**common)
+    # Plain chat plans for the num_ctx it sends; agent runs (/v1, no num_ctx) keep the model window.
+    assert chat_budget["model_context_window"] == 16384
+    assert agent_budget["model_context_window"] == 65536
+
+
+def test_plain_chat_call_sites_pass_the_chat_window(router_factory, monkeypatch):
+    router, client, _ = router_factory()
+    windows = []
+    real = router.build_project_messages_for_node
+
+    def spy(**kwargs):
+        windows.append(kwargs.get("window"))
+        return real(**kwargs)
+
+    monkeypatch.setattr(router, "build_project_messages_for_node", spy)
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_json("ok"))
+        client.post("/chat", headers=AUTH, json=chat_body("win-chat"))
+        route.mock(return_value=ollama_chat_ndjson(
+            {"message": {"role": "assistant", "content": "ok"}, "done": False},
+            {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"},
+        ))
+        client.post("/chat/stream", headers=AUTH, json=chat_body("win-stream"))
+    assert windows == [router.chat_num_ctx(MODEL_ID)] * 2

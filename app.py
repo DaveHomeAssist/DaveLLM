@@ -2310,6 +2310,7 @@ def build_project_messages_for_node(
     system_prompt: str,
     history: List[dict],
     capture_brain: bool = False,
+    window: Optional[int] = None,
 ) -> tuple[List[dict], dict]:
     """Assemble the P4 order and reserve exact room for all four components."""
     if not project_id:
@@ -2318,7 +2319,8 @@ def build_project_messages_for_node(
     base_tokens = sum(content_token_count(message.get("content")) for message in base_messages)
     project_instruction_tokens = estimate_project_tokens(project.get("system_prompt") or "")
     non_project_tokens = max(0, base_tokens - project_instruction_tokens)
-    context_window = chat_num_ctx(model_id)
+    # Plain chat passes chat_num_ctx (the num_ctx it sends); agent runs on /v1 send none and keep the model window.
+    context_window = window if window is not None else get_model_context_window(model_id)
     safety_margin = max(512, round(context_window * 0.05))
     available_project_tokens = (
         context_window
@@ -2352,9 +2354,11 @@ from davellm_ollama import (  # native /api/chat transport, kept below the handl
     ollama_user_message,
 )
 
+CHAT_NUM_CTX_FLOOR = 8192  # smallest window that still leaves project context room after output and safety reserves
+
 def _chat_num_ctx_cap() -> int:
     try:
-        return max(512, int(os.getenv("DAVE_CHAT_NUM_CTX", "16384")))
+        return max(CHAT_NUM_CTX_FLOOR, int(os.getenv("DAVE_CHAT_NUM_CTX", "16384")))
     except ValueError:
         return 16384
 
@@ -3245,6 +3249,7 @@ def preview_project_context(
             query=req.query,
             system_prompt=system_prompt,
             history=prepared_history,
+            window=chat_num_ctx(model_id),
         )
     except ProjectContextError as exc:
         raise context_http_error(exc)
@@ -4332,6 +4337,7 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
             query=user_text,
             system_prompt=system_prompt,
             history=history,
+            window=chat_num_ctx(preferred_model),
         )
     except ProjectContextError as exc:
         raise context_http_error(exc)
@@ -4531,6 +4537,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
             query=user_text,
             system_prompt=system_prompt,
             history=history,
+            window=chat_num_ctx(preferred_model),
         )
     except ProjectContextError as exc:
         raise context_http_error(exc)
