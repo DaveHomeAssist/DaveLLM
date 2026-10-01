@@ -202,7 +202,7 @@ npm audit
 git diff --check
 ```
 
-Runtime UI files are under `static/`; only that directory is mounted at `/`. The separate `docs/` content is published through GitHub Pages and is not used by the desktop runtime.
+Runtime UI files are under `static/`; only that directory is mounted at `/`, with `Cache-Control: no-cache` so browsers revalidate the bundle on every load. The separate `docs/` content is published through GitHub Pages and is not used by the desktop runtime.
 
 ## Dependency note
 

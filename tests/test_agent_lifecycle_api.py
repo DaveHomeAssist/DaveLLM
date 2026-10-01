@@ -75,6 +75,7 @@ def test_lifecycle_auth_tools_off_validation_and_completed_events(router_factory
         f"/tools/agent/runs/{run_id}/events?stream=true&after=0", headers=AUTH,
     )
     assert streamed.status_code == 200
+    assert streamed.headers["cache-control"] == "no-store"
     assert streamed.text.count("event: terminal") == 1
     assert f"id: {events[-1]['sequence']}" in streamed.text
     router_clock = datetime.now(timezone.utc) + timedelta(hours=2)
