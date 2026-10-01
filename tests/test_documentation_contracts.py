@@ -177,7 +177,7 @@ def test_daveharness_implementation_plan_is_complete_and_linked():
         "RunStore",
         "POST /tools/agent/runs",
         "Tools and shell remain default-off",
-        "Authorized; blocked by model transport",
+        "September 23 authorization expired; qualification incomplete",
     ):
         assert required in plan
     assert "(docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md)" in project_spec
