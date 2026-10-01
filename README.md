@@ -164,11 +164,15 @@ Project-context configuration:
 
 The Project Homepage uses a vendored GSAP 3.15.0 core timeline for its precision-control-deck reveal and context-preview feedback. It animates transform and opacity only, switches directly to final states under `prefers-reduced-motion: reduce`, and performs no CDN request. The vendored notice is in `static/vendor/gsap/NOTICE.md`.
 
-## Local suggestions and mobile navigation
+## Console navigation and local suggestions
+
+The runtime console uses Chat, Projects, Cluster, and Settings in a desktop side rail or mobile bottom rail. Light is the initial theme; the visible theme toggle preserves the chosen light/dark mode. Conversation history keeps colored age groups: green under 24 hours, amber 1–3 days, red 3–7 days, and gray over 7 days. History and the Context/Run/Notepad inspector can be opened independently on desktop and as alternate panels on narrow screens. Cluster reports real node status and router metrics; unavailable data is explicitly labeled. `monitoring.html` now opens that same Cluster view.
+
+Project attachment uses an explicit dialog and the existing backend update route. Context previews report the actual backend budget, including carried-forward unused capacity. Approval decisions retain the exact pending-call credentials; the composer remains editable while sending is disabled until the run ends. Model output is rendered using text nodes and a small Markdown subset, never raw HTML.
 
 The browser client derives at most three deterministic Suggested next actions from the current composer, attachment type, validated project/node/model selection, and response shape. Prediction generation lives in `static/anticipation.js`; it performs no network, DOM, or storage work, and suggestion chips never submit or change context without a visible user action. Valid last-used selections may be restored only on the empty startup state after inventory and node-health checks, with a visible status and immediate Undo. The client no longer calls `/route/decision` while sending a message, so the selected model remains under manual control.
 
-Suggestion preferences use the versioned `davellm_anticipation_v1` local-storage record. Its schema is limited to stable IDs, booleans, capped counters, and timestamps; prompt/response text, attachment names or contents, credentials, node URLs, and system prompts are excluded. Unsent composer text and the active Chat/History/Runtime mobile tab remain session-only. Reset Suggestions removes only the versioned suggestion record.
+Suggestion preferences use the versioned `davellm_anticipation_v1` local-storage record. Its schema is limited to stable IDs, booleans, capped counters, and timestamps; prompt/response text, attachment names or contents, credentials, node URLs, and system prompts are excluded. Unsent composer text remains session-only; navigation state is not persisted. Reset Suggestions removes only the versioned suggestion record.
 
 ## Validation
 
@@ -185,6 +189,7 @@ python -m compileall -q daveharness
 python -m mypy daveharness
 python -m pytest -q
 node --check static/app.js
+node --check static/console.js
 node --check static/anticipation.js
 node --check static/prompt-contract.js
 node --check static/vendor/gsap/gsap.min.js
@@ -206,3 +211,7 @@ Runtime UI files are under `static/`; only that directory is mounted at `/`. The
 DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, and Python 3.12–3.14 CI. See [H8 qualification](docs/DAVEHARNESS_H8_QUALIFICATION.md). This candidate does not establish live-model qualification or human acceptance. DaveLLM remains `2.1.0`.
 
 H9 action 55 adds the authorized live-evaluation runner `scripts/evaluate_live_daveharness.py`, which runs DaveLLM's Ollama adapter and file/system tools inside disposable roots and reports the action 56 thresholds per model. See [H9 live evaluation](docs/DAVEHARNESS_H9_LIVE_EVALUATION.md). No target model is qualified yet, and DaveHarness remains `1.0.0-rc.1`.
+
+### Optional console browser acceptance
+
+`tests/browser_console.cjs` exercises seven viewport widths, themes, colored age groups, safe Markdown, runtime selection, cluster state, project creation, approval rejection, streaming, and credential cancellation. It needs Playwright and a local Chrome binary from the developer environment; neither is a runtime dependency. Run it only against a disposable router with `DAVE_API_KEY=console-fixture-key`, an empty node list, tools enabled, and a temporary `DAVE_DATA_DIR`. Set `CONSOLE_URL` (default `http://127.0.0.1:8769`) and optionally `CHROME_BIN` and `CONSOLE_SCREENSHOTS`, then run `node tests/browser_console.cjs`. Model and run responses are fixtures; project creation uses the disposable backend. These tests do not qualify live model inference or physical phone keyboard behavior.

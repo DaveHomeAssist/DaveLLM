@@ -154,7 +154,6 @@ def test_frontend_wires_manual_control_storage_and_mobile_accessibility():
     css_source = (REPO / "static" / "style.css").read_text()
 
     assert 'const ANTICIPATION_STORAGE_KEY = "davellm_anticipation_v1"' in app_source
-    assert 'const MOBILE_TAB_SESSION_KEY = "davellm_mobile_tab_session"' in app_source
     assert 'const DRAFT_SESSION_KEY = "davellm_draft_session"' in app_source
     assert 'localStorage.removeItem(ANTICIPATION_STORAGE_KEY)' in app_source
     assert "localStorage.clear" not in app_source
@@ -169,8 +168,8 @@ def test_frontend_wires_manual_control_storage_and_mobile_accessibility():
     assert "window.visualViewport" in app_source
 
     assert '<script src="anticipation.js"></script>' in html_source
-    assert 'role="tablist"' in html_source
-    assert html_source.count('role="tab"') == 3
+    assert 'aria-label="Main navigation"' in html_source
+    assert all(f'data-view="{view}"' in html_source for view in ("chat", "projects", "cluster", "settings"))
     assert 'aria-label="Toggle theme"' in html_source
     assert 'aria-label="Refresh nodes"' in html_source
     assert 'id="undoPredictionBtn"' in html_source
@@ -178,7 +177,7 @@ def test_frontend_wires_manual_control_storage_and_mobile_accessibility():
     assert 'id="contextStrip"' in html_source
 
     assert "env(safe-area-inset-bottom)" in css_source
-    assert "--keyboard-inset" in css_source
-    assert "max-height: 35dvh" in css_source
+    assert "--visual-height" in css_source
+    assert "max-height: 160px" in css_source
     assert "min-height: 44px" in css_source
-    assert "button:focus-visible" in css_source
+    assert ":focus-visible" in css_source
