@@ -424,6 +424,8 @@ The adapter refuses before sending anything when the arguments cannot be carried
 
 This narrows the window for overwriting someone else's edit. It is not a lock, because Notion offers none. Writes to one page are serialized within the router process.
 
+DaveHarness asks for approval before any tool runs, so these checks happen after you approve. A call the adapter will refuse, such as an edit by a ref this run never read, can still show an approval card; approving it writes nothing, and the run continues with the refusal.
+
 ### Outcomes
 
 Every write ends in exactly one of three outcomes:
@@ -436,7 +438,9 @@ Every write ends in exactly one of three outcomes:
 
 When an append's answer is lost, the adapter reads the page: if exactly the requested blocks, created by this connection, sit right after the page's previous last block, the append is verified; anything else is unknown. An append whose outcome is unknown is never repeated by the adapter, and the same append to the same page is refused for the rest of the run. A rate limit (`429`) with a `Retry-After` of at most five seconds is retried once, because Notion did not carry out the first request.
 
-The write and its check run in a task shielded from cancellation, so a run deadline can stop waiting for it but cannot cut it off between the request and the check.
+The write and its check run in a task shielded from cancellation. If the run is stopped before the write request is sent (a run deadline, or a cancelled caller), the request is not sent. A request already sent is still checked, and its outcome is kept for the run, so an identical append is not repeated.
+
+Cancelling a run while an approved write is in flight cannot recall a request Notion already has. The run ends `cancellation_failed`, which DaveHarness reports whenever active work could not be stopped, and the write may have landed. Read the page to see what is there.
 
 ### Transport
 

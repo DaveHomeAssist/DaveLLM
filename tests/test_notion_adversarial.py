@@ -810,3 +810,216 @@ def test_r5_tables_and_columns_read_in_order():
     assert [(e["type"], e.get("text"), e.get("depth", 0)) for e in result] == [
         ("table", None, 0), ("table_row", "Item | Status", 1), ("table_row", "Adapter | Done", 1),
         ("column_list", None, 0), ("column", None, 1), ("paragraph", "left column", 2)]
+
+
+# ---- Run 6: lifecycle and API integration ------------------------------------------
+
+from datetime import datetime as _datetime, timedelta as _timedelta, timezone as _timezone  # noqa: E402
+
+LIFECYCLE_AUTH = {"X-API-Key": "test-only-api-key"}
+MODEL_NAME = "inventory-model:latest"
+DECISION_KEYS = ("call_id", "digest", "definition_fingerprint", "permission", "nonce")
+
+
+class Lifecycle:
+    """A router with the Notion tools on, a scripted model, and a fake Notion behind respx."""
+
+    def __init__(self, router_factory, monkeypatch, mock):
+        self.fake = FakeNotion()
+        self.page = self.fake.add_page("DaveLLM Adapter Test")
+        monkeypatch.setenv("DAVE_ENABLE_NOTION_TOOLS", "true")
+        monkeypatch.setenv("DAVE_NOTION_TOKEN", TOKEN)
+        monkeypatch.setenv("DAVE_NOTION_PAGES", _json.dumps({"adapter-test": self.page}))
+        self.router, self.client, _ = router_factory(tools=True)
+        self.fake.mount(mock)
+        mock.get("http://ollama.test:11434/api/tags").mock(return_value=httpx.Response(
+            200, json={"models": [{"name": MODEL_NAME, "model": MODEL_NAME}]}))
+        assert self.client.get("/nodes/node-test/models", headers=LIFECYCLE_AUTH).status_code == 200
+        self.chat = mock.post("http://ollama.test:11434/api/chat")
+
+    def start(self, *turns, content="go"):
+        self.chat.side_effect = _model_turns(*turns)
+        created = self.client.post("/tools/agent/runs", headers=LIFECYCLE_AUTH, json={
+            "messages": [{"role": "user", "content": content}], "node_id": "node-test", "model": MODEL_NAME})
+        assert created.status_code == 200, created.text
+        return created.json()["run_id"]
+
+    def settle(self, run_id):
+        return _settled(self.client, run_id)
+
+    def decide(self, run_id, pending, decision="approve", **overrides):
+        return self.client.post(f"/tools/agent/runs/{run_id}/decisions", headers=LIFECYCLE_AUTH, json={
+            **{key: pending[key] for key in DECISION_KEYS}, **overrides, "decision": decision})
+
+    def tool_results(self, run):
+        return [_json.loads(item["content"]) for item in run["snapshot"]["transcript"] if item["role"] == "tool"]
+
+
+@pytest.fixture
+def lifecycle(router_factory, monkeypatch):
+    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock:
+        yield Lifecycle(router_factory, monkeypatch, mock)
+
+
+APPEND_CALL = ("notion.page.append", {"page": "adapter-test", "blocks": [{"type": "paragraph", "text": "from the run"}]})
+
+
+def test_r6_a_tampered_decision_writes_nothing_and_the_real_one_writes_once(lifecycle):
+    run_id = lifecycle.start(APPEND_CALL, (None, "done"))
+    pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
+    for field_name, value in (("digest", "0" * 64), ("nonce", "forged"), ("definition_fingerprint", "f" * 64),
+                              ("permission", "read"), ("call_id", "call_other")):
+        assert lifecycle.decide(run_id, pending, **{field_name: value}).status_code == 409, field_name
+    assert lifecycle.fake.writes() == []
+    decided = lifecycle.decide(run_id, pending)
+    assert decided.json()["status"] == "completed"
+    (write,) = lifecycle.fake.writes()
+    assert _json.loads(write.content)["children"][0]["paragraph"]["rich_text"][0]["text"]["content"] == "from the run"
+
+
+def test_r6_an_expired_approval_writes_nothing(lifecycle, monkeypatch):
+    run_id = lifecycle.start(APPEND_CALL, (None, "done"))
+    pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
+
+    class Later(_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return _datetime.now(tz) + _timedelta(seconds=301)
+
+    monkeypatch.setattr(lifecycle.router, "datetime", Later)
+    response = lifecycle.decide(run_id, pending)
+    assert response.status_code == 409 and response.json()["detail"] == "Pending approval expired"
+    assert lifecycle.fake.writes() == []
+
+
+def test_r6_an_approval_after_the_run_deadline_writes_nothing(lifecycle, monkeypatch):
+    real = _timedelta
+    monkeypatch.setattr(lifecycle.router, "timedelta", lambda **kwargs: real(seconds=1) if kwargs == {"minutes": 5} else real(**kwargs))
+    run_id = lifecycle.start(APPEND_CALL, (None, "done"))
+    pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
+    _time.sleep(1.2)
+    response = lifecycle.decide(run_id, pending)
+    assert response.status_code in (200, 409)
+    _time.sleep(0.3)
+    assert lifecycle.fake.writes() == [], "no write may start once the run deadline has passed"
+
+
+def test_r6_the_legacy_loop_cannot_pre_approve_a_notion_write(lifecycle):
+    lifecycle.chat.side_effect = _model_turns(APPEND_CALL, (None, "done"))
+    response = lifecycle.client.post("/tools/agent/run", headers=LIFECYCLE_AUTH, json={
+        "messages": [{"role": "user", "content": "go"}], "node_id": "node-test", "model": MODEL_NAME,
+        "approved_tools": ["notion.page.append"]})
+    assert response.status_code == 200, response.text
+    assert notion.NOT_IN_RUN in response.text
+    assert lifecycle.fake.requests == []
+
+
+def test_r6_an_edit_made_while_the_approval_waits_is_never_overwritten(lifecycle):
+    block = lifecycle.fake.add_block(lifecycle.page, "paragraph", [rt("draft wording")])
+    run_id = lifecycle.start(("notion.page.read", {"page": "adapter-test"}),
+                             ("notion.block.update", {"page": "adapter-test", "block": "b1",
+                                                      "old_text": "draft", "new_text": "final"}),
+                             (None, "tried"))
+    pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
+    lifecycle.fake.set_text(block, [rt("draft wording, edited by Dave")])
+    decided = lifecycle.decide(run_id, pending).json()
+    assert decided["status"] == "completed"
+    result = lifecycle.tool_results(decided)[-1]
+    assert result["status"] == "error"
+    assert result["error"] == "Nothing was written: block b1 changed after it was read; read the page again"
+    assert lifecycle.fake.text_of(block) == "draft wording, edited by Dave"
+    assert lifecycle.fake.writes() == []
+
+
+def test_r6_a_model_that_edits_before_reading_recovers_within_the_run(lifecycle):
+    block = lifecycle.fake.add_block(lifecycle.page, "to_do", [rt("Prove the adapter")], checked=False)
+    run_id = lifecycle.start(
+        ("notion.block.update", {"page": "adapter-test", "block": "b1", "checked": True,
+                                 "block_text": "Prove the adapter"}),
+        ("notion.page.read", {"page": "adapter-test"}),
+        ("notion.block.update", {"page": "adapter-test", "block": "b1", "checked": True,
+                                 "block_text": "Prove the adapter"}),
+        (None, "checked"))
+    # DaveHarness asks for approval before any handler runs, so even the doomed first call pauses.
+    paused = lifecycle.settle(run_id)
+    assert paused["status"] == "approval_required" and lifecycle.tool_results(paused) == []
+    second = lifecycle.decide(run_id, paused["snapshot"]["pending_call"]).json()
+    assert second["status"] == "approval_required"
+    first = lifecycle.tool_results(second)[0]
+    assert first["status"] == "error" and first["error"].startswith("Unknown block ref b1")
+    assert lifecycle.fake.writes() == []
+    decided = lifecycle.decide(run_id, second["snapshot"]["pending_call"]).json()
+    assert decided["status"] == "completed"
+    assert lifecycle.fake.blocks[block]["to_do"]["checked"] is True
+    assert len(lifecycle.fake.writes()) == 1
+
+
+def test_r6_failed_and_unknown_outcomes_reach_the_model_as_errors_not_successes(lifecycle):
+    lifecycle.fake.fail("PATCH", CHILDREN, "drop_before_apply")
+    run_id = lifecycle.start(APPEND_CALL, APPEND_CALL, (None, "stopped"))
+    pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
+    decided = lifecycle.decide(run_id, pending).json()
+    if decided["status"] == "approval_required":
+        decided = lifecycle.decide(run_id, decided["snapshot"]["pending_call"]).json()
+    results = lifecycle.tool_results(decided)
+    assert results[0]["status"] == "error" and results[0]["error"].startswith("Outcome unknown:")
+    assert results[1]["status"] == "error" and "earlier append of these exact blocks" in results[1]["error"]
+    assert len(lifecycle.fake.writes()) == 1
+    events = lifecycle.client.get(f"/tools/agent/runs/{run_id}/events", headers=LIFECYCLE_AUTH).json()["events"]
+    assert [e.get("status") for e in events if e["kind"] == "tool_result"][:2] == ["error", "error"]
+
+
+@pytest.mark.asyncio
+async def test_r6_cancelling_a_run_mid_write_lands_once_records_it_and_frees_the_page(router_factory, monkeypatch):
+    fake = FakeNotion()
+    page = fake.add_page("DaveLLM Adapter Test")
+    monkeypatch.setenv("DAVE_ENABLE_NOTION_TOOLS", "true")
+    monkeypatch.setenv("DAVE_NOTION_TOKEN", TOKEN)
+    monkeypatch.setenv("DAVE_NOTION_PAGES", _json.dumps({"adapter-test": page}))
+    router, _, _ = router_factory(tools=True)
+    router.MODEL_INVENTORY["node-test"] = {MODEL_NAME}
+    turns = iter([
+        {"message": {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "type": "function",
+         "function": {"name": APPEND_CALL[0], "arguments": _json.dumps(APPEND_CALL[1])}}]}, "done": True},
+        {"message": {"role": "assistant", "content": "done"}, "done": True},
+    ])
+
+    async def scripted(_messages, _schemas):
+        return next(turns)
+
+    router.HARNESS.invoke_model = scripted
+    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock:
+        fake.mount(mock)
+        created = await router.create_agent_run(router.LifecycleRunRequest(
+            messages=[{"role": "user", "content": "go"}], node_id="node-test", model=MODEL_NAME), user_id="default")
+        run_id = created["run_id"]
+        for _ in range(100):
+            if router.HARNESS.snapshot(run_id).status == "approval_required":
+                break
+            await asyncio.sleep(0.01)
+        pending = router.HARNESS.snapshot(run_id).snapshot.pending_call
+        fake.delay("PATCH", CHILDREN, 0.4, apply_first=True)
+        decision = asyncio.ensure_future(router.decide_agent_run(run_id, router.LifecycleDecisionRequest(
+            call_id=pending.call_id, digest=pending.digest, definition_fingerprint=pending.definition_fingerprint,
+            permission=pending.permission, nonce=pending.nonce, decision="approve"), user_id="default"))
+        for _ in range(100):
+            if fake.writes():
+                break
+            await asyncio.sleep(0.01)
+        assert fake.writes(), "the approved append must have been dispatched before the cancel"
+        cancelled = await router.cancel_agent_run(run_id, user_id="default")
+        try:
+            await decision
+        except asyncio.CancelledError:
+            pass
+        await drain_writes()
+    # The write was already with Notion, so the harness truthfully reports that it could not stop it.
+    assert cancelled["status"] == "cancellation_failed"
+    assert len(fake.writes()) == 1
+    assert len(fake.page_texts(page)) == 1
+    ledger = router.NOTION_LEDGERS.for_run(run_id)
+    digest = notion._append_digest("adapter-test", notion._append_blocks_argument(APPEND_CALL[1]["blocks"]))
+    assert ledger.append_outcome("adapter-test", digest) == "verified"
+    # The run is terminal, so it can never call a tool again; no repeat is reachable.
+    assert router.HARNESS.snapshot(run_id).status == "cancellation_failed"
+    assert not router.NOTION_WRITE_GUARD.busy(page)
