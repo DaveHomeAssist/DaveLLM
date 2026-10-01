@@ -301,7 +301,7 @@ No arguments. Checks every configured node and returns `node` (its ID), `name`, 
 | `new_text` | string | required | 0–20,000 characters; empty deletes `old_text` |
 | `expected_count` | integer | `1` | 1–100 |
 
-`old_text` must occur exactly `expected_count` times. Any other count refuses the edit and nothing is written, so an approval always covers exactly the change it showed. When the count matches, every occurrence is replaced. The result gives `path`, `replacements`, `first_changed_line`, `line_endings` (`lf` or `crlf`), `bytes_before`, and `bytes_after`. The file's text is never returned.
+`old_text` must occur exactly `expected_count` times. Any other count refuses the edit and nothing is written, so an approval always covers exactly the change it showed. Overlapping occurrences count: `aa` occurs twice in `aaa`, at the first and second character. Occurrences that overlap are refused even when the count matches, because one replacement would destroy the other; add surrounding text to `old_text` until each occurrence stands apart. Counting stops past 100, the largest `expected_count`, and the refusal then reads "more than 100". When the count matches and nothing overlaps, every occurrence is replaced. The result gives `path`, `replacements`, `first_changed_line`, `line_endings` (`lf` or `crlf`), `bytes_before`, and `bytes_after`. The file's text is never returned.
 
 ### Approval
 
@@ -409,7 +409,8 @@ Listings read names and metadata, never file contents, so they do not use this p
 | `Artifact not found` | No artifact with that identifier in the run's project |
 | `Native tool failed` | Any other native-tool failure; details stay out of the model's view |
 | `old_text was not found in the file; nothing was written` | `file.edit` found no occurrence |
-| `old_text was found N times, not the expected M; nothing was written` | `file.edit` found a different count than `expected_count` |
+| `old_text was found N times, not the expected M; nothing was written` | `file.edit` found a different count than `expected_count`, overlapping occurrences included; N reads `more than 100` past the largest count |
+| `old_text was found N times, but the occurrences overlap, so they cannot all be replaced; nothing was written` | The count matched, but two occurrences share text |
 | `old_text and new_text are the same` | The `file.edit` would change nothing |
 | `The file changed while the edit was being prepared; nothing was written` | The file was changed, replaced, or swapped for a symlink just before the rename |
 | `File has more than one hard link` | `file.edit` refuses files with several names |

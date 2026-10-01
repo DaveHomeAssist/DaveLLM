@@ -519,6 +519,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `FILE_CHANGED` | `The file changed while the edit was being prepared; nothing was written` |
 | `MULTIPLE_LINKS` | `File has more than one hard link` |
 | `NO_CHANGE` | `old_text and new_text are the same` |
+| `OVERLAPPING` | `old_text was found {found} times, but the occurrences overlap, so they cannot all be replaced; nothing was written` |
 | `TEMP_PREFIX` | `.davellm-edit-` |
 | `TEXT_NOT_FOUND` | `old_text was not found in the file; nothing was written` |
 
