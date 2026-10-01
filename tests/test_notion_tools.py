@@ -132,7 +132,7 @@ def test_read_returns_title_blocks_refs_depth_and_formatting_flags(world):
         {"ref": "b4", "type": "toggle", "text": "Details"},
         {"ref": "b5", "type": "bulleted_list_item", "depth": 1, "text": "Nested item"},
         {"ref": "b6", "type": "paragraph", "text": "https://example.com", "formatted": True, "text_editable": False},
-        {"ref": "b7", "type": "child_page", "text": "Sub page"},
+        {"ref": "b7", "type": "child_page", "children_not_read": True, "text": "Sub page"},
     ]
     assert [world.ref(b) for b in (heading, para, todo, toggle, nested, preview, child)] == [
         "b1", "b2", "b3", "b4", "b5", "b6", "b7"]

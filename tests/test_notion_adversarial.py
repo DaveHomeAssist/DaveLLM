@@ -674,3 +674,139 @@ def test_r4_a_request_the_client_refuses_to_build_is_unsent_not_uncertain(monkey
     assert message == "Nothing was written: the request could not be sent to Notion"
     monkeypatch.undo()
     assert world.call(append_blocks, page="adapter-test", blocks=BLOCKS)["outcome"] == "verified"
+
+
+# ---- Run 5: read-path limits -------------------------------------------------------------
+
+import time as _time  # noqa: E402
+
+
+def gets(world, suffix=""):
+    return [r for r in world.fake.requests if r.method == "GET" and r.url.path.endswith(suffix)]
+
+
+def test_r5_a_long_page_is_read_up_to_the_block_limit_without_listing_the_rest():
+    world = World()
+    for index in range(1000):
+        world.fake.add_block(world.page, "paragraph", [rt(f"line {index}")])
+    result = world.read()
+    assert len(result["blocks"]) == notion.NOTION_READ_MAX_BLOCKS
+    assert result["truncated"] is True
+    assert [entry["text"] for entry in result["blocks"]][-1] == "line 299"
+    assert len(gets(world, "/children")) == 3, "only the pages holding the first 300 blocks are needed"
+
+
+def test_r5_blocks_whose_children_were_not_read_say_so():
+    world = World()
+    level0 = world.fake.add_block(world.page, "toggle", [rt("level 0")])
+    level1 = world.fake.add_block(level0, "toggle", [rt("level 1")])
+    level2 = world.fake.add_block(level1, "toggle", [rt("level 2")])
+    world.fake.add_block(level2, "paragraph", [rt("level 3, beyond the depth limit")])
+    synced = world.fake.add_block(world.page, "synced_block", body={"synced_from": None})
+    world.fake.add_block(synced, "paragraph", [rt("inside a synced block")])
+    meeting = world.fake.add_block(world.page, "meeting_notes", body={"title": [rt("Standup")]})
+    world.fake.add_block(meeting, "paragraph", [rt("inside meeting notes")])
+    entries = {entry["type"] + (entry.get("text") or ""): entry for entry in world.read()["blocks"]}
+    assert entries["togglelevel 2"].get("children_not_read") is True
+    assert entries["synced_block"].get("children_not_read") is True
+    assert entries["meeting_notes"].get("children_not_read") is True
+    assert "children_not_read" not in entries["togglelevel 0"]
+    listed = {r.url.path.split("/")[-2] for r in gets(world, "/children")}
+    assert synced not in listed and meeting not in listed and level2 not in listed
+
+
+def test_r5_a_subtree_that_cannot_be_listed_does_not_sink_the_whole_read():
+    world = World()
+    world.fake.add_block(world.page, "paragraph", [rt("before")])
+    broken = world.fake.add_block(world.page, "toggle", [rt("broken toggle")])
+    world.fake.add_block(broken, "paragraph", [rt("hidden")])
+    world.fake.add_block(world.page, "paragraph", [rt("after")])
+    world.fake.fail("GET", rf"/blocks/{broken}/children", "reject", status=400, code="validation_error")
+    result = world.read()
+    assert [entry.get("text") for entry in result["blocks"]] == ["before", "broken toggle", "after"]
+    assert result["blocks"][1].get("children_not_read") is True
+
+
+def test_r5_has_more_without_a_cursor_is_reported_as_truncated():
+    world = World()
+    original = world.fake.handle
+
+    def no_cursor(request):
+        response = original(request)
+        if request.url.path.endswith("/children"):
+            body = _json.loads(response.content)
+            body["has_more"], body["next_cursor"] = True, None
+            return httpx.Response(200, json=body)
+        return response
+
+    world.fake.add_block(world.page, "paragraph", [rt("only page one")])
+    world.fake.handle = no_cursor
+    assert world.read()["truncated"] is True
+
+
+def test_r5_a_cursor_that_loops_never_duplicates_blocks():
+    world = World()
+    looped = world.fake.add_block(world.page, "paragraph", [rt("again and again")])
+
+    def loop(request):
+        world.fake.requests.append(request)
+        path = request.url.path.removeprefix("/v1")
+        if path.startswith("/pages/"):
+            return world.fake.route(request, path)
+        return httpx.Response(200, json={"results": [world.fake.blocks[looped]], "has_more": True,
+                                         "next_cursor": looped})
+
+    world.fake.handle = loop
+    result = world.read()
+    assert [entry["ref"] for entry in result["blocks"]] == ["b1"]
+    assert result["truncated"] is True
+
+
+def test_r5_the_output_budget_keeps_document_order_and_trims_quickly():
+    world = World()
+    for index in range(300):
+        world.fake.add_block(world.page, "paragraph", [rt(f"{index:03d} " + "x" * 2000)] + [rt("y" * 1996)])
+    started = _time.perf_counter()
+    result = world.read()
+    elapsed = _time.perf_counter() - started
+    encoded = len(_json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode())
+    assert encoded <= notion.NOTION_OUTPUT_BUDGET_BYTES
+    assert result["truncated"] is True
+    assert [entry["text"][:3] for entry in result["blocks"]] == [f"{i:03d}" for i in range(len(result["blocks"]))]
+    assert elapsed < 1.0, f"read took {elapsed:.2f}s"
+
+
+def test_r5_clipped_text_is_flagged_and_still_editable_beyond_the_clip():
+    world = World()
+    block = world.fake.add_block(world.page, "paragraph", [rt("a" * 4500 + " tail-marker")])
+    entry = world.read()["blocks"][0]
+    assert entry["clipped"] is True and len(entry["text"]) == notion.NOTION_DISPLAY_MAX_CHARS
+    assert world.call(update_block, page="adapter-test", block=entry["ref"], old_text="tail-marker",
+                      new_text="end")["outcome"] == "verified"
+    assert world.fake.text_of(block).endswith(" end")
+
+
+def test_r5_many_nested_lists_stop_at_the_request_budget_and_say_so():
+    world = World()
+    for index in range(40):
+        toggle = world.fake.add_block(world.page, "toggle", [rt(f"toggle {index}")])
+        world.fake.add_block(toggle, "paragraph", [rt(f"child {index}")])
+    result = world.read()
+    assert len(world.fake.requests) <= notion.NOTION_READ_MAX_REQUESTS
+    assert result["truncated"] is True
+    unread = [entry for entry in result["blocks"] if entry.get("children_not_read")]
+    assert unread, "toggles whose children were skipped for budget must be marked"
+
+
+def test_r5_tables_and_columns_read_in_order():
+    world = World()
+    table = world.fake.add_block(world.page, "table", body={"table_width": 2, "has_column_header": True})
+    world.fake.add_block(table, "table_row", body={"cells": [[rt("Item")], [rt("Status")]]})
+    world.fake.add_block(table, "table_row", body={"cells": [[rt("Adapter")], [rt("Done", bold=True)]]})
+    columns = world.fake.add_block(world.page, "column_list", body={})
+    left = world.fake.add_block(columns, "column", body={})
+    world.fake.add_block(left, "paragraph", [rt("left column")])
+    result = world.read()["blocks"]
+    assert [(e["type"], e.get("text"), e.get("depth", 0)) for e in result] == [
+        ("table", None, 0), ("table_row", "Item | Status", 1), ("table_row", "Adapter | Done", 1),
+        ("column_list", None, 0), ("column", None, 1), ("paragraph", "left column", 2)]

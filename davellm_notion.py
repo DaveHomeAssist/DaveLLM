@@ -49,7 +49,7 @@ import time
 from collections import OrderedDict
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Coroutine, Mapping, Optional, Sequence
+from typing import Any, AsyncGenerator, Coroutine, Mapping, Optional, Sequence
 from urllib.parse import urlparse
 
 import httpx
@@ -93,7 +93,7 @@ APPEND_BLOCK_TYPES = (
 )
 WRITABLE_MENTIONS = frozenset({"page", "database", "user", "date"})
 # Children of these are separate pages, databases, or content that may live on another page.
-_NO_DESCEND = frozenset({"child_page", "child_database", "synced_block", "unsupported"})
+_NO_DESCEND = frozenset({"child_page", "child_database", "synced_block", "meeting_notes", "unsupported"})
 _ANNOTATION_DEFAULTS = (
     ("bold", False), ("italic", False), ("strikethrough", False), ("underline", False),
     ("code", False), ("color", "default"),
@@ -773,9 +773,15 @@ def _page_title(page: Mapping[str, Any]) -> str:
     return ""
 
 
-async def _list_children(api: NotionApi, parent_id: str, *, max_pages: int) -> tuple[list[dict[str, Any]], bool]:
-    """Children of ``parent_id`` in order, and whether more remained after ``max_pages`` pages."""
-    blocks: list[dict[str, Any]] = []
+async def _list_pages(api: NotionApi, parent_id: str, *,
+                      max_pages: int) -> AsyncGenerator[tuple[list[dict[str, Any]], bool], None]:
+    """Each page of ``parent_id``'s children, with block IDs seen earlier dropped, and whether it is the last.
+
+    A listing that claims more but gives no usable cursor, repeats a cursor, or runs past
+    ``max_pages`` raises ``_Incomplete`` after yielding what it has.
+    """
+    seen: set[str] = set()
+    cursors: set[str] = set()
     cursor: Optional[str] = None
     for _ in range(max_pages):
         params: dict[str, Any] = {"page_size": NOTION_PAGE_SIZE}
@@ -783,40 +789,107 @@ async def _list_children(api: NotionApi, parent_id: str, *, max_pages: int) -> t
             params["start_cursor"] = cursor
         data = await api.call("GET", f"/blocks/{parent_id}/children", params=params)
         results = data.get("results")
+        fresh = []
         for block in results if isinstance(results, list) else ():
-            if isinstance(block, dict) and notion_id(block.get("id")) and not block.get("in_trash"):
-                blocks.append(block)
-        cursor = data.get("next_cursor")
-        if not data.get("has_more") or not isinstance(cursor, str) or not cursor:
-            return blocks, False
-    return blocks, True
-
-
-async def _collect(api: NotionApi, page_id: str) -> tuple[list[tuple[int, dict[str, Any]]], bool]:
-    """The page's blocks in document order with their depth, up to the read limits."""
-    found: list[tuple[int, dict[str, Any]]] = []
-    truncated = False
-
-    async def walk(parent_id: str, depth: int) -> None:
-        nonlocal truncated
-        try:
-            children, more = await _list_children(api, parent_id, max_pages=NOTION_LIST_MAX_PAGES)
-        except _Budget:
-            truncated = True
+            block_id = notion_id(block.get("id")) if isinstance(block, dict) else None
+            if block_id and block_id not in seen and not block.get("in_trash"):
+                seen.add(block_id)
+                fresh.append(block)
+        if not data.get("has_more"):
+            yield fresh, True
             return
-        truncated = truncated or more
-        for block in children:
-            if truncated and len(found) >= NOTION_READ_MAX_BLOCKS:
-                return
-            if len(found) >= NOTION_READ_MAX_BLOCKS:
-                truncated = True
-                return
-            found.append((depth, block))
-            if (block.get("has_children") and depth + 1 < NOTION_READ_MAX_DEPTH
-                    and block.get("type") not in _NO_DESCEND):
-                await walk(str(notion_id(block.get("id"))), depth + 1)
+        cursor = data.get("next_cursor")
+        if not isinstance(cursor, str) or not cursor or cursor in cursors:
+            yield fresh, False
+            raise _Incomplete()
+        cursors.add(cursor)
+        yield fresh, False
+    raise _Incomplete()
 
-    await walk(page_id, 0)
+
+class _Incomplete(Exception):
+    """The listing could not be followed to its end."""
+
+
+async def _list_children(api: NotionApi, parent_id: str, *, max_pages: int) -> tuple[list[dict[str, Any]], bool]:
+    """Children of ``parent_id`` in order, and whether the listing is incomplete."""
+    blocks: list[dict[str, Any]] = []
+    try:
+        async for page, _last in _list_pages(api, parent_id, max_pages=max_pages):
+            blocks.extend(page)
+    except _Incomplete:
+        return blocks, True
+    return blocks, False
+
+
+@dataclass
+class _Found:
+    depth: int
+    block: dict[str, Any]
+    unread: bool = False  # has children that were not read
+
+
+async def _collect(api: NotionApi, page_id: str) -> tuple[list[_Found], bool]:
+    """The page's blocks in document order with their depth, up to the read limits.
+
+    Lists lazily and stops at the block limit. A block whose children were not read (depth
+    limit, a type that is not opened, the request budget, or a listing that failed) is marked
+    ``unread``. Once the budget is spent, blocks already fetched are still returned. Only a
+    failure to list the page itself fails the read.
+    """
+    found: list[_Found] = []
+    seen: set[str] = set()
+    truncated = False
+    out_of_budget = False
+
+    async def walk(parent_id: str, depth: int, holder: Optional[_Found]) -> bool:
+        """False once the block limit is reached and the whole walk must stop."""
+        nonlocal truncated, out_of_budget
+        listing = _list_pages(api, parent_id, max_pages=NOTION_LIST_MAX_PAGES)
+        try:
+            while True:
+                if len(found) >= NOTION_READ_MAX_BLOCKS:
+                    truncated = True
+                    return False
+                try:
+                    blocks, _last = await listing.__anext__()
+                except StopAsyncIteration:
+                    return True
+                for block in blocks:
+                    block_id = str(notion_id(block.get("id")))
+                    if block_id in seen:
+                        continue
+                    if len(found) >= NOTION_READ_MAX_BLOCKS:
+                        truncated = True
+                        return False
+                    seen.add(block_id)
+                    entry = _Found(depth, block)
+                    found.append(entry)
+                    if not block.get("has_children"):
+                        continue
+                    if (out_of_budget or block.get("type") in _NO_DESCEND
+                            or depth + 1 >= NOTION_READ_MAX_DEPTH):
+                        entry.unread = True
+                        truncated = truncated or out_of_budget
+                    elif not await walk(block_id, depth + 1, entry):
+                        return False
+        except _Incomplete:
+            truncated = True
+            return True
+        except _Budget:
+            out_of_budget = truncated = True
+            if holder is not None:
+                holder.unread = True
+            return True
+        except (_Rejected, _Unsent, _Uncertain):
+            if holder is None:
+                raise
+            holder.unread = truncated = True
+            return True
+        finally:
+            await listing.aclose()
+
+    await walk(page_id, 0, None)
     return found, truncated
 
 
@@ -838,10 +911,12 @@ def _display(block: Mapping[str, Any]) -> str:
     return ""
 
 
-def _describe(record: BlockRecord, block: Mapping[str, Any], depth: int) -> dict[str, Any]:
+def _describe(record: BlockRecord, block: Mapping[str, Any], depth: int, unread: bool = False) -> dict[str, Any]:
     entry: dict[str, Any] = {"ref": record.ref, "type": record.block_type}
     if depth:
         entry["depth"] = depth
+    if unread:
+        entry["children_not_read"] = True
     if record.checked is not None:
         entry["checked"] = record.checked
     text = _display(block)
@@ -881,7 +956,8 @@ async def read_page(arguments: Mapping[str, Any], *, settings: NotionSettings,
             blocks, truncated = await _collect(api, page_id)
     except (_Rejected, _Unsent, _Uncertain, _Budget) as exc:
         raise _read_error(exc) from None
-    entries = [_describe(run.remember(name, page_id, block), block, depth) for depth, block in blocks]
+    entries = [_describe(run.remember(name, page_id, item.block), item.block, item.depth, item.unread)
+               for item in blocks]
     payload: dict[str, Any] = {"page": name, "title": title, "blocks": entries, "truncated": truncated}
     while entries and _encoded(payload) > NOTION_OUTPUT_BUDGET_BYTES:
         entries.pop()
