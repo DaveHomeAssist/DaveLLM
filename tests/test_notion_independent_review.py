@@ -80,7 +80,8 @@ def test_cancel_after_dispatch_allows_readback_without_second_write(monkeypatch)
             release.set()
             await asyncio.wait_for(asyncio.gather(*list(notion._WRITES_IN_FLIGHT)), 1)
             assert len(world.fake.writes()) == 1
-            assert set(world.ledger._appends.values()) == {'verified'}
+            digest = notion._append_digest('adapter-test', notion._append_blocks_argument(BLOCKS))
+            assert world.ledger.append_outcome('adapter-test', digest) == 'verified'
             assert not world.guard.busy(world.page)
     asyncio.run(scenario())
 
@@ -141,5 +142,6 @@ def test_cancel_during_rate_limit_wait_prevents_write_retry(monkeypatch):
             await asyncio.wait_for(asyncio.gather(*list(notion._WRITES_IN_FLIGHT)), 1)
             assert len(world.fake.writes()) == 1
             assert world.fake.page_texts(world.page) == []
-            assert set(world.ledger._appends.values()) == {"failed"}
+            digest = notion._append_digest("adapter-test", notion._append_blocks_argument(BLOCKS))
+            assert world.ledger.append_outcome("adapter-test", digest) == "failed"
     asyncio.run(scenario())
