@@ -355,8 +355,10 @@ def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_h
     assert "overflow-y: auto;" in rule(desktop_source, ".response")
     assert "overflow-y: auto;" in rule(desktop_source, ".instruction-layer textarea")
 
-    assert "max-height: calc(100dvh - 118px);" in portrait_mobile_source
-    assert "height: calc(100dvh - 118px);" in portrait_mobile_source
-    assert ".response {\n    min-height: 0;\n  }" in portrait_mobile_source
-    assert "body {\n    overflow: auto;\n  }" in landscape_mobile_source
+    # The new bottom rail is a grid row; the active panel consumes the remainder.
+    assert "54px minmax(0, 1fr) 70px" in portrait_mobile_source
+    assert ".response { min-height: 0; }" in portrait_mobile_source
+    assert "grid-row: 3; grid-column: 1" in portrait_mobile_source
+    assert "height: var(--visual-height)" in portrait_mobile_source
+    assert "overflow: auto;" in landscape_mobile_source
     assert "overflow: visible;" in landscape_mobile_source

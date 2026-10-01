@@ -42,8 +42,7 @@ const API_KEY_SESSION_KEY = "dave_api_key_session";
 const THEME_STORAGE_KEY = "dave_theme";
 const ANTICIPATION_STORAGE_KEY = "davellm_anticipation_v1";
 const DRAFT_SESSION_KEY = "davellm_draft_session";
-const MOBILE_TAB_SESSION_KEY = "davellm_mobile_tab_session";
-const THEMES = ["dark", "light", "forest"];
+const THEMES = ["light", "dark"];
 
 // Browser credentials live only for the current tab session. Electron injects
 // the header in the main process and never exposes the key to this renderer.
@@ -85,10 +84,15 @@ function authHeaders(extra = {}) {
     return headers;
 }
 
-function requestBrowserCredential() {
+async function requestBrowserCredential() {
     if (window.__DAVE_DESKTOP__) return true;
-    const entered = window.prompt("Enter the DaveLLM API key for this browser session:", "");
-    if (!entered) return false;
+    const dialog = document.getElementById("credentialDialog");
+    const input = document.getElementById("credentialInput");
+    input.value = "";
+    const decision = await chooseDialog(dialog);
+    const entered = input.value.trim();
+    input.value = "";
+    if (decision !== "save" || !entered) return false;
     apiKey = entered;
     sessionStorage.setItem(API_KEY_SESSION_KEY, apiKey);
     return true;
@@ -96,14 +100,13 @@ function requestBrowserCredential() {
 
 // Theme handling
 function applyTheme(theme) {
-    const safeTheme = THEMES.includes(theme) ? theme : "dark";
+    const safeTheme = THEMES.includes(theme) ? theme : "light";
     document.documentElement.setAttribute("data-theme", safeTheme);
     localStorage.setItem(THEME_STORAGE_KEY, safeTheme);
     if (themeToggle) {
         const titleMap = {
             dark: "Switch to light mode",
-            light: "Switch to forest mode",
-            forest: "Switch to dark mode"
+            light: "Switch to dark mode"
         };
         themeToggle.dataset.theme = safeTheme;
         themeToggle.title = titleMap[safeTheme] || "Toggle theme";
@@ -112,7 +115,7 @@ function applyTheme(theme) {
 }
 
 function initTheme() {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY) || "dark";
+    const saved = localStorage.getItem(THEME_STORAGE_KEY) || "light";
     applyTheme(saved);
 }
 
@@ -327,8 +330,6 @@ const previewProjectContextBtn = document.getElementById("previewProjectContext"
 const projectContextPreviewStatus = document.getElementById("projectContextPreviewStatus");
 const projectContextPreviewOutput = document.getElementById("projectContextPreviewOutput");
 const projectHomeStatus = document.getElementById("projectHomeStatus");
-const mobileTabButtons = Array.from(document.querySelectorAll("[data-mobile-tab]"));
-const mobilePanels = Array.from(document.querySelectorAll("[data-mobile-panel]"));
 
 // ---------------------------------------------
 // UTIL
@@ -493,7 +494,8 @@ function updateVisualViewportMetrics() {
     const keyboardInset = viewport
         ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
         : 0;
-    document.documentElement.style.setProperty("--keyboard-inset", `${Math.round(keyboardInset)}px`);
+    document.documentElement.style.setProperty("--visual-height", `${Math.round(viewport?.height || window.innerHeight)}px`);
+    document.body.classList.toggle("keyboard-open", keyboardInset > 120);
     resizeComposer();
 }
 
@@ -516,7 +518,8 @@ function selectComposerText() {
 }
 
 function updateContextStrip() {
-    const project = projects.find((item) => item.project_id === selectedProjectId);
+    updateConsoleContext();
+    const project = projects.find((item) => item.project_id === (currentConversation() ? currentConversation().project_id : selectedProjectId));
     const node = state.nodes.find((item) => item.id === state.selectedNode);
     const rawNodeStatus = node ? (state.nodeStatus[node.id]?.status || "unknown") : "unknown";
     const nodeStatus = ["online", "offline"].includes(rawNodeStatus) ? rawNodeStatus : "unknown";
@@ -700,53 +703,11 @@ function applyProjectSupportDefault() {
     }
 }
 
-function syncMobilePanelSemantics() {
-    const mobile = window.matchMedia("(max-width: 1024px)").matches;
-    mobilePanels.forEach((panel) => {
-        if (mobile) {
-            panel.setAttribute("role", "tabpanel");
-            panel.setAttribute("aria-labelledby", `${panel.dataset.tabId} ${panel.dataset.headingId}`);
-            panel.setAttribute("aria-hidden", panel.classList.contains("mobile-active") ? "false" : "true");
-        } else {
-            panel.removeAttribute("role");
-            panel.removeAttribute("aria-hidden");
-            panel.setAttribute("aria-labelledby", panel.dataset.headingId);
-        }
-    });
-}
-
-function setMobileTab(tabName, focusTab = false) {
-    const valid = mobileTabButtons.some((button) => button.dataset.mobileTab === tabName);
-    const selected = valid ? tabName : "chat";
-    sessionStorage.setItem(MOBILE_TAB_SESSION_KEY, selected);
-    mobileTabButtons.forEach((button) => {
-        const active = button.dataset.mobileTab === selected;
-        button.setAttribute("aria-selected", active ? "true" : "false");
-        button.tabIndex = active ? 0 : -1;
-        if (active && focusTab) button.focus();
-    });
-    mobilePanels.forEach((panel) => {
-        panel.classList.toggle("mobile-active", panel.dataset.mobilePanel === selected);
-    });
-    syncMobilePanelSemantics();
-}
-
-function initMobileTabs() {
-    setMobileTab(sessionStorage.getItem(MOBILE_TAB_SESSION_KEY) || "chat");
-    mobileTabButtons.forEach((button, index) => {
-        button.addEventListener("click", () => setMobileTab(button.dataset.mobileTab));
-        button.addEventListener("keydown", (event) => {
-            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-            event.preventDefault();
-            let targetIndex = index;
-            if (event.key === "ArrowLeft") targetIndex = (index - 1 + mobileTabButtons.length) % mobileTabButtons.length;
-            if (event.key === "ArrowRight") targetIndex = (index + 1) % mobileTabButtons.length;
-            if (event.key === "Home") targetIndex = 0;
-            if (event.key === "End") targetIndex = mobileTabButtons.length - 1;
-            setMobileTab(mobileTabButtons[targetIndex].dataset.mobileTab, true);
-        });
-    });
-    window.matchMedia("(max-width: 1024px)").addEventListener("change", syncMobilePanelSemantics);
+function setMobileTab(tabName) {
+    setConsoleView("chat");
+    if (tabName === "history") showHistory(true);
+    else if (tabName === "runtime") document.getElementById("runtimeDialog").showModal();
+    else if (window.innerWidth <= 1024) showHistory(false);
 }
 
 function replaceSelectOptions(select, label, value = "") {
@@ -903,7 +864,7 @@ async function loadProjects() {
             });
             const newOpt = document.createElement("option");
             newOpt.value = "__create__";
-            newOpt.textContent = "➕ New project…";
+            newOpt.textContent = "New project…";
             projectSelect.appendChild(newOpt);
         }
     } catch (e) {
@@ -912,11 +873,16 @@ async function loadProjects() {
 }
 
 async function createProjectFlow() {
-    const name = prompt("Project name?");
+    const dialog = document.getElementById("newProjectDialog");
+    const form = dialog.querySelector("form");
+    form.reset();
+    if (await chooseDialog(dialog) !== "create") return;
+    const fields = new FormData(form);
+    const name = String(fields.get("name") || "").trim();
     if (!name) return;
-    const systemPrompt = prompt("Optional system instructions for this project?", "") || "";
+    const systemPrompt = String(fields.get("instructions") || "");
+    const description = String(fields.get("description") || "");
     const preferredModel = modelSelect?.value || "";
-    const description = prompt("Optional description?", "") || "";
     try {
         const res = await fetch(routerEndpoint("/projects"), {
             method: "POST",
@@ -940,7 +906,7 @@ async function createProjectFlow() {
         renderMessages();
     } catch (e) {
         console.error("Failed to create project:", e);
-        alert("Could not create project");
+        notifyConsole("Could not create project");
     }
 }
 
@@ -1153,6 +1119,7 @@ async function loadConversationsFromBackend() {
             state.conversations[c.conversation_id] = {
                 title: c.title,
                 messages: [],  // messages loaded on-demand
+                last_message: c.last_message || "",
                 created_at: c.created_at,
                 updated_at: c.updated_at,
                 project_id: c.project_id || null,
@@ -1286,7 +1253,7 @@ async function exportConversation(cid, title) {
         }
     } catch (error) {
         console.error("Conversation export failed:", error);
-        alert(`Export failed: ${error.message}`);
+        notifyConsole(`Export failed: ${error.message}`);
     }
 }
 
@@ -1312,9 +1279,16 @@ function renderConversationList() {
 
     const sorted = getSortedConversations();
 
+    let previousBand = null;
     sorted.forEach(([cid, convo]) => {
+        const age = conversationAge(convo);
+        if (age.band !== previousBand) {
+            const heading = uiElement("h3", `age-heading age-${age.band}`, age.label);
+            convoList.appendChild(heading);
+            previousBand = age.band;
+        }
         const div = document.createElement("div");
-        div.className = "convo-item";
+        div.className = `convo-item age-${age.band}`;
         div.setAttribute("role", "button");
         div.tabIndex = 0;
         div.setAttribute("aria-label", `Open conversation ${convo.title}`);
@@ -1336,6 +1310,9 @@ function renderConversationList() {
         titleSpan.style.whiteSpace = "nowrap";
 
         titleContainer.appendChild(titleSpan);
+        const time = uiElement("span", "convo-age", age.text);
+        time.title = convo.updated_at || convo.created_at || "Date unavailable";
+        titleContainer.appendChild(time);
 
         const actionsDiv = document.createElement("div");
         actionsDiv.className = "convo-actions";
@@ -1346,7 +1323,7 @@ function renderConversationList() {
 
         const renameBtn = document.createElement("button");
         renameBtn.className = "action-icon";
-        renameBtn.textContent = "✏️";
+        setLucideIcon(renameBtn, "pencil");
         renameBtn.title = "Rename conversation";
         renameBtn.setAttribute("aria-label", `Rename ${convo.title}`);
         renameBtn.onclick = (e) => {
@@ -1358,7 +1335,7 @@ function renderConversationList() {
 
         const clearBtn = document.createElement("button");
         clearBtn.className = "action-icon";
-        clearBtn.textContent = "🗑️";
+        setLucideIcon(clearBtn, "trash-2");
         clearBtn.title = "Clear messages";
         clearBtn.setAttribute("aria-label", `Clear messages in ${convo.title}`);
         clearBtn.onclick = (e) => {
@@ -1369,7 +1346,7 @@ function renderConversationList() {
 
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "action-icon";
-        deleteBtn.textContent = "❌";
+        setLucideIcon(deleteBtn, "x");
         deleteBtn.title = "Delete conversation";
         deleteBtn.setAttribute("aria-label", `Delete ${convo.title}`);
         deleteBtn.onclick = (e) => {
@@ -1380,7 +1357,7 @@ function renderConversationList() {
 
         const exportBtn = document.createElement("button");
         exportBtn.className = "action-icon";
-        exportBtn.textContent = "📥";
+        setLucideIcon(exportBtn, "download");
         exportBtn.title = "Export conversation (markdown)";
         exportBtn.setAttribute("aria-label", `Export ${convo.title} as markdown`);
         exportBtn.onclick = async (e) => {
@@ -1390,6 +1367,8 @@ function renderConversationList() {
         actionsDiv.appendChild(exportBtn);
 
         div.appendChild(titleContainer);
+        const preview = (convo.messages || []).filter((message) => ["user", "assistant"].includes(message.role)).at(-1);
+        div.appendChild(uiElement("p", "convo-preview", typeof preview?.content === "string" ? preview.content.slice(0, 100) : (convo.last_message || "No messages yet")));
         div.appendChild(actionsDiv);
 
         div.addEventListener("click", async (e) => {
@@ -1482,7 +1461,7 @@ async function deleteConversation(cid, element) {
             renderConversationList();
         } catch (err) {
             console.error("Failed to delete conversation:", err);
-            alert("Failed to delete conversation");
+            notifyConsole("Failed to delete conversation");
             element.style.opacity = "1";
         }
     }, 300);
@@ -1502,7 +1481,7 @@ async function clearConversation(cid) {
         renderMessages();
     } catch (err) {
         console.error("Failed to clear conversation:", err);
-        alert("Failed to clear conversation");
+        notifyConsole("Failed to clear conversation");
     }
 }
 
@@ -1551,7 +1530,7 @@ async function resyncConversationInstructions() {
     const cid = state.sessionId;
     const targetProject = selectedProjectId || (state.conversations[cid]?.project_id);
     if (!targetProject) {
-        alert("Select a project before resyncing instructions.");
+        notifyConsole("Select a project before resyncing instructions.");
         return;
     }
     try {
@@ -1568,10 +1547,10 @@ async function resyncConversationInstructions() {
             state.conversations[cid].project_id = data.project_id;
         }
         renderConversationList();
-        alert("Project instructions resynced for this conversation.");
+        notifyConsole("Project instructions resynced for this conversation.");
     } catch (e) {
         console.error("Failed to resync project instructions:", e);
-        alert("Failed to resync project instructions");
+        notifyConsole("Failed to resync project instructions");
     }
 }
 
@@ -1918,7 +1897,7 @@ async function refreshProjectHomepage(message = "") {
 
 async function openProjectHomepage() {
     if (!selectedProjectId) {
-        alert("Select a project before opening its homepage.");
+        notifyConsole("Select a project before opening its homepage.");
         projectSelect?.focus();
         return;
     }
@@ -2234,6 +2213,7 @@ async function previewProjectRequestContext() {
         });
         projectContextPreviewOutput.textContent = `${budgetLines.join("\n")}\n\n${messageLines.join("\n\n")}`;
         projectContextPreviewOutput.hidden = false;
+        renderInspectorBudget(data);
         animateProjectContextPreview();
         projectContextPreviewStatus.textContent = `Preview assembled ${data.messages.length} messages. No model request was sent.`;
     } catch (error) {
@@ -2337,7 +2317,7 @@ async function ensureActiveConversation() {
 async function openInstructionsDialog() {
     const conversationId = await ensureActiveConversation();
     if (!conversationId) {
-        alert("Could not create a conversation for instruction editing.");
+        notifyConsole("Could not create a conversation for instruction editing.");
         return;
     }
     instructionsStatus.textContent = "Loading current instructions...";
@@ -2357,7 +2337,7 @@ async function openInstructionsDialog() {
     } catch (error) {
         console.error("Failed to load instructions:", error);
         instructionsStatus.textContent = `Could not load instructions: ${error.message}`;
-        alert("Could not load active instructions.");
+        notifyConsole("Could not load active instructions.");
     }
 }
 
@@ -2430,7 +2410,7 @@ async function resetGlobalInstructions() {
 }
 
 function activeNotepadProjectId() {
-    return currentConversation()?.project_id || selectedProjectId || "";
+    return (currentConversation() ? currentConversation().project_id : selectedProjectId) || "";
 }
 
 async function loadProjectNotepad(projectId) {
@@ -2459,11 +2439,12 @@ async function loadProjectNotepad(projectId) {
 async function openProjectNotepad() {
     const projectId = activeNotepadProjectId();
     if (!projectId) {
-        alert("Select a project before opening the project notepad.");
+        notifyConsole("Select a project before opening the project notepad.");
         setMobileTab("history");
         projectSelect?.focus();
         return false;
     }
+    if (document.getElementById("inspectorPanel").hidden || inspectorTab !== "notepad") showInspector("notepad", true, false);
     notepadPanel.hidden = false;
     notepadToggle.setAttribute("aria-expanded", "true");
     if (notepadLoadedProjectId !== projectId) await loadProjectNotepad(projectId);
@@ -2523,7 +2504,7 @@ async function appendSelectionToNotepad(messageElement) {
     const selectedText = selection?.toString().trim() || "";
     const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
     if (!selectedText || !range || !messageElement.contains(range.commonAncestorContainer)) {
-        alert("Select text inside this message, then choose Add to notepad.");
+        notifyConsole("Select text inside this message, then choose Add to notepad.");
         return;
     }
     if (!await openProjectNotepad()) return;
@@ -2537,7 +2518,7 @@ async function appendSelectionToNotepad(messageElement) {
 async function sendNotepadToChat() {
     const text = notepadInput.value.trim();
     if (!text) {
-        alert("The project notepad is empty.");
+        notifyConsole("The project notepad is empty.");
         return;
     }
     promptInput.value = text;
@@ -2590,7 +2571,7 @@ async function copyRawMessage(message, button, statusElement) {
 
 async function transcribeAudio() {
     if (!audioInput || !audioInput.files || !audioInput.files.length) {
-        alert("Select an audio file to transcribe.");
+        notifyConsole("Select an audio file to transcribe.");
         return;
     }
     const file = audioInput.files[0];
@@ -2745,11 +2726,11 @@ async function fetchNodes() {
 
         const error = document.createElement("div");
         error.className = "error-message";
-        error.style.color = "#ff6b6b";
+        error.style.color = "var(--danger)";
         error.style.padding = "10px";
-        error.style.border = "1px solid #ff6b6b";
+        error.style.border = "1px solid var(--danger)";
         error.style.borderRadius = "4px";
-        error.textContent = `⚠️ Connection failed: Is the backend running at ${ROUTER_BASE}?`;
+        error.textContent = "Router unreachable. Check the connection and credentials, then Refresh.";
         nodesContainer.replaceChildren(error);
         replaceSelectOptions(nodeSelect, "No nodes available");
         replaceSelectOptions(modelSelect, "No models available");
@@ -2786,72 +2767,14 @@ async function fetchNodeStatus(nodes) {
         });
         state.nodeStatus = statusMap;
         
-        nodesContainer.replaceChildren();
-        
-        nodes.forEach((n) => {
-            const status = statusMap[n.id] || { status: "offline", latency: null };
-            
-            const div = document.createElement("div");
-            div.className = "node-card";
-            if (n.id === state.selectedNode) div.classList.add("active");
-            
-            const statusDot = document.createElement("span");
-            statusDot.className = "status-dot " + (status.status === "online" ? "status-online" : "status-offline");
-            
-            const header = document.createElement("div");
-            header.className = "node-header";
-            header.style.display = "flex";
-            header.style.alignItems = "center";
-            header.style.gap = "8px";
-            header.style.marginBottom = "8px";
-            
-            const nameSpan = document.createElement("span");
-            nameSpan.className = "node-name";
-            nameSpan.textContent = n.name;
-            nameSpan.style.flex = "1";
-            
-            const statusLabel = document.createElement("span");
-            statusLabel.className = `node-status-label ${status.status === "online" ? "node-status-online" : "node-status-offline"}`;
-            statusLabel.textContent = status.status === "online" ? "Online" : "Offline";
-            
-            header.appendChild(statusDot);
-            header.appendChild(nameSpan);
-            header.appendChild(statusLabel);
-            
-            const urlSpan = document.createElement("div");
-            urlSpan.className = "node-url";
-            urlSpan.textContent = n.url;
-            
-            div.appendChild(header);
-            div.appendChild(urlSpan);
-            
-            if (status.latency !== null) {
-                const latencySpan = document.createElement("div");
-                latencySpan.className = "node-latency";
-                latencySpan.textContent = `⚡ ${status.latency}ms latency`;
-                div.appendChild(latencySpan);
-            }
-            
-            nodesContainer.appendChild(div);
-        });
-        
+        renderConsoleNodes(nodes);
+        updateContextStrip();
+
     } catch (err) {
         console.error("Failed to fetch node status:", err);
         state.nodeStatus = Object.fromEntries(nodes.map((node) => [node.id, { status: "unknown", latency: null }]));
-        nodesContainer.replaceChildren();
-        nodes.forEach((n) => {
-            const div = document.createElement("div");
-            div.className = "node-card";
-            if (n.id === state.selectedNode) div.classList.add("active");
-            const name = document.createElement("strong");
-            name.textContent = n.name;
-            const url = document.createElement("div");
-            url.className = "node-url";
-            url.textContent = n.url;
-            div.appendChild(name);
-            div.appendChild(url);
-            nodesContainer.appendChild(div);
-        });
+        renderConsoleNodes(nodes);
+        updateContextStrip();
     }
 }
 
@@ -2883,7 +2806,7 @@ function renderNodeSelect(nodes) {
 
 async function loadModelsFromNode(preferredModelId = null) {
     if (!state.selectedNode || !state.nodes.some((node) => node.id === state.selectedNode)) {
-        alert("Please select a node first");
+        notifyConsole("Please select a node first");
         return;
     }
 
@@ -2979,23 +2902,23 @@ async function showRelevantMemories(query) {
         memoryBox.classList.remove("hidden");
         const header = document.createElement("div");
         header.className = "memory-header";
-        header.textContent = "💾 Relevant memories loaded (used for routing/context)";
+        header.textContent = "Retrieved memories";
         memoryBox.replaceChildren(header);
 
         memories.forEach((m) => {
             const item = document.createElement("div");
             item.className = "memory-item";
             
-            const role = m.role === "user" ? "👤 You" : "🤖 Assistant";
+            const role = m.role === "user" ? "You" : "Assistant";
             const preview = m.content.slice(0, 60) + (m.content.length > 60 ? "..." : "");
             const similarity = (m.similarity * 100).toFixed(0);
             
             const roleLabel = document.createElement("strong");
             roleLabel.textContent = role;
-            const match = document.createTextNode(` (${similarity}% match)`);
+            const match = document.createTextNode(` (${similarity}% retrieval similarity)`);
             const lineBreak = document.createElement("br");
             const previewLabel = document.createElement("span");
-            previewLabel.style.color = "#9ba4b5";
+            previewLabel.style.color = "var(--muted)";
             previewLabel.textContent = `"${preview}"`;
             item.appendChild(roleLabel);
             item.appendChild(match);
@@ -3013,12 +2936,13 @@ async function showRelevantMemories(query) {
 // MESSAGE FLOW
 // ---------------------------------------------
 async function sendMessage() {
+    if (approvalBusy) { notifyConsole("Finish or stop the active tool run before sending. Your draft is preserved."); return; }
     const prompt = promptInput.value.trim();
     let attachedFileText = "";
     if (fileInput && fileInput.files && fileInput.files.length) {
         const file = fileInput.files[0];
         if (file.size > 1024 * 1024) {
-            alert("Attached file is too large (max 1MB for inline include).");
+            notifyConsole("Attached file is too large (max 1MB for inline include).");
             return;
         }
         const text = await file.text();
@@ -3067,7 +2991,7 @@ async function sendMessage() {
     if (!selectedNodeExists || !selectedModelExists) {
         const message = "Select a node and one of that node's loaded models before sending.";
         if (routeStatus) routeStatus.textContent = message;
-        alert(message);
+        notifyConsole(message);
         return;
     }
 
@@ -3280,41 +3204,15 @@ async function sendMessage() {
 }
 
 function renderEmptyChatState() {
-    const empty = document.createElement("section");
-    empty.className = "empty-chat";
-
-    const heading = document.createElement("h3");
-    heading.textContent = state.sessionId ? "Start this conversation" : "What would you like to do?";
-    const detail = document.createElement("p");
-    detail.textContent = "Choose a starting point or type directly below. Nothing is submitted automatically.";
-    const actions = document.createElement("div");
-    actions.className = "empty-chat-actions";
-
-    const addAction = (label, handler, primary = false) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = label;
-        if (primary) button.className = "primary";
-        button.addEventListener("click", handler);
-        actions.appendChild(button);
-    };
-
-    if (state.lastSessionId && state.lastSessionId !== state.sessionId && state.conversations[state.lastSessionId]) {
-        const last = state.conversations[state.lastSessionId];
-        addAction(`Continue ${last.title}`, () => switchConversation(state.lastSessionId), true);
-    }
-    if (!state.sessionId) addAction("Start General", createNewConversation, true);
-    addAction("Code Review", () => createConversationFromTemplate("code_review"));
-    addAction("Brainstorm", () => createConversationFromTemplate("brainstorm"));
-
-    const project = projects.find((item) => item.project_id === selectedProjectId);
-    if (!state.sessionId && project) {
-        addAction(`Start in ${project.name}`, createNewConversation);
-    }
-
-    empty.appendChild(heading);
-    empty.appendChild(detail);
-    empty.appendChild(actions);
+    const empty = uiElement("section", "empty-chat");
+    const logo = uiElement("div", "empty-logo");
+    const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    mark.setAttribute("aria-hidden", "true");
+    const markUse = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    markUse.setAttribute("href", "brand.svg#davellm-mark");
+    mark.append(markUse); logo.append(mark);
+    const detail = uiElement("p"); detail.id = "emptyRuntime";
+    empty.append(logo, uiElement("h3", "", "What would you like to do?"), detail);
     responseBox.appendChild(empty);
 }
 
@@ -3369,7 +3267,7 @@ function renderMessages() {
     if (convo.messages.length > 12) {
         const banner = document.createElement("div");
         banner.className = "info-banner";
-        banner.textContent = "💡 Conversation getting long. Consider starting fresh for best context.";
+        banner.textContent = "Conversation getting long. Consider starting fresh for best context.";
         responseBox.appendChild(banner);
     }
 
@@ -3416,13 +3314,13 @@ function renderMessages() {
             fb.className = "message-feedback";
             const up = document.createElement("button");
             up.className = "action-icon";
-            up.textContent = "👍";
+            setLucideIcon(up, "thumbs-up");
             up.title = "Good answer";
             up.setAttribute("aria-label", "Mark answer as good");
             up.onclick = () => sendFeedback(1, m.content || "", m.model);
             const down = document.createElement("button");
             down.className = "action-icon";
-            down.textContent = "👎";
+            setLucideIcon(down, "thumbs-down");
             down.title = "Bad answer";
             down.setAttribute("aria-label", "Mark answer as bad");
             down.onclick = () => sendFeedback(-1, m.content || "", m.model);
@@ -3436,9 +3334,7 @@ function renderMessages() {
             header.appendChild(messageActions);
         }
 
-        msgDiv.appendChild(header);
-
-        const contentSpan = document.createElement("span");
+        const contentSpan = document.createElement("div");
         contentSpan.className = "message-content";
         msgDiv.appendChild(contentSpan);
 
@@ -3466,21 +3362,8 @@ function renderMessages() {
             });
         } else if (typeof m.content === "string" && m.content.startsWith("data:image")) {
             renderImage(m.content);
-        } else if (typeof m.content === "string" && m.content.includes("```")) {
-            const parts = m.content.split("```");
-            parts.forEach((part, idx) => {
-                if (idx % 2 === 1) {
-                    const pre = document.createElement("pre");
-                    const code = document.createElement("code");
-                    code.textContent = part;
-                    pre.appendChild(code);
-                    contentSpan.appendChild(pre);
-                } else if (part) {
-                    contentSpan.appendChild(document.createTextNode(part));
-                }
-            });
         } else {
-            contentSpan.textContent = m.content;
+            appendMarkdown(contentSpan, m.content);
         }
         
         if (m.isStreaming && !m.content && m.statusText) {
@@ -3506,6 +3389,7 @@ function renderMessages() {
             msgDiv.appendChild(stats);
         }
         
+        msgDiv.appendChild(header);
         responseBox.appendChild(msgDiv);
     });
 
@@ -3702,6 +3586,7 @@ function renderToolRun(run) {
         }
         heading.focus();
     }
+    if (typeof updateApprovalPresentation === "function") updateApprovalPresentation(run);
     runLedgerStop.disabled = TERMINAL_TOOL_RUNS.has(run.status) || run.status === "approval_required";
     runLedgerStop.title = run.status === "approval_required"
         ? "Reject the pending call to stop this run" : "Stop the active run";
@@ -3773,6 +3658,7 @@ async function watchToolRun(runId) {
 }
 
 async function startToolRun() {
+    if (approvalBusy) return;
     const prompt = promptInput.value.trim();
     if (!prompt || !state.selectedNode || !modelSelect.value) {
         runLedger.classList.remove("hidden");
@@ -3804,7 +3690,7 @@ async function startToolRun() {
         runLedger.classList.remove("hidden");
         runLedgerReason.textContent = error.message;
     } finally {
-        runToolsBtn.disabled = false;
+        runToolsBtn.disabled = approvalBusy;
     }
 }
 
@@ -3877,9 +3763,9 @@ promptInput.addEventListener("input", () => {
 
 if (themeToggle) {
     themeToggle.addEventListener("click", () => {
-        const current = localStorage.getItem(THEME_STORAGE_KEY) || "dark";
+        const current = localStorage.getItem(THEME_STORAGE_KEY) || "light";
         const idx = THEMES.indexOf(current);
-        const next = THEMES[(idx + 1) % THEMES.length] || "dark";
+        const next = THEMES[(idx + 1) % THEMES.length] || "light";
         applyTheme(next);
     });
 }
@@ -4132,8 +4018,8 @@ if (hfDownloadBtn) {
 
 if (credentialBtn) {
     credentialBtn.hidden = Boolean(window.__DAVE_DESKTOP__);
-    credentialBtn.addEventListener("click", () => {
-        if (requestBrowserCredential()) window.location.reload();
+    credentialBtn.addEventListener("click", async () => {
+        if (await requestBrowserCredential()) window.location.reload();
     });
 }
 
@@ -4157,13 +4043,9 @@ if (undoPredictionBtn) {
 document.querySelectorAll("[data-context-target]").forEach((button) => {
     button.addEventListener("click", () => {
         const targetId = button.dataset.contextTarget;
-        if (["projectSelect", "templateSelect"].includes(targetId)) setMobileTab("history");
-        if (["targetNodeSelect", "modelSelect"].includes(targetId)) setMobileTab("runtime");
-        const target = document.getElementById(targetId);
-        requestAnimationFrame(() => {
-            target?.focus();
-            target?.click();
-        });
+        if (targetId === "projectSelect") openChatProjectPicker();
+        else if (targetId === "templateSelect") document.getElementById("templateDialog").showModal();
+        else document.getElementById("runtimeDialog").showModal();
     });
 });
 
@@ -4193,7 +4075,7 @@ function renderSearchBox() {
     input.style.flex = "1";
     const btn = document.createElement("button");
     btn.className = "icon-btn";
-    btn.textContent = "🔍";
+    setLucideIcon(btn, "search");
     btn.title = "Search";
     btn.setAttribute("aria-label", "Search conversations");
     const results = document.createElement("div");
@@ -4275,10 +4157,11 @@ async function pollMonitoringBadge() {
 async function init() {
     console.log("🚀 Initializing DaveLLM UI...");
     initTheme();
-    initMobileTabs();
+    initConsoleShell();
+    renderMessages();
     initVisualViewport();
     anticipationRecord = readAnticipationRecord();
-    if (!window.__DAVE_DESKTOP__ && !apiKey && !requestBrowserCredential()) {
+    if (!window.__DAVE_DESKTOP__ && !apiKey && !(await requestBrowserCredential())) {
         if (routeStatus) routeStatus.textContent = "A session API key is required to load DaveLLM.";
         return;
     }
@@ -4369,6 +4252,7 @@ async function init() {
     renderMessages();
     updateContextStrip();
     renderPredictions();
+    updateConsoleContext();
 
     console.log("✅ DaveLLM UI ready");
     pollMonitoringBadge();

@@ -8,23 +8,60 @@
     <link rel="stylesheet" href="style.css" />
 </head>
 
-<body>
+<body data-view="chat">
     <a class="skip-link" href="#chatPanel">Skip to chat</a>
 
+<nav class="app-nav" aria-label="Main navigation">
+    <a class="nav-brand" href="index.html" aria-label="DaveLLM home">
+    <svg aria-hidden="true">
+    <use href="brand.svg#davellm-mark">
+    </use>
+    </svg>
+    </a>
+    <button type="button" data-view="chat" aria-controls="chatView" aria-current="page">
+    <svg aria-hidden="true">
+    <use href="vendor/lucide/lucide.svg#message-square">
+    </use>
+    </svg>
+    <span>Chat</span>
+    </button>
+    <button type="button" data-view="projects" aria-controls="projectsView">
+    <svg aria-hidden="true">
+    <use href="vendor/lucide/lucide.svg#folder">
+    </use>
+    </svg>
+    <span>Projects</span>
+    </button>
+    <button type="button" data-view="cluster" aria-controls="clusterView">
+    <svg aria-hidden="true">
+    <use href="vendor/lucide/lucide.svg#server">
+    </use>
+    </svg>
+    <span>Cluster</span>
+    </button>
+    <button type="button" data-view="settings" aria-controls="settingsView">
+    <svg aria-hidden="true">
+    <use href="vendor/lucide/lucide.svg#settings">
+    </use>
+    </svg>
+    <span>Settings</span>
+    </button>
+    <span class="nav-avatar" aria-label="Dave Robertson">DR</span>
+    </nav>
     <!-- TOP BAR -->
     <header class="topbar">
-        <h1 class="brand"><span class="brand-mark" aria-hidden="true">D</span><span>DaveLLM</span></h1>
-        <div id="topbarRuntime" class="topbar-runtime">
+        <h1 class="brand"><span>DaveLLM</span></h1>
+<button id="historyToggle" class="icon-btn" aria-label="Toggle conversations" aria-expanded="true"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#panel-left"></use></svg></button><strong id="viewTitle">New conversation</strong><button id="searchToggle" class="text-btn" aria-label="Search conversations"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#search"></use></svg><span>Search</span><kbd>⌘K</kbd></button>
+        <button type="button" id="topbarRuntime" class="topbar-runtime" aria-haspopup="dialog" aria-controls="runtimeDialog" title="Choose node and model">
             <span id="topbarStatusDot" class="topbar-status-dot status-unknown" aria-hidden="true"></span>
             <strong id="topbarNodeValue">No node</strong>
             <span id="topbarStatusValue" class="topbar-state">Unknown</span>
             <span class="runtime-separator" aria-hidden="true">/</span>
-            <span>Ollama</span>
-            <span class="runtime-separator" aria-hidden="true">/</span>
+
             <span id="topbarModelValue">No model</span>
-            <svg class="runtime-bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 14h6l-1 8 9-13h-6V2Z" /></svg>
-        </div>
-        <div class="topbar-actions">
+            <svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#chevron-down"></use></svg>
+        </button>
+        <div class="topbar-actions"><button id="inspectorToggle" class="icon-btn" aria-label="Toggle context inspector" aria-expanded="false" aria-controls="inspectorPanel"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#panel-right"></use></svg></button>
             <button id="credentialBtn" class="icon-btn" title="Set browser session API key" aria-label="Set browser session API key"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8m-3 3 2 2m-5 1 2 2" /></svg></button>
             <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></svg></button>
             <a href="monitoring.html" class="topbar-link" title="Monitoring" aria-label="Open monitoring">
@@ -33,14 +70,8 @@
         </div>
     </header>
 
-    <nav class="mobile-tabs" role="tablist" aria-label="DaveLLM sections">
-        <button id="mobileTabChat" type="button" role="tab" aria-controls="chatPanel" aria-selected="true" data-mobile-tab="chat">Chat</button>
-        <button id="mobileTabHistory" type="button" role="tab" aria-controls="historyPanel" aria-selected="false" tabindex="-1" data-mobile-tab="history">History</button>
-        <button id="mobileTabRuntime" type="button" role="tab" aria-controls="runtimePanel" aria-selected="false" tabindex="-1" data-mobile-tab="runtime">Runtime</button>
-    </nav>
-
     <!-- THREE COLUMN LAYOUT -->
-    <div class="layout">
+    <div id="chatView" class="layout" role="region" aria-label="Chat workspace">
 
         <!-- LEFT COLUMN: Conversations -->
         <aside id="historyPanel" class="panel conversations" data-mobile-panel="history" data-heading-id="historyHeading" data-tab-id="mobileTabHistory" aria-labelledby="historyHeading">
@@ -52,7 +83,7 @@
                 <select id="projectSelect" aria-label="Project">
                     <option value="">All Projects</option>
                 </select>
-                <button id="resyncProject" class="icon-btn" title="Re-apply project instructions to this conversation" aria-label="Re-apply project instructions">🔄</button>
+                <button id="resyncProject" class="icon-btn" title="Re-apply project instructions to this conversation" aria-label="Re-apply project instructions"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#refresh-cw"></use></svg></button>
                 <button id="editProject" class="text-btn" title="Open Project Homepage">Project Home</button>
             </div>
             <div class="template-row">
@@ -61,19 +92,18 @@
                     <option value="code_review">Code Review</option>
                     <option value="brainstorm">Brainstorm</option>
                 </select>
-                <button id="createFromTemplate" class="icon-btn" title="Start from template" aria-label="Start from selected template">🚀</button>
+                <button id="createFromTemplate" class="icon-btn" title="Start from template" aria-label="Start from selected template"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#plus"></use></svg></button>
             </div>
             <div id="convoList"></div>
-            <div class="panel-subheader">Router Stats</div>
-            <div id="statsContainer" class="stats-box">
+            <div hidden class="panel-subheader">Router Stats</div>
+            <div id="statsContainer" class="stats-box" hidden>
                 <div class="stat-line"><strong>Decisions:</strong> <span id="statDecisions">0</span></div>
                 <div class="stat-line"><strong>Total tokens (est):</strong> <span id="statTokens">0</span></div>
                 <div class="stat-line"><strong>Avg tokens/msg:</strong> <span id="statTokensPerMsg">0</span></div>
                 <div class="stat-line"><strong>Avg confidence:</strong> <span id="statConfidence">–</span></div>
                 <div class="stat-line"><strong>Last route:</strong> <span id="statLastRoute">–</span></div>
             </div>
-            <div class="panel-subheader">Memories</div>
-            <div id="memoryBox" class="memory-box hidden"></div>
+
         </aside>
 
         <!-- MIDDLE COLUMN: Chat -->
@@ -103,7 +133,7 @@
             </section>
 
             <div id="responseBox" class="response" aria-live="polite" aria-label="Conversation messages"></div>
-            <button id="scrollBottomBtn" class="scroll-bottom-btn" title="Jump to latest" aria-label="Jump to latest message">⬇️</button>
+            <button id="scrollBottomBtn" class="scroll-bottom-btn" title="Jump to latest" aria-label="Jump to latest message"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#arrow-down"></use></svg></button>
 
             <div id="toolsBox" class="tools-box hidden"></div>
             <section id="runLedger" class="run-ledger hidden" aria-labelledby="runLedgerTitle">
@@ -141,7 +171,7 @@
                 </div>
                 <div class="footer-inputs">
                     <label class="visually-hidden" for="promptInput">Message</label>
-                    <textarea id="promptInput" placeholder="Type your message..." rows="3"></textarea>
+                    <textarea id="promptInput" placeholder="Ask anything. Enter sends; Shift+Enter adds a line." rows="2"></textarea>
                     <div id="attachmentTools" class="tool-row">
                         <label for="imageInput" class="image-upload-btn"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#image"></use></svg>Image</label>
                         <input id="imageInput" type="file" accept="image/*" hidden />
@@ -173,17 +203,36 @@
             </div>
         </main>
 
-        <!-- RIGHT COLUMN: Nodes -->
+<aside id="inspectorPanel" class="panel inspector" hidden aria-label="Context inspector">
+<div class="inspector-tabs"><button data-inspector="context" aria-pressed="true">Context</button><button data-inspector="run" aria-pressed="false">Run</button><button data-inspector="notepad" aria-pressed="false">Notepad</button><button id="inspectorClose" class="icon-btn" aria-label="Close inspector">×</button></div>
+<section id="inspectorContext">
+    <h3>Instructions in effect</h3>
+    <p>Global → project → session. Later layers win conflicts.</p>
+    <button id="inspectorInstructions">Edit instructions</button>
+    <h3>Next request context</h3>
+    <p id="inspectorBudgetStatus">Preview the attached project's next request to see actual context allocation.</p>
+    <button id="inspectorPreview">Preview next request</button>
+    <div id="inspectorBudget">
+    </div>
+    <h3>Retrieved from memory</h3>
+    <p>Similarity is a retrieval signal, not proof that a memory is correct or current.</p>
+    <div id="memoryBox" class="memory-box hidden">
+    </div>
+    </section>
+<section id="inspectorRun" hidden><p>Run details appear here after you start a tool run.</p></section>
+<section id="inspectorNotepad" hidden></section></aside>
+    </div>
+<section id="clusterView" class="subject-view" hidden>        <!-- RIGHT COLUMN: Nodes -->
         <aside id="runtimePanel" class="panel nodes" data-mobile-panel="runtime" data-heading-id="runtimeHeading" data-tab-id="mobileTabRuntime" aria-labelledby="runtimeHeading">
             <div class="panel-header">
-                <h2 id="runtimeHeading">Telemetry</h2>
+                <h2 id="runtimeHeading">Cluster</h2><span id="clusterChecked" role="status">Not checked</span>
                 <button id="refreshNodes" class="icon-btn" title="Refresh Nodes" aria-label="Refresh nodes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5" /><path d="M6.1 9a7 7 0 0 1 11.4-2.6L20 9m-16 6 2.5 2.6A7 7 0 0 0 17.9 15" /></svg></button>
             </div>
             <div id="nodesContainer" class="node-list"></div>
             <div class="panel-subheader">Models</div>
             <div class="model-selector-row">
                 <select id="targetNodeSelect" class="node-select" aria-label="Runtime node"></select>
-                <button id="loadModelsBtn" class="icon-btn" title="Load models from selected node" aria-label="Load models from selected node">📦</button>
+                <button id="loadModelsBtn" class="icon-btn" title="Load models from selected node" aria-label="Load models from selected node"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#package"></use></svg></button>
             </div>
             <select id="modelSelect" class="model-select" aria-label="Runtime model"></select>
             <div class="routing-controls">
@@ -205,9 +254,24 @@
                 <button id="hfDownloadBtn" class="primary" style="width:100%;">Download</button>
                 <div id="hfStatus" class="fetcher-status"></div>
             </div>
-        </aside>
-
-    </div>
+<section class="cluster-monitor">
+    <article class="card">
+    <h3>Recent errors</h3>
+    <div id="clusterErrors">Not loaded</div>
+    </article>
+    <article class="card">
+    <h3>Model health</h3>
+    <p>Failures since router start</p>
+    <div id="clusterHealth">Not loaded</div>
+    </article>
+    <article class="card">
+    <h3>Estimated cost</h3>
+    <p>Router token counts × configured model rates; a planning estimate, not a bill.</p>
+    <div id="clusterCosts">Not loaded</div>
+    </article>
+    </section>
+    </aside>
+</section>
 
     <dialog id="projectHomeDialog" class="project-home-dialog" aria-labelledby="projectHomeHeading">
         <div class="project-home-ambient" aria-hidden="true"><span></span><span></span></div>
@@ -360,6 +424,64 @@
         </div>
     </dialog>
 
+
+<section id="projectsView" class="subject-view" hidden><div class="section-heading"><div><h2>Projects</h2><p>Instructions, references, artifacts, and BRAIN.</p></div><button id="newProjectButton" class="primary">New project</button></div><div id="projectCards" class="project-cards"></div></section>
+<section id="settingsView" class="subject-view" hidden>
+    <h2>Settings</h2>
+    <div class="settings-grid">
+    <article class="card">
+    <h3>Appearance</h3>
+    <p>Choose the same light or dark theme across every panel.</p>
+    <button id="settingsTheme">Switch theme</button>
+    </article>
+    <article class="card">
+    <h3>Browser credentials</h3>
+    <p>The API key stays in this browser tab's session. Electron supplies credentials outside the renderer.</p>
+    <button id="settingsCredential">Set session API key</button>
+    </article>
+    <article class="card">
+    <h3>Suggestions</h3>
+    <p>Suggestions never send a message automatically.</p>
+    <div id="suggestionSettings">
+    </div>
+    </article>
+    </div>
+    </section>
+<dialog id="runtimeDialog" class="sheet"><div class="section-heading"><h2>Send to</h2><button data-close-dialog="runtimeDialog">Done</button></div><div id="runtimeSelectors"></div><p>Applies to your next message. Earlier replies keep their original content.</p></dialog>
+<dialog id="projectPickerDialog" class="sheet"><div class="section-heading"><h2>Project for this chat</h2><button data-close-dialog="projectPickerDialog">Done</button></div><select id="chatProjectPicker" aria-label="Attach project to chat"></select><p>Changes the instructions and context for future messages only.</p><div id="chatProjectStatus" role="status"></div><button id="applyChatProject" class="primary">Apply project</button></dialog>
+<dialog id="templateDialog" class="sheet"><div class="section-heading"><h2>Starting mode</h2><button data-close-dialog="templateDialog">Done</button></div><div id="templateControls"></div></dialog>
+<dialog id="credentialDialog" class="sheet">
+    <form method="dialog">
+    <h2>Connect to DaveLLM</h2>
+    <p>The API key is kept in this browser tab only. It is never saved in persistent browser storage.</p>
+    <label for="credentialInput">API key</label>
+    <input id="credentialInput" type="password" autocomplete="off" required>
+    <div class="dialog-actions">
+    <button value="cancel" formnovalidate>Cancel</button>
+    <button value="save" class="primary">Connect</button>
+    </div>
+    </form>
+    </dialog>
+<dialog id="newProjectDialog" class="sheet">
+    <form method="dialog">
+    <h2>New project</h2>
+    <label>Name<input name="name" required maxlength="120">
+    </label>
+    <label>Description<textarea name="description" rows="2">
+    </textarea>
+    </label>
+    <label>Instructions<textarea name="instructions" rows="4">
+    </textarea>
+    </label>
+    <div class="dialog-actions">
+    <button value="cancel" formnovalidate>Cancel</button>
+    <button value="create" class="primary">Create project</button>
+    </div>
+    </form>
+    </dialog>
+<div id="consoleNotice" class="console-notice" role="status" hidden><span></span><button aria-label="Dismiss notice">×</button></div>
+
+    <script src="console.js"></script>
     <script src="prompt-contract.js"></script>
     <script src="anticipation.js"></script>
     <script src="vendor/gsap/gsap.min.js"></script>

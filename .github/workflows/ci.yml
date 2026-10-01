@@ -58,10 +58,13 @@ jobs:
         run: python -m mypy daveharness
 
       - name: JavaScript syntax check
-        run: node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
+        run: |
+          for file in static/app.js static/console.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js; do
+            node --check "$file"
+          done
 
       - name: Run ledger and approval preview regressions
-        run: node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs
+        run: node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs tests/test_console.mjs
 
       - name: Shell syntax check
         run: bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh
