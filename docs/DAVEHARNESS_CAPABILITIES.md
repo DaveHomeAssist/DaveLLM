@@ -617,7 +617,9 @@ Public constants each module defines, including the fixed refusal messages.
 | `OTHER_PAGE_REF` | `Block {ref} belongs to page '{actual}', not '{requested}'` |
 | `PAGE_BUSY` | `Another write to this Notion page is still in progress; try again when it has finished` |
 | `READ_FAILED` | `Notion refused the read ({code})` |
+| `REPEAT_IN_FLIGHT` | `An earlier append of these exact blocks to '{page}' in this run is still being written or checked, so it is not repeated. Read the page in a moment to see whether it arrived.` |
 | `REPEAT_REFUSED` | `An earlier append of these exact blocks to '{page}' in this run has an unknown outcome, so it is not repeated. Read the page to check whether it arrived, and ask the user before trying again.` |
+| `REPEAT_UNDELIVERED` | `An earlier append of these exact blocks to '{page}' in this run was verified on the page after the run stopped waiting for it, so it is not repeated.` |
 | `SAME_TEXT` | `old_text and new_text are the same` |
 | `TEXT_BLOCK_TYPES` | `["bulleted_list_item", "callout", "code", "heading_1", "heading_2", "heading_3", "heading_4", "numbered_list_item", "paragraph", "quote", "to_do", "toggle"]` |
 | `TOO_MANY_RUNS` | `Block {ref} would need more than 100 rich text runs` |

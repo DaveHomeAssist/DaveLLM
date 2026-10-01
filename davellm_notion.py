@@ -117,6 +117,14 @@ REPEAT_REFUSED = (
     "An earlier append of these exact blocks to '{page}' in this run has an unknown outcome, so it "
     "is not repeated. Read the page to check whether it arrived, and ask the user before trying again."
 )
+REPEAT_IN_FLIGHT = (
+    "An earlier append of these exact blocks to '{page}' in this run is still being written or checked, "
+    "so it is not repeated. Read the page in a moment to see whether it arrived."
+)
+REPEAT_UNDELIVERED = (
+    "An earlier append of these exact blocks to '{page}' in this run was verified on the page after the "
+    "run stopped waiting for it, so it is not repeated."
+)
 UNREACHABLE = "Notion could not be reached"
 READ_FAILED = "Notion refused the read ({code})"
 LEDGER_FULL = "This run has read too many Notion blocks; start a new run"
@@ -230,6 +238,19 @@ class NotionSettings:
 
 
 @dataclass
+class _AppendState:
+    outcome: str  # in_flight | verified | failed | unknown
+    delivered: bool = False
+
+
+@dataclass
+class _Progress:
+    """Whether a write's request has been handed to the transport; before that, nothing can have changed."""
+
+    sent: bool = False
+
+
+@dataclass
 class BlockRecord:
     """What a run saw of one block; the model only ever holds ``ref``."""
 
@@ -250,7 +271,7 @@ class RunLedger:
         self._max_refs = max_refs
         self._records: dict[str, BlockRecord] = {}
         self._refs_by_block: dict[str, str] = {}
-        self._appends: dict[tuple[str, str], str] = {}
+        self._appends: dict[tuple[str, str], _AppendState] = {}
 
     def remember(self, page: str, page_id: str, block: Mapping[str, Any]) -> BlockRecord:
         """Record (or refresh) ``block`` and return its record; one ref per block for the whole run."""
@@ -276,14 +297,40 @@ class RunLedger:
 
     def append_outcome(self, page: str, digest: str) -> Optional[str]:
         with self._lock:
-            return self._appends.get((page, digest))
+            state = self._appends.get((page, digest))
+            return state.outcome if state else None
+
+    def append_refusal(self, page: str, digest: str) -> Optional[str]:
+        """Why an identical append must not be sent again in this run, or ``None``.
+
+        It is refused while an earlier one is still running, when its outcome is unknown,
+        and when it was verified but the caller had stopped waiting and never saw that.
+        """
+        with self._lock:
+            state = self._appends.get((page, digest))
+        if state is None:
+            return None
+        if state.outcome == "in_flight":
+            return REPEAT_IN_FLIGHT.format(page=page)
+        if state.outcome == "unknown":
+            return REPEAT_REFUSED.format(page=page)
+        if state.outcome == "verified" and not state.delivered:
+            return REPEAT_UNDELIVERED.format(page=page)
+        return None
 
     def set_append_outcome(self, page: str, digest: str, outcome: str) -> None:
         with self._lock:
-            # A verified or failed attempt never clears an earlier unknown one for the same content.
-            if self._appends.get((page, digest)) == "unknown" and outcome != "unknown":
+            # A later attempt never clears an earlier unknown one for the same content.
+            current = self._appends.get((page, digest))
+            if current is not None and current.outcome == "unknown" and outcome != "unknown":
                 return
-            self._appends[(page, digest)] = outcome
+            self._appends[(page, digest)] = _AppendState(outcome)
+
+    def mark_delivered(self, page: str, digest: str) -> None:
+        with self._lock:
+            state = self._appends.get((page, digest))
+            if state is not None and state.outcome == "verified":
+                state.delivered = True
 
 
 class NotionLedgers:
@@ -789,11 +836,20 @@ def _finish(outcome: _Outcome) -> dict[str, Any]:
     )
 
 
-async def _shielded(guard: PageWriteGuard, page_id: str, work: Coroutine[Any, Any, _Outcome]) -> _Outcome:
-    """Run ``work`` under the page guard, shielded so a cancelled caller cannot cut it off midway."""
+async def _shielded(guard: PageWriteGuard, page_id: str, work: Coroutine[Any, Any, _Outcome],
+                    on_start: Optional[Any] = None) -> _Outcome:
+    """Run ``work`` under the page guard in a task shielded from the caller's cancellation.
+
+    If the caller is cancelled, no new write request is sent, but a request already
+    dispatched is still checked and its outcome recorded in the run ledger. ``on_start``
+    runs once the guard is held and before the work starts, so a refused write leaves
+    no trace in the run ledger.
+    """
     if not guard.acquire(page_id):
         work.close()
         raise NotionToolError(PAGE_BUSY)
+    if on_start is not None:
+        on_start()
 
     cancelled = asyncio.Event()
 
@@ -864,20 +920,29 @@ async def _bot_id(api: NotionApi) -> Optional[str]:
     return notion_id(me.get("id"))
 
 
+def _unfinished(kind: str, progress: _Progress) -> _Outcome:
+    if progress.sent:
+        return _Outcome("unknown", f"the {kind} did not finish")
+    return _Outcome("failed", f"the {kind} stopped before its request was sent")
+
+
 async def _append_work(token: str, run: RunLedger, name: str, page_id: str,
                        blocks: list[tuple[str, str, Optional[bool]]], digest: str) -> _Outcome:
-    outcome = _Outcome("unknown", "the append did not finish")
+    progress = _Progress()
+    outcome = _unfinished("append", progress)
     try:
-        outcome = await _append_attempt(token, run, name, page_id, blocks)
-    except Exception:
-        outcome = _Outcome("unknown", "the append did not finish")
+        outcome = await _append_attempt(token, run, name, page_id, blocks, progress)
+    except BaseException as exc:
+        outcome = _unfinished("append", progress)
+        if not isinstance(exc, Exception):
+            raise
     finally:
         run.set_append_outcome(name, digest, outcome.kind)
     return outcome
 
 
 async def _append_attempt(token: str, run: RunLedger, name: str, page_id: str,
-                          blocks: list[tuple[str, str, Optional[bool]]]) -> _Outcome:
+                          blocks: list[tuple[str, str, Optional[bool]]], progress: _Progress) -> _Outcome:
     async with NotionApi(token, budget_seconds=NOTION_WRITE_BUDGET_SECONDS,
                          max_requests=NOTION_WRITE_MAX_REQUESTS) as api:
         try:
@@ -889,6 +954,7 @@ async def _append_attempt(token: str, run: RunLedger, name: str, page_id: str,
         if more:
             return _Outcome("failed", "the page has more top-level blocks than this tool can check after an append")
         body = {"children": [_child(*block) for block in blocks], "position": {"type": "end"}}
+        progress.sent = True
         try:
             response = await api.call("PATCH", f"/blocks/{page_id}/children", body=body)
         except _Rejected as exc:
@@ -957,15 +1023,13 @@ async def append_blocks(arguments: Mapping[str, Any], *, settings: NotionSetting
     assert settings.token is not None
     blocks = _append_blocks_argument(arguments.get("blocks"))
     digest = _append_digest(name, blocks)
-    if run.append_outcome(name, digest) in {"unknown", "in_flight"}:
-        raise NotionToolError(REPEAT_REFUSED.format(page=name))
-    work = _append_work(settings.token, run, name, page_id, blocks, digest)
-    run.set_append_outcome(name, digest, "in_flight")
-    try:
-        outcome = await _shielded(guard, page_id, work)
-    except NotionToolError:
-        run.set_append_outcome(name, digest, "failed")
-        raise
+    refusal = run.append_refusal(name, digest)
+    if refusal is not None:
+        raise NotionToolError(refusal)
+    outcome = await _shielded(guard, page_id, _append_work(settings.token, run, name, page_id, blocks, digest),
+                              on_start=lambda: run.set_append_outcome(name, digest, "in_flight"))
+    if outcome.kind == "verified":
+        run.mark_delivered(name, digest)
     return _finish(outcome)
 
 
@@ -1018,14 +1082,16 @@ def _state(block: Mapping[str, Any]) -> tuple[Any, ...]:
 
 async def _update_work(token: str, run: RunLedger, record: BlockRecord,
                        rich_text: Optional[list[dict[str, Any]]], checked: Optional[bool]) -> _Outcome:
+    progress = _Progress()
     try:
-        return await _update_attempt(token, run, record, rich_text, checked)
+        return await _update_attempt(token, run, record, rich_text, checked, progress)
     except Exception:
-        return _Outcome("unknown", "the edit did not finish")
+        return _unfinished("edit", progress)
 
 
 async def _update_attempt(token: str, run: RunLedger, record: BlockRecord,
-                          rich_text: Optional[list[dict[str, Any]]], checked: Optional[bool]) -> _Outcome:
+                          rich_text: Optional[list[dict[str, Any]]], checked: Optional[bool],
+                          progress: _Progress) -> _Outcome:
     seen = (record.block_type, rich_text_signature(record.rich_text), record.checked)
     target = (record.block_type,
               rich_text_signature(rich_text) if rich_text is not None else seen[1],
@@ -1049,6 +1115,7 @@ async def _update_attempt(token: str, run: RunLedger, record: BlockRecord,
             body["rich_text"] = rich_text
         if checked is not None:
             body["checked"] = checked
+        progress.sent = True
         try:
             await api.call("PATCH", f"/blocks/{record.block_id}", body={record.block_type: body})
             accepted = True

@@ -9,6 +9,7 @@ before or after the change is applied, a server error after applying, or a redir
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import re
@@ -100,6 +101,7 @@ class Fault:
     code: str = "validation_error"
     retry_after: str = "0"
     times: int = 1
+    skip: int = 0
 
 
 @dataclass
@@ -115,6 +117,7 @@ class FakeNotion:
     page_size_cap: int = 100
     mention_titles: dict[str, str] = field(default_factory=dict)
     on_request: Optional[Callable[[httpx.Request], None]] = None
+    delays: list[tuple[str, str, float, bool]] = field(default_factory=list)
 
     # ---- building state -------------------------------------------------
     def stamp(self) -> str:
@@ -182,7 +185,24 @@ class FakeNotion:
 
     # ---- serving --------------------------------------------------------
     def mount(self, mock: respx.MockRouter) -> None:
-        mock.route(host="api.notion.com").mock(side_effect=self.handle)
+        mock.route(host="api.notion.com").mock(side_effect=self.ahandle)
+
+    def delay(self, method: str, pattern: str, seconds: float, *, apply_first: bool = True) -> None:
+        """Hold the next matching answer for ``seconds``; with apply_first the change lands before the wait."""
+        self.delays.append((method, pattern, seconds, apply_first))
+
+    async def ahandle(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/v1")
+        for index, (method, pattern, seconds, apply_first) in enumerate(self.delays):
+            if method == request.method and re.fullmatch(pattern, path):
+                del self.delays[index]
+                if apply_first:
+                    response = self.handle(request)
+                    await asyncio.sleep(seconds)
+                    return response
+                await asyncio.sleep(seconds)
+                return self.handle(request)
+        return self.handle(request)
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -219,6 +239,9 @@ class FakeNotion:
     def take_fault(self, method: str, path: str) -> Optional[Fault]:
         for fault in self.faults:
             if fault.method == method and re.fullmatch(fault.pattern, path):
+                if fault.skip > 0:
+                    fault.skip -= 1
+                    return None
                 fault.times -= 1
                 if fault.times <= 0:
                     self.faults.remove(fault)
