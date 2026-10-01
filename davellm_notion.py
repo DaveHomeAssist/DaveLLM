@@ -22,10 +22,11 @@ Outcomes. Every write ends in one of three outcomes:
   a fresh read could not settle it. An append with this outcome is never repeated by
   the adapter, and the run ledger refuses the same append again for the rest of the run.
 
-The write and its verification run in a task shielded from cancellation, so a run
-deadline can stop waiting for it but cannot cut it off between the request and the
-check; the late outcome is still recorded in the run ledger. Writes to one page are
-serialized within the process, so a match found while checking an uncertain append
+Write verification runs in a task shielded from cancellation. A cancelled caller
+prevents any new write request, including a retry after rate limiting; a request
+already dispatched can still be checked, with the late append outcome recorded in
+the run ledger. Each HTTP request has an absolute deadline covering its entire body.
+Writes to one page are serialized within the process, so a match found while checking an uncertain append
 cannot be another DaveLLM run's identical write.
 
 Transport. Requests go only to ``https://api.notion.com/v1`` with a pinned
@@ -46,6 +47,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Coroutine, Mapping, Optional, Sequence
 from urllib.parse import urlparse
@@ -337,6 +339,8 @@ class PageWriteGuard:
 
 # Shielded write tasks outlive a cancelled caller; hold them so they are not collected.
 _WRITES_IN_FLIGHT: set[asyncio.Task[Any]] = set()
+# Shared with the shielded task: cancellation prevents new writes but allows readback.
+_WRITE_CANCELLED: ContextVar[Optional[asyncio.Event]] = ContextVar("notion_write_cancelled", default=None)
 
 
 def _copy_json(value: Any) -> Any:
@@ -581,9 +585,17 @@ class NotionApi:
             remaining = self.deadline - time.monotonic()
             if remaining < NOTION_MIN_REQUEST_SECONDS or self.requests >= self.max_requests:
                 raise _Budget()
+            cancelled = _WRITE_CANCELLED.get()
+            if method != "GET" and cancelled is not None and cancelled.is_set():
+                raise _Budget()
             self.requests += 1
-            status, headers, payload = await self._send(method, path, params, body,
-                                                        min(NOTION_REQUEST_TIMEOUT_SECONDS, remaining))
+            timeout = min(NOTION_REQUEST_TIMEOUT_SECONDS, remaining)
+            try:
+                status, headers, payload = await asyncio.wait_for(
+                    self._send(method, path, params, body, timeout), timeout=timeout)
+            except asyncio.TimeoutError:
+                # A request may have reached Notion; do not label an expired write unsent.
+                raise _Uncertain() from None
             if 200 <= status < 300:
                 if not isinstance(payload, dict):
                     raise _Uncertain()
@@ -601,6 +613,9 @@ class NotionApi:
 
     async def _send(self, method: str, path: str, params: Optional[dict[str, Any]],
                     body: Optional[dict[str, Any]], timeout: float) -> tuple[int, httpx.Headers, Any]:
+        cancelled = _WRITE_CANCELLED.get()
+        if method != "GET" and cancelled is not None and cancelled.is_set():
+            raise _Budget()
         try:
             async with self._client.stream(method, path, params=params, json=body,
                                            timeout=httpx.Timeout(timeout)) as response:
@@ -780,16 +795,24 @@ async def _shielded(guard: PageWriteGuard, page_id: str, work: Coroutine[Any, An
         work.close()
         raise NotionToolError(PAGE_BUSY)
 
+    cancelled = asyncio.Event()
+
     async def guarded() -> _Outcome:
+        token = _WRITE_CANCELLED.set(cancelled)
         try:
             return await work
         finally:
+            _WRITE_CANCELLED.reset(token)
             guard.release(page_id)
 
     task = asyncio.ensure_future(guarded())
     _WRITES_IN_FLIGHT.add(task)
     task.add_done_callback(_WRITES_IN_FLIGHT.discard)
-    return await asyncio.shield(task)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        cancelled.set()
+        raise
 
 
 def _append_blocks_argument(value: Any) -> list[tuple[str, str, Optional[bool]]]:
