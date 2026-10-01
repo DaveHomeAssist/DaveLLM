@@ -452,31 +452,71 @@ Requests go only to `https://api.notion.com/v1` with `Notion-Version: 2026-03-11
 
 ### Notion errors
 
+Every message the Notion tools return, exactly as worded. `bN` is a block ref, `x` a configured page name, `N` a number, and `(code)` Notion's short error code. For `unauthorized`, the code is followed by `: check DAVE_NOTION_TOKEN`; for `object_not_found` and `restricted_resource`, by `: share the page with DaveLLM's Notion connection`.
+
+Refused before anything is sent:
+
 | Message | Meaning |
 |---|---|
 | `Notion is not configured on this router (DAVE_NOTION_TOKEN is unset)` | No secret |
+| `DAVE_NOTION_TOKEN is not a valid Notion secret` | The secret is not 20–256 printable ASCII characters without spaces |
 | `No Notion pages are configured on this router (DAVE_NOTION_PAGES is unset)` | No page list |
 | `DAVE_NOTION_PAGES is not a JSON object of page names to Notion page IDs` | The page list could not be parsed |
-| `DAVE_NOTION_TOKEN is not a valid Notion secret` | The secret is not 20–256 printable ASCII characters without spaces; nothing is sent |
-| `Unknown Notion page 'x'. Configured pages: …` | The name is not configured |
+| `Unknown Notion page 'x'. Configured pages: …` | The name is not configured (an unsafe name is not echoed) |
 | `Notion tools work only inside a tool run started from DaveLLM` | Called outside a lifecycle run |
-| `Unknown block ref bN; refs come from notion.page.read in this run` | The ref was never issued in this run |
+| `Unknown block ref bN; refs come from notion.page.read in this run` | The ref was never issued in this run (`(invalid)` for a malformed ref) |
 | `Block bN belongs to page 'a', not 'b'` | The ref came from another page |
-| `block_text is required when only checked changes: …` / `block_text does not match block bN; read the page again` | A to-do change without, or with the wrong, `block_text` |
-| `Nothing was written: Notion page 'x' is in the trash` | The page was trashed after the read |
-| `Nothing was written: block bN is nested too deeply to confirm it is still on page 'x'` | More than eight parent blocks |
-| `old_text was not found in block bN` / `old_text occurs N times in block bN; …` | The text does not occur exactly once |
-| `old_text in block bN crosses a formatting change, a link, a mention, or an equation; …` | The text spans more than one run |
-| `Block bN contains … that cannot be written back, so its text cannot be edited` | The block's rich text cannot round-trip |
-| `Another write to this Notion page is still in progress after waiting; …` | Another run kept writing to the page for more than 8 seconds |
-| `An earlier append of these exact blocks to 'x' in this run has an unknown outcome, …` | The repeat guard |
-| `Notion refused the read (code)` / `Notion could not be reached` | A read failed |
-| `… (unauthorized): check DAVE_NOTION_TOKEN` | Notion rejected the secret |
-| `… (object_not_found): share the page with DaveLLM's Notion connection` / `… (restricted_resource): …` | The page is not shared with the connection (Notion answers as if it did not exist) |
-| `Notion's response was larger than the 2 MB limit` | A read answer over the response cap |
-| `Nothing was written: …` | A failed write |
-| `Outcome unknown: …` | An unknown write |
-| `notion.page.read failed` / `notion.page.append failed` / `notion.block.update failed` | Any other failure; details stay out of the model's view |
+| `Block bN is a T block; only text blocks can be edited` / `Block bN is a T block; only to-do blocks can be checked or unchecked` | The block type does not allow the change |
+| `Block bN is already checked` / `Block bN is already unchecked` | The to-do change would change nothing |
+| `Give old_text and new_text, or checked, or both` / `old_text and new_text must be given together` / `old_text and new_text are the same` / `checked must be true or false` | Edit arguments that cannot be carried out |
+| `old_text was not found in block bN` / `old_text occurs N times in block bN; include more surrounding text so it occurs once` | The text does not occur exactly once (overlapping matches count) |
+| `old_text in block bN crosses a formatting change, a link, a mention, or an equation; edit text inside one run so its formatting is kept` | The text spans more than one run |
+| `Block bN contains … that cannot be written back, so its text cannot be edited` | The block holds a link preview or other mention, an internal link, or rich text that cannot round-trip |
+| `Block bN would need more than 100 rich text runs` | The edit would exceed Notion's limit |
+| `block_text is required when only checked changes: copy the to-do's text from notion.page.read` / `block_text does not match block bN; read the page again` | A to-do change without, or with the wrong, `block_text` |
+| `blocks must list at least one block` / `blocks may list at most 50 blocks` / `Block N must be an object` / `Block N has an unsupported type` / `Block N needs text` / `Block N text exceeds 2000 characters` / `Block N is not a to_do, so it cannot be checked` / `Block N checked must be true or false` | Append arguments that cannot be carried out |
+| `An earlier append of these exact blocks to 'x' in this run has an unknown outcome, so it is not repeated. …` / `… is still being written or checked, so it is not repeated. …` / `… was verified on the page after the run stopped waiting for it, so it is not repeated.` | The repeat guard |
+| `Another write to this Notion page is still in progress after waiting; try again when it has finished` | Another write to the page kept it busy for more than 8 seconds |
+| `This run has read too many Notion blocks; start a new run` | The run's 2,000-block or 8 MiB ledger is full |
+
+Reads:
+
+| Message | Meaning |
+|---|---|
+| `Notion refused the read (code)` | Notion answered the page or its listing with a refusal |
+| `Notion could not be reached` | The connection failed, timed out, or answered unusably |
+| `Notion's response was larger than the 2 MB limit` | An answer over the response cap |
+| `Notion page 'x' is in the trash` | The page is trashed |
+
+`Nothing was written: …` (failed; retrying is safe):
+
+| Message | Meaning |
+|---|---|
+| `Nothing was written: Notion page 'x' is in the trash` | Found trashed just before writing |
+| `Nothing was written: Notion refused to read page 'x' before writing (code)` / `Nothing was written: Notion could not be reached to check page 'x' before writing` | The page check before an edit failed |
+| `Nothing was written: Notion refused to read the page before writing (code)` / `Nothing was written: Notion could not be reached to read the page before writing` | The page listing before an append failed |
+| `Nothing was written: the page has more top-level blocks than this tool can check after an append` | Over 1,000 top-level blocks, or a listing that could not be followed to its end |
+| `Nothing was written: Notion refused to read block bN before writing (code)` / `Nothing was written: Notion could not be reached to check block bN before writing` | The block check before an edit failed |
+| `Nothing was written: block bN is in the trash` / `Nothing was written: block bN is no longer on page 'x'` / `Nothing was written: block bN is nested too deeply to confirm it is still on page 'x'` | The block moved, was trashed, or is too deep to confirm |
+| `Nothing was written: block bN changed after it was read; read the page again` | Someone edited the block after the run read it |
+| `Nothing was written: Notion refused the append (code)` / `Nothing was written: Notion refused the edit (code)` | Notion refused the write itself (any 4xx, including a rate limit that was not retried) |
+| `Nothing was written: the request could not be sent to Notion` | The connection never opened, the client refused to build the request, or the run was stopped before sending |
+| `Nothing was written: the append stopped before its request was sent` / `Nothing was written: the edit stopped before its request was sent` | An internal error before sending |
+
+`Outcome unknown: … Do not repeat this write; read the page to check what happened.` (the request may have reached Notion):
+
+| Message | Meaning |
+|---|---|
+| `Outcome unknown: the connection to Notion failed during the append and the blocks are not on the page yet` | Lost answer; nothing new after the old last block |
+| `Outcome unknown: the connection to Notion failed during the append and the new blocks do not match exactly` | Lost answer; something else, or something partial, was added |
+| `Outcome unknown: the connection to Notion failed during the append and the page changed meanwhile` | Lost answer; the old last block is gone |
+| `Outcome unknown: the connection to Notion failed during the append and the page could not be checked` | Lost answer, and the check failed too |
+| `Outcome unknown: Notion accepted the append, but reading the page back failed` / `Outcome unknown: Notion accepted the append, but the page does not show exactly those blocks` | Accepted, but not confirmed |
+| `Outcome unknown: the connection to Notion failed during the edit and block bN still shows the old content` / `Outcome unknown: the connection to Notion failed during the edit and block bN changed` / `Outcome unknown: the connection to Notion failed during the edit and the block could not be checked` | Lost answer to an edit |
+| `Outcome unknown: Notion accepted the edit, but block bN now reads differently` / `Outcome unknown: Notion accepted the edit, but reading the block back failed` | Accepted, but not confirmed |
+| `Outcome unknown: the append did not finish` / `Outcome unknown: the edit did not finish` | An internal error after sending |
+
+`notion.page.read failed`, `notion.page.append failed`, and `notion.block.update failed` stand for any other failure; details stay out of the model's view.
 
 ## Paths
 

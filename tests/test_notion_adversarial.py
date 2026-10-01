@@ -1249,3 +1249,222 @@ def test_r8_a_run_s_ledger_has_a_memory_bound():
             stored += len(_json.dumps(big))
     assert str(caught.value) == notion.LEDGER_FULL
     assert stored <= notion.NOTION_RUN_MAX_SNAPSHOT_BYTES + len(_json.dumps(big))
+
+
+# ---- Run 9: outcome branches, documentation, contracts -----------------------------------
+
+import ast  # noqa: E402
+import re as _re  # noqa: E402
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+def test_r9_an_append_to_a_page_too_long_to_check_is_refused_before_sending():
+    world = World()
+    for index in range(notion.NOTION_LIST_MAX_PAGES * notion.NOTION_PAGE_SIZE + 1):
+        world.fake.add_block(world.page, "paragraph", [rt(str(index))])
+    assert world.refuse(append_blocks, page="adapter-test", blocks=BLOCKS) == (
+        "Nothing was written: the page has more top-level blocks than this tool can check after an append")
+    assert world.fake.writes() == []
+
+
+def test_r9_an_accepted_append_that_reads_back_differently_is_unknown():
+    world = World()
+    original = world.fake.response_rich_text
+    world.fake.response_rich_text = lambda items: original(items) and [{**original(items)[0],
+        "text": {"content": "normalized by Notion", "link": None}, "plain_text": "normalized by Notion"}]
+    message = world.refuse(append_blocks, page="adapter-test", blocks=[{"type": "paragraph", "text": "as sent"}])
+    assert message.startswith("Outcome unknown: Notion accepted the append, but the page does not show exactly those blocks")
+
+
+def test_r9_a_lost_append_whose_anchor_block_vanished_is_unknown():
+    world = World()
+    anchor = world.fake.add_block(world.page, "paragraph", [rt("last block before the append")])
+    original = world.fake.handle
+
+    def delete_anchor_then_lose(request):
+        if request.method == "PATCH":
+            world.fake.blocks[anchor]["in_trash"] = True
+            original(request)
+            raise httpx.ReadTimeout("lost", request=request)
+        return original(request)
+
+    world.fake.handle = delete_anchor_then_lose
+    message = world.refuse(append_blocks, page="adapter-test", blocks=BLOCKS)
+    assert message.startswith("Outcome unknown: the connection to Notion failed during the append and the page changed meanwhile")
+
+
+@pytest.mark.parametrize("scenario, expected", [
+    ("lost_then_unreadable", "Outcome unknown: the connection to Notion failed during the edit and the block could not be checked"),
+    ("accepted_but_different", "Outcome unknown: Notion accepted the edit, but block b1 now reads differently"),
+    ("lost_and_changed", "Outcome unknown: the connection to Notion failed during the edit and block b1 changed"),
+])
+def test_r9_every_uncertain_edit_ending_is_reported_as_unknown(scenario, expected):
+    world = World()
+    block = world.fake.add_block(world.page, "paragraph", [rt("first draft")])
+    world.read()
+    original = world.fake.handle
+
+    def misbehave(request):
+        if request.method == "PATCH":
+            if scenario == "accepted_but_different":
+                response = original(request)
+                world.fake.set_text(block, [rt("someone else's text")])
+                return response
+            if scenario == "lost_and_changed":
+                world.fake.requests.append(request)
+                world.fake.set_text(block, [rt("someone else's text")])
+                raise httpx.ReadTimeout("lost", request=request)
+            world.fake.requests.append(request)
+            world.fake.fail("GET", rf"/blocks/{block}", "connect_error")
+            raise httpx.ReadTimeout("lost", request=request)
+        return original(request)
+
+    world.fake.handle = misbehave
+    message = world.refuse(update_block, page="adapter-test", block="b1", old_text="first", new_text="second")
+    assert message.startswith(expected), message
+
+
+def test_r9_a_refused_page_check_and_odd_parents_are_failed_writes():
+    world = World()
+    block = world.fake.add_block(world.page, "paragraph", [rt("text")])
+    world.read()
+    world.fake.fail("GET", r"/pages/.*", "reject", status=403, code="restricted_resource")
+    assert world.refuse(update_block, page="adapter-test", block="b1", old_text="text", new_text="x") == (
+        "Nothing was written: Notion refused to read page 'adapter-test' before writing (restricted_resource): "
+        "share the page with DaveLLM's Notion connection")
+    world.fake.blocks[block]["parent"] = {"type": "database_id", "database_id": world.page}
+    assert world.refuse(update_block, page="adapter-test", block="b1", old_text="text", new_text="x") == (
+        "Nothing was written: block b1 is no longer on page 'adapter-test'")
+    holder = world.fake.add_block(world.page, "toggle", [rt("holder")])
+    world.fake.blocks[block]["parent"] = {"type": "block_id", "block_id": holder}
+    world.fake.blocks[holder]["in_trash"] = True
+    assert world.refuse(update_block, page="adapter-test", block="b1", old_text="text", new_text="x") == (
+        "Nothing was written: block b1 is no longer on page 'adapter-test'")
+    assert world.fake.writes() == []
+
+
+def test_r9_an_edit_that_would_need_more_than_100_runs_is_refused_before_sending():
+    world = World()
+    runs = [rt(f"r{i} ", bold=i % 2 == 0) for i in range(99)] + [rt("x" * 1999)]
+    block = world.fake.add_block(world.page, "paragraph", runs)
+    world.read()
+    message = world.refuse(update_block, page="adapter-test", block=world.ref(block), old_text="x" * 1999,
+                           new_text="y" * 4100)
+    assert message == f"Block {world.ref(block)} would need more than 100 rich text runs"
+    assert world.fake.writes() == []
+
+
+def test_r9_an_exception_after_the_request_was_sent_is_unknown_not_failed(monkeypatch):
+    world = World()
+
+    def broken(*_args):
+        raise RuntimeError("bug after the write")
+
+    monkeypatch.setattr(notion, "_verified_append", broken)
+    message = world.refuse(append_blocks, page="adapter-test", blocks=BLOCKS)
+    assert message.startswith("Outcome unknown: the append did not finish")
+    assert len(world.fake.writes()) == 1
+
+
+@pytest.mark.parametrize("item, what", [
+    ({"type": "equation", "equation": {}, "annotations": {}, "plain_text": ""}, "an equation"),
+    ({"type": "mention", "mention": {"type": "date", "date": {}}, "annotations": {}, "plain_text": "?"}, "a date mention"),
+    ({"type": "mention", "mention": {"type": "page", "page": {"id": "nope"}}, "annotations": {}, "plain_text": "?"}, "a page mention"),
+    ({"type": "template", "annotations": {}, "plain_text": "?"}, "rich text"),
+])
+def test_r9_malformed_rich_text_refuses_text_edits(item, what):
+    world = World()
+    block = world.fake.add_block(world.page, "paragraph", [rt("editable "), item])
+    world.read()
+    assert world.refuse(update_block, page="adapter-test", block=world.ref(block), old_text="editable",
+                        new_text="x") == f"Block {world.ref(block)} contains {what} that cannot be written back, so its text cannot be edited"
+
+
+@pytest.mark.parametrize("arguments, message", [
+    ({}, "Give old_text and new_text, or checked, or both"),
+    ({"old_text": "a"}, "old_text and new_text must be given together"),
+    ({"old_text": "", "new_text": "b"}, "old_text and new_text must be given together"),
+    ({"old_text": "same", "new_text": "same"}, "old_text and new_text are the same"),
+    ({"checked": "yes", "block_text": "t"}, "checked must be true or false"),
+])
+def test_r9_edit_arguments_are_checked_before_anything_is_sent(arguments, message):
+    world = World()
+    world.fake.add_block(world.page, "to_do", [rt("same t")], checked=False)
+    world.read()
+    assert world.refuse(update_block, page="adapter-test", block="b1", **arguments) == message
+    assert world.fake.writes() == []
+
+
+@pytest.mark.parametrize("blocks, message", [
+    ([7], "Block 1 must be an object"),
+    ([{"type": "to_do", "text": "t", "checked": "yes"}], "Block 1 checked must be true or false"),
+])
+def test_r9_append_arguments_that_bypass_the_schema_are_still_refused(blocks, message):
+    world = World()
+    assert world.refuse(append_blocks, page="adapter-test", blocks=blocks) == message
+
+
+def test_r9_the_ledger_registry_evicts_the_least_recently_used_run():
+    ledgers = notion.NotionLedgers(max_runs=2)
+    a, b = ledgers.for_run("a"), ledgers.for_run("b")
+    assert ledgers.for_run("a") is a
+    ledgers.for_run("c")
+    assert len(ledgers) == 2 and ledgers.for_run("a") is a and ledgers.for_run("b") is not b
+
+
+def _message_templates():
+    """Every message the adapter can raise or report, from the source, cut at the first placeholder."""
+    tree = ast.parse((REPO_ROOT / "davellm_notion.py").read_text())
+    constants = {node.targets[0].id: node.value for node in tree.body
+                 if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)}
+    found = set()
+
+    def text_of(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.JoinedStr):
+            return "".join(v.value if isinstance(v, ast.Constant) else "{}" for v in node.values)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+            return text_of(node.func.value)
+        if isinstance(node, ast.Name) and node.id in constants:
+            return text_of(constants[node.id])
+        if isinstance(node, ast.BinOp):
+            left, right = text_of(node.left), text_of(node.right)
+            return (left or "") + (right or "") if left or right else None
+        return None
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id == "NotionToolError" and node.args:
+                found.add(text_of(node.args[0]))
+            if node.func.id == "_Outcome" and len(node.args) >= 2 and isinstance(node.args[0], ast.Constant) \
+                    and node.args[0].value in {"failed", "unknown"}:
+                found.add(("Nothing was written: " if node.args[0].value == "failed" else "Outcome unknown: ")
+                          + (text_of(node.args[1]) or ""))
+    templates = set()
+    for text in found:
+        if text:
+            head = _re.split(r"\{", text, maxsplit=1)[0].strip(" '(")
+            if len(head) >= 12:
+                templates.add(head)
+    return templates
+
+
+def test_r9_every_adapter_message_is_documented():
+    docs = (REPO_ROOT / "docs" / "DAVELLM_TOOLS.md").read_text()
+    section = docs[docs.index("## Notion tools"):docs.index("## Paths")]
+    undocumented = sorted(t for t in _message_templates() if t not in section)
+    assert undocumented == [], "Notion messages missing from docs/DAVELLM_TOOLS.md:\n" + "\n".join(undocumented)
+
+
+def test_r9_the_required_checks_compile_the_same_modules_as_ci():
+    def modules(text):
+        line = next(line for line in text.splitlines() if "py_compile" in line)
+        return {word for word in line.split() if word.endswith(".py")}
+
+    claude = modules((REPO_ROOT / "CLAUDE.md").read_text())
+    ci = modules((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    tracked = {path.name for path in REPO_ROOT.glob("davellm_*.py")}
+    assert tracked <= claude and tracked <= ci, {"missing from CLAUDE.md": tracked - claude, "missing from CI": tracked - ci}
+    assert claude == ci

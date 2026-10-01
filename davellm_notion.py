@@ -101,7 +101,6 @@ _ANNOTATION_DEFAULTS = (
     ("bold", False), ("italic", False), ("strikethrough", False), ("underline", False),
     ("code", False), ("color", "default"),
 )
-_ANNOTATION_KEYS = frozenset(key for key, _ in _ANNOTATION_DEFAULTS)
 
 PAGE_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,%d}" % (NOTION_PAGE_NAME_MAX_CHARS - 1))
 BLOCK_REF = re.compile(r"b[1-9][0-9]{0,5}")
