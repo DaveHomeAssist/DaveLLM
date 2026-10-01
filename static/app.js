@@ -3568,10 +3568,17 @@ function notionUpdatePreview(args) {
         }
     }
     if (hasChecked) {
+        const named = typeof args.block_text === "string";
         const note = document.createElement("p");
         note.className = "edit-preview-checked";
-        note.textContent = args.checked ? "Mark the to-do as done." : "Mark the to-do as not done.";
+        note.textContent = `Mark ${named ? "this" : "the"} to-do as ${args.checked ? "done" : "not done"}${named ? ":" : "."}`;
         preview.appendChild(note);
+        if (named) {
+            const todo = document.createElement("pre");
+            todo.className = "edit-preview-todo";
+            todo.textContent = args.block_text;
+            preview.appendChild(todo);
+        }
     }
     return preview;
 }

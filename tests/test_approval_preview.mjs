@@ -113,11 +113,13 @@ test("a pending notion.block.update shows the block, the text before and after, 
         ["P", "edit-preview-checked", "Mark the to-do as done."],
     ]);
     const unchecked = approvalPreview({
-        tool_name: "notion.block.update", arguments: { page: "adapter-test", block: "b4", checked: false },
+        tool_name: "notion.block.update",
+        arguments: { page: "adapter-test", block: "b4", checked: false, block_text: "<i>Ship v1</i>" },
     });
     assert.deepEqual(summary(unchecked), [
         ["P", "edit-preview-target", "Edit Notion page adapter-test · block b4"],
-        ["P", "edit-preview-checked", "Mark the to-do as not done."],
+        ["P", "edit-preview-checked", "Mark this to-do as not done:"],
+        ["PRE", "edit-preview-todo", "<i>Ship v1</i>"],
     ]);
 });
 

@@ -410,15 +410,17 @@ Adds the blocks to the end of the page and then checks that they are there. A ve
 | `block` | string | a ref from `notion.page.read` in this run |
 | `old_text`, `new_text` | string or `null` | together; `old_text` 1–2000 characters, `new_text` 0–2000 |
 | `checked` | boolean or `null` | to-dos only |
+| `block_text` | string or `null` | the block's whole text as `notion.page.read` showed it, at most 4000 characters; required when only `checked` changes |
 
-Replaces `old_text` with `new_text` inside one block, checks or unchecks a to-do, or both. `old_text` must occur exactly once in the block and must sit inside one run of uniformly formatted text. Every other run is sent back with its formatting, links, mentions, and equations, so the block keeps them. A change to `checked` alone sends only `checked`.
+Replaces `old_text` with `new_text` inside one block, checks or unchecks a to-do, or both. A change to `checked` alone must name the to-do with `block_text`, so the approval card shows which to-do it is; `block_text`, when given, must equal what the run read, or nothing is sent. `old_text` must occur exactly once in the block and must sit inside one run of uniformly formatted text. Every other run is sent back with its formatting, links, mentions, and equations, so the block keeps them. A change to `checked` alone sends only `checked`.
 
 ### Before a write
 
-The adapter refuses before sending anything when the arguments cannot be carried out exactly: an unknown ref, a ref from another page, text that crosses a formatting change or a mention, text that occurs more or less than once, or a block whose rich text cannot be written back. Then, just before writing, it reads the target again:
+The adapter refuses before sending anything when the arguments cannot be carried out exactly: an unknown ref, a ref from another page, text that crosses a formatting change or a mention, text that occurs more or less than once, a `block_text` that differs from what the run read, or a block whose rich text cannot be written back. Then, just before writing, it reads the target again:
 
-- the block must still sit under the configured page, walking up through parent blocks (a block moved elsewhere on the same page is fine; a block moved to another page is refused);
-- the block must still hold exactly what the run saw (text, formatting, mentions, and checked state); if someone edited it since the read, nothing is written.
+- the configured page must not be in the trash;
+- the block must still sit under the configured page, walking up through at most eight parent blocks (a block moved elsewhere on the same page is fine; a block moved to another page or into a child page is refused, and a block nested more deeply is refused as too deep to confirm);
+- the block must still hold exactly what the run saw (type, text, formatting, mentions, and checked state); if someone edited it since the read, nothing is written.
 
 This narrows the window for overwriting someone else's edit. It is not a lock, because Notion offers none. Writes to one page are serialized within the router process.
 
@@ -451,6 +453,9 @@ Requests go only to `https://api.notion.com/v1` with `Notion-Version: 2026-03-11
 | `Notion tools work only inside a tool run started from DaveLLM` | Called outside a lifecycle run |
 | `Unknown block ref bN; refs come from notion.page.read in this run` | The ref was never issued in this run |
 | `Block bN belongs to page 'a', not 'b'` | The ref came from another page |
+| `block_text is required when only checked changes: …` / `block_text does not match block bN; read the page again` | A to-do change without, or with the wrong, `block_text` |
+| `Nothing was written: Notion page 'x' is in the trash` | The page was trashed after the read |
+| `Nothing was written: block bN is nested too deeply to confirm it is still on page 'x'` | More than eight parent blocks |
 | `old_text was not found in block bN` / `old_text occurs N times in block bN; …` | The text does not occur exactly once |
 | `old_text in block bN crosses a formatting change, a link, a mention, or an equation; …` | The text spans more than one run |
 | `Block bN contains … that cannot be written back, so its text cannot be edited` | The block's rich text cannot round-trip |

@@ -1523,7 +1523,8 @@ async def tool_web_read(params: Dict) -> ToolResult:
 
 from davellm_notion import (  # Notion page tools, kept below the web handlers
     APPEND_BLOCK_TYPES as NOTION_APPEND_BLOCK_TYPES, NOTION_APPEND_MAX_BLOCKS, NOTION_PAGE_NAME_MAX_CHARS,
-    NOTION_READ_TIMEOUT_SECONDS, NOTION_REF_MAX_CHARS, NOTION_TEXT_MAX_CHARS, NOTION_WRITE_TIMEOUT_SECONDS,
+    NOTION_DISPLAY_MAX_CHARS, NOTION_READ_TIMEOUT_SECONDS, NOTION_REF_MAX_CHARS, NOTION_TEXT_MAX_CHARS,
+    NOTION_WRITE_TIMEOUT_SECONDS,
     NotionLedgers, NotionSettings, NotionToolError, PageWriteGuard, RunLedger,
     append_blocks as notion_append_blocks, read_page as notion_read_page, update_block as notion_update_block,
 )
@@ -2040,8 +2041,9 @@ def notion_tool_definitions() -> List[ToolDefinition]:
             description=(
                 "Change one block that notion.page.read returned in this run: replace old_text with new_text "
                 "inside it, and/or check or uncheck a to-do. old_text must occur once and stay inside one "
-                "formatting run, so the block keeps its formatting. Nothing is sent if the block changed or "
-                "moved since it was read. Needs the user's approval, which shows the text before and after."
+                "formatting run, so the block keeps its formatting. To check or uncheck a to-do, also give "
+                "block_text, the to-do's text. Nothing is sent if the block changed or moved since it was read. "
+                "Needs the user's approval, which shows the text before and after or the to-do."
             ),
             parameters={
                 "type": "object",
@@ -2060,6 +2062,11 @@ def notion_tool_definitions() -> List[ToolDefinition]:
                     }),
                     "checked": _optional({
                         "type": "boolean", "description": "For a to-do: true checks it, false unchecks it.",
+                    }),
+                    "block_text": _optional({
+                        "type": "string", "maxLength": NOTION_DISPLAY_MAX_CHARS,
+                        "description": "The block's whole text as notion.page.read showed it; required when only "
+                                       "checked changes.",
                     }),
                 },
                 "required": ["page", "block"],

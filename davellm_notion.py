@@ -142,6 +142,8 @@ NEEDS_BOTH_TEXTS = "old_text and new_text must be given together"
 SAME_TEXT = "old_text and new_text are the same"
 ALREADY_CHECKED = "Block {ref} is already {state}"
 TOO_MANY_RUNS = "Block {ref} would need more than 100 rich text runs"
+BLOCK_TEXT_REQUIRED = "block_text is required when only checked changes: copy the to-do's text from notion.page.read"
+BLOCK_TEXT_MISMATCH = "block_text does not match block {ref}; read the page again"
 
 
 class NotionToolError(Exception):
@@ -167,6 +169,10 @@ class _Budget(Exception):
 
 class _Uncertain(Exception):
     """The request may have reached Notion, but no usable answer came back."""
+
+
+class _TooDeep(Exception):
+    """The parent walk reached its limit before finding a page."""
 
 
 def notion_id(value: Any) -> Optional[str]:
@@ -945,6 +951,9 @@ async def _append_attempt(token: str, run: RunLedger, name: str, page_id: str,
                           blocks: list[tuple[str, str, Optional[bool]]], progress: _Progress) -> _Outcome:
     async with NotionApi(token, budget_seconds=NOTION_WRITE_BUDGET_SECONDS,
                          max_requests=NOTION_WRITE_MAX_REQUESTS) as api:
+        page_problem = await _page_check(api, name, page_id)
+        if page_problem is not None:
+            return page_problem
         try:
             before, more = await _list_children(api, page_id, max_pages=NOTION_LIST_MAX_PAGES)
         except _Rejected as exc:
@@ -1056,11 +1065,19 @@ def _edit_plan(record: BlockRecord, arguments: Mapping[str, Any]) -> tuple[Optio
             raise NotionToolError(NOT_TO_DO.format(ref=record.ref, kind=record.block_type))
         if rich_text is None and checked == record.checked:
             raise NotionToolError(ALREADY_CHECKED.format(ref=record.ref, state="checked" if checked else "unchecked"))
+    block_text = arguments.get("block_text")
+    if block_text is None and checked is not None and old is None:
+        raise NotionToolError(BLOCK_TEXT_REQUIRED)
+    if block_text is not None and block_text != rich_text_plain(record.rich_text):
+        raise NotionToolError(BLOCK_TEXT_MISMATCH.format(ref=record.ref))
     return rich_text, checked
 
 
 async def _owning_page(api: NotionApi, block: Mapping[str, Any]) -> Optional[str]:
-    """The page a block sits on now, walking parent blocks; ``None`` past the depth limit or off-page."""
+    """The page a block sits on now, walking parent blocks; ``None`` when it is not on a page.
+
+    Raises ``_TooDeep`` when the walk reaches its limit, so that case is not reported as a move.
+    """
     parent = block.get("parent")
     for _ in range(NOTION_PARENT_MAX_DEPTH):
         parent = parent if isinstance(parent, dict) else {}
@@ -1073,6 +1090,19 @@ async def _owning_page(api: NotionApi, block: Mapping[str, Any]) -> Optional[str
         if above.get("in_trash"):
             return None
         parent = above.get("parent")
+    raise _TooDeep()
+
+
+async def _page_check(api: NotionApi, name: str, page_id: str) -> Optional[_Outcome]:
+    """A failed outcome when the configured page cannot be written to now, else ``None``."""
+    try:
+        page = await api.call("GET", f"/pages/{page_id}")
+    except _Rejected as exc:
+        return _Outcome("failed", f"Notion refused to read page '{name}' before writing ({exc.code})")
+    except (_Unsent, _Uncertain, _Budget):
+        return _Outcome("failed", f"Notion could not be reached to check page '{name}' before writing")
+    if page.get("in_trash"):
+        return _Outcome("failed", f"Notion page '{name}' is in the trash")
     return None
 
 
@@ -1104,12 +1134,18 @@ async def _update_attempt(token: str, run: RunLedger, record: BlockRecord,
                 return _Outcome("failed", f"block {record.ref} is in the trash")
             if await _owning_page(api, current) != record.page_id:
                 return _Outcome("failed", f"block {record.ref} is no longer on page '{record.page}'")
+        except _TooDeep:
+            return _Outcome("failed", f"block {record.ref} is nested too deeply to confirm it is still on "
+                                      f"page '{record.page}'")
         except _Rejected as exc:
             return _Outcome("failed", f"Notion refused to read block {record.ref} before writing ({exc.code})")
         except (_Unsent, _Uncertain, _Budget):
             return _Outcome("failed", f"Notion could not be reached to check block {record.ref} before writing")
         if _state(current) != seen:
             return _Outcome("failed", f"block {record.ref} changed after it was read; read the page again")
+        page_problem = await _page_check(api, record.page, record.page_id)
+        if page_problem is not None:
+            return page_problem
         body: dict[str, Any] = {}
         if rich_text is not None:
             body["rich_text"] = rich_text

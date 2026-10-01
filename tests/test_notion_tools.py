@@ -337,13 +337,13 @@ def test_repeated_old_text_is_refused(world):
 def test_checking_a_to_do_sends_only_the_checked_state(world):
     block = world.fake.add_block(world.page, "to_do", [rt("Item", bold=True)], checked=False)
     world.read()
-    result = world.call(update_block, page="adapter-test", block=world.ref(block), checked=True)
+    result = world.call(update_block, page="adapter-test", block=world.ref(block), checked=True, block_text="Item")
     assert result == {"outcome": "verified", "page": "adapter-test", "block": world.ref(block),
                       "text": "Item", "checked": True}
     (patch,) = world.fake.writes()
     assert json.loads(patch.content) == {"to_do": {"checked": True}}
-    assert world.refuse(update_block, page="adapter-test", block=world.ref(block), checked=True) == \
-        f"Block {world.ref(block)} is already checked"
+    assert world.refuse(update_block, page="adapter-test", block=world.ref(block), checked=True,
+                        block_text="Item") == f"Block {world.ref(block)} is already checked"
 
 
 def test_a_block_changed_after_the_read_is_not_overwritten(world):
@@ -410,7 +410,8 @@ def test_blocks_that_cannot_round_trip_refuse_text_edits_but_allow_checking(worl
         update_block, page="adapter-test", block=world.ref(block), old_text="see", new_text="look")
     assert "contains an internal link" in world.refuse(
         update_block, page="adapter-test", block=world.ref(internal), old_text="internal", new_text="x")
-    assert world.call(update_block, page="adapter-test", block=world.ref(block), checked=True)["outcome"] == "verified"
+    assert world.call(update_block, page="adapter-test", block=world.ref(block), checked=True,
+                      block_text="see https://example.com")["outcome"] == "verified"
 
 
 def test_a_conflict_from_notion_is_a_failed_write(world):
@@ -504,7 +505,8 @@ def test_lifecycle_run_reads_then_edits_only_after_approval(notion_router, decis
         chat = mock.post(f"{TEST_NODE_URL}/api/chat")
         chat.side_effect = _model_turns(
             ("notion.page.read", {"page": "adapter-test"}),
-            ("notion.block.update", {"page": "adapter-test", "block": "b2", "checked": True}),
+            ("notion.block.update", {"page": "adapter-test", "block": "b2", "checked": True,
+                                     "block_text": "Prove the adapter"}),
             (None, "Checked it."),
         )
         created = client.post("/tools/agent/runs", headers=AUTH, json={

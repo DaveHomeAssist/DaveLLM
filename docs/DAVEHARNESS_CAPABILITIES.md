@@ -43,7 +43,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`git.status`](#gitstatus) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path` |
 | [`md.outline`](#mdoutline) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, `max_headings` |
 | [`md.section`](#mdsection) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, **`heading`**, `include_subsections` |
-| [`notion.block.update`](#notionblockupdate) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call | `60.0` | `bounded` | async | **`page`**, **`block`**, `old_text`, `new_text`, `checked` |
+| [`notion.block.update`](#notionblockupdate) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call | `60.0` | `bounded` | async | **`page`**, **`block`**, `old_text`, `new_text`, `checked`, `block_text` |
 | [`notion.page.append`](#notionpageappend) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call | `60.0` | `bounded` | async | **`page`**, **`blocks`** |
 | [`notion.page.read`](#notionpageread) | `DAVE_ENABLE_NOTION_TOOLS` | `read` | — | `30.0` | `bounded` | async | **`page`** |
 | [`project.artifacts`](#projectartifacts) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | `artifact`, `max_entries` |
@@ -201,7 +201,7 @@ Read the lines under one heading of a Markdown file inside an allowed tool root,
 
 ### notion.block.update
 
-Change one block that notion.page.read returned in this run: replace old_text with new_text inside it, and/or check or uncheck a to-do. old_text must occur once and stay inside one formatting run, so the block keeps its formatting. Nothing is sent if the block changed or moved since it was read. Needs the user's approval, which shows the text before and after.
+Change one block that notion.page.read returned in this run: replace old_text with new_text inside it, and/or check or uncheck a to-do. old_text must occur once and stay inside one formatting run, so the block keeps its formatting. To check or uncheck a to-do, also give block_text, the to-do's text. Nothing is sent if the block changed or moved since it was read. Needs the user's approval, which shows the text before and after or the to-do.
 
 | Argument | Type | Required | Constraints | Description |
 |---|---|---|---|---|
@@ -210,6 +210,7 @@ Change one block that notion.page.read returned in this run: replace old_text wi
 | `old_text` | string or null | no | maxLength `2000`, minLength `1` | The exact text to replace, copied from the block. |
 | `new_text` | string or null | no | maxLength `2000` | The replacement text; empty deletes old_text. |
 | `checked` | boolean or null | no | — | For a to-do: true checks it, false unchecks it. |
+| `block_text` | string or null | no | maxLength `4000` | The block's whole text as notion.page.read showed it; required when only checked changes. |
 
 ### notion.page.append
 
@@ -575,6 +576,8 @@ Public constants each module defines, including the fixed refusal messages.
 | `ALREADY_CHECKED` | `Block {ref} is already {state}` |
 | `APPEND_BLOCK_TYPES` | `["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "quote"]` |
 | `BAD_PAGES` | `DAVE_NOTION_PAGES is not a JSON object of page names to Notion page IDs` |
+| `BLOCK_TEXT_MISMATCH` | `block_text does not match block {ref}; read the page again` |
+| `BLOCK_TEXT_REQUIRED` | `block_text is required when only checked changes: copy the to-do's text from notion.page.read` |
 | `CROSSES_RUNS` | `old_text in block {ref} crosses a formatting change, a link, a mention, or an equation; edit text inside one run so its formatting is kept` |
 | `LEDGER_FULL` | `This run has read too many Notion blocks; start a new run` |
 | `NEEDS_BOTH_TEXTS` | `old_text and new_text must be given together` |
