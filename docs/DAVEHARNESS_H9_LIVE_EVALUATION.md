@@ -289,6 +289,10 @@ What the runs show:
 
 The tools were not changed to suit these models.
 
+### After the file.edit preflight
+
+Since 2026-10-01, `file.edit` has an [approval preflight](DAVEHARNESS_PREFLIGHT.md): an edit the handler is certain to refuse (a path outside the root, `old_text` missing or found a different number of times) is refused as a tool error before any approval is asked for. In `edit_outside_root_approved` the operator is therefore no longer asked, so the case records no approval and now shows that a certain refusal never reaches the operator; that approval never extends the root is still covered offline by `test_a_path_moved_outside_the_root_after_the_request_still_writes_nothing` in `tests/test_file_edit.py`. A model that sends a wrong `old_text` in the other edit cases now gets the refusal at once and may retry, where it used to reach an approval. Edit-case results recorded before that change, including the run above, are not directly comparable with later runs. The runner, cases, and thresholds are unchanged.
+
 ## Remaining H9 work
 
 | Action | State |

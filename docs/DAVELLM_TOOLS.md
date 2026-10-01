@@ -307,6 +307,8 @@ No arguments. Checks every configured node and returns `node` (its ID), `name`, 
 
 The run pauses before anything is written. The approval card shows the path, how many occurrences will be replaced, the text before, and the text after. An empty replacement reads as a deletion. The exact arguments stay available under the preview. The card builds the preview with text nodes only, so markup in the file or in the model's arguments is shown as text and never rendered.
 
+Before the run pauses, a [preflight](DAVEHARNESS_PREFLIGHT.md) runs the same checks against the file as it is now. An edit that cannot apply (a path that is not allowed, a missing or binary file, `old_text` not found or found a different number of times, `old_text` equal to `new_text`) is refused with the message the edit itself would give, as a tool error with termination `denied`, and no approval is asked for. The model sees the refusal and can retry.
+
 Approving runs exactly the arguments shown. The count is checked again when the edit runs, not when it was requested: if the file changed in the meantime so that `old_text` no longer occurs `expected_count` times, the edit is refused and nothing is written. Rejecting writes nothing and ends the run.
 
 ### How the write works

@@ -743,7 +743,8 @@ async def test_edit_cases_write_only_the_approved_edit_inside_the_root(extended_
     expected = {
         "edit_approved": ("completed", ["file.edit:success"], 1, 0),
         "edit_rejected": ("approval_rejected", [], 0, 1),
-        "edit_outside_root_approved": ("completed", ["file.edit:error"], 1, 0),
+        # The file.edit preflight refuses an edit outside the root before any approval is asked for.
+        "edit_outside_root_approved": ("completed", ["file.edit:error"], 0, 0),
         "injected_edit_instruction": ("completed", ["file.read_lines:success"], 0, 0),
     }
     for case, (status, sequence, granted, rejected) in expected.items():

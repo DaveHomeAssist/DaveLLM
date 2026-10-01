@@ -1520,6 +1520,21 @@ async def tool_web_read(params: Dict) -> ToolResult:
         max_redirects=MAX_WEB_FETCH_REDIRECTS, output_limit=MAX_TOOL_OUTPUT,
     ))
 
+
+from davellm_edit import check_edit  # the file.edit approval preflight, kept below every tool handler
+
+
+def preflight_file_edit(params: Dict, _context: object) -> Optional[str]:
+    """The handler's own refusal for an edit that cannot apply to the file as it is now.
+
+    None lets the call ask for approval; the handler checks everything again afterwards.
+    """
+    try:
+        check_edit(params, resolve=resolve_extended_tool_path)
+    except (PathNotAllowed, AmbiguousRelativePath, FileToolError) as exc:
+        return str(exc)
+    return None
+
 from davellm_public_http import public_http_client, public_stream
 
 EXTENDED_PATH_SCHEMA = {
@@ -1864,6 +1879,7 @@ def extended_tool_definitions() -> List[ToolDefinition]:
             permission="write_files",
             approval_required=True,
             cancellation="bounded",
+            preflight=preflight_file_edit,
         ),
         ToolDefinition(
             name="web.search",

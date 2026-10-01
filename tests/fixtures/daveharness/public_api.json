@@ -1044,7 +1044,9 @@
       "cancellation",
       "async_handler",
       "handler_version",
-      "context_handler"
+      "context_handler",
+      "preflight",
+      "preflight_version"
     ],
     "parameters": [
       {
@@ -1100,6 +1102,16 @@
       {
         "kind": "POSITIONAL_OR_KEYWORD",
         "name": "context_handler",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "preflight",
+        "required": false
+      },
+      {
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "preflight_version",
         "required": false
       }
     ]

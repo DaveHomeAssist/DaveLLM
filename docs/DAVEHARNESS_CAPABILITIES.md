@@ -10,6 +10,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 
 - 23 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 17 from `DAVE_ENABLE_EXTENDED_TOOLS`.
 - Exact-call approval required: `file.append`, `file.edit`, `file.write`, `shell.exec`.
+- Preflight before approval: `file.edit`. A call the preflight finds certain to fail is refused as a tool error instead of asking for approval; the handler still checks everything after approval.
 - Tools by permission: `execute_process` 1; `public_network` 3; `read` 4; `read_files` 10; `read_system` 2; `write_files` 3.
 - Every tool schema rejects unknown arguments (`additionalProperties: false`).
 - Definition fingerprints are not listed: they depend on the checkout path and Python version. `tests/fixtures/davellm/tool_catalog.json` pins their portable inputs.
@@ -30,7 +31,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`chat.search`](#chatsearch) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | **`query`**, `max_results` |
 | [`cluster.status`](#clusterstatus) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_system` | — | `10.0` | `bounded` | sync | — |
 | [`file.append`](#fileappend) | `DAVE_ENABLE_TOOLS` | `write_files` | exact call | `10.0` | `bounded` | sync | **`path`**, **`content`** |
-| [`file.edit`](#fileedit) | `DAVE_ENABLE_EXTENDED_TOOLS` | `write_files` | exact call | `10.0` | `bounded` | sync | **`path`**, **`old_text`**, **`new_text`**, `expected_count` |
+| [`file.edit`](#fileedit) | `DAVE_ENABLE_EXTENDED_TOOLS` | `write_files` | exact call, preflight | `10.0` | `bounded` | sync | **`path`**, **`old_text`**, **`new_text`**, `expected_count` |
 | [`file.list`](#filelist) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path`, `depth`, `max_entries`, `cursor` |
 | [`file.read`](#fileread) | `DAVE_ENABLE_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`** |
 | [`file.read_lines`](#fileread_lines) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, `start_line`, `max_lines` |

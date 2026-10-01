@@ -177,6 +177,7 @@ def tool_entries(routers: dict[str, Any]) -> dict[str, Any]:
             "family": name.split(".", 1)[0],
             "requires_flags": [BASE_FLAG] if name in registered[BASE_FLAG] else [BASE_FLAG, *adders],
             "context_handler": full.HARNESS_REGISTRY.get(name).context_handler,
+            "preflight": full.HARNESS_REGISTRY.get(name).preflight is not None,
             **metadata,
         }
     return tools
@@ -281,6 +282,7 @@ def render_markdown(manifest: dict[str, Any]) -> str:
     for name, tool in tools.items():
         by_permission.setdefault(tool["permission"], []).append(name)
     approval = [name for name, tool in tools.items() if tool["approval_required"]]
+    preflight = [name for name, tool in tools.items() if tool["preflight"]]
     closed = all(tool["parameters"].get("additionalProperties") is False for tool in tools.values())
     lines = [
         "# DaveHarness capabilities manifest",
@@ -300,6 +302,9 @@ def render_markdown(manifest: dict[str, Any]) -> str:
         + ", ".join(f"{len(flag['tools'])} from `{name}`" for name, flag in manifest["flags"].items() if flag["tools"])
         + ".",
         f"- Exact-call approval required: {', '.join(_code(name) for name in approval) or 'none'}.",
+        f"- Preflight before approval: {', '.join(_code(name) for name in preflight) or 'none'}. A call the "
+        "preflight finds certain to fail is refused as a tool error instead of asking for approval; the handler "
+        "still checks everything after approval.",
         "- Tools by permission: "
         + "; ".join(f"`{permission}` {len(names)}" for permission, names in sorted(by_permission.items()))
         + ".",
@@ -320,7 +325,7 @@ def render_markdown(manifest: dict[str, Any]) -> str:
             f"[`{name}`](#{name.replace('.', '')})",
             f"`{tool['requires_flags'][-1]}`",
             f"`{tool['permission']}`",
-            "exact call" if tool["approval_required"] else "—",
+            ("exact call" + (", preflight" if tool["preflight"] else "")) if tool["approval_required"] else "—",
             _code(tool["timeout_seconds"]),
             f"`{tool['cancellation']}`",
             ("async" if tool["async_handler"] else "sync") + (", run context" if tool["context_handler"] else ""),

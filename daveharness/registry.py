@@ -12,15 +12,20 @@ import math
 import threading
 import uuid
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Collection, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Collection, cast
 
 from .schema import validate_schema_definition
 from .limits import validate_payload
+
+if TYPE_CHECKING:
+    from .runtime import ExecutionContext
 
 DEFAULT_TOOL_TIMEOUT_SECONDS = 10.0
 VALID_CANCELLATION_MODES = frozenset({"bounded", "abandon"})
 
 ToolHandler = Callable[..., Any | Awaitable[Any]]
+# Returns a refusal message for a call that is certain to fail, or None to let it pause for approval.
+ToolPreflight = Callable[[dict[str, Any], "ExecutionContext"], "str | None"]
 
 
 def _stable_handler_value(value: Any, *, checked: bool = False) -> Any:
@@ -97,10 +102,12 @@ class ToolDefinition:
     async_handler: bool = False
     handler_version: str = ""
     context_handler: bool = False
+    preflight: ToolPreflight | None = None
+    preflight_version: str = ""
 
     def fingerprint(self) -> str:
-        """Digest the declared effect boundary, including handler code provenance."""
-        payload = {
+        """Digest the declared effect boundary, including handler and preflight code provenance."""
+        payload: dict[str, Any] = {
             "name": self.name,
             "description": self.description,
             "parameters": self.parameters,
@@ -112,6 +119,9 @@ class ToolDefinition:
             "context_handler": self.context_handler,
             "handler": _handler_provenance(self.handler, self.handler_version),
         }
+        if self.preflight is not None:
+            # Absent rather than null, so definitions without a preflight keep their fingerprints.
+            payload["preflight"] = _handler_provenance(self.preflight, self.preflight_version)
         validate_payload(payload)
         canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -191,6 +201,20 @@ class ToolRegistry:
                 inspect.signature(definition.handler).bind({}, object())
             except (TypeError, ValueError) as exc:
                 raise ValueError("context handler must accept arguments and context") from exc
+        if definition.preflight is None:
+            if definition.preflight_version:
+                raise ValueError("preflight_version requires a preflight")
+        else:
+            if not callable(definition.preflight):
+                raise ValueError("Tool preflight must be callable")
+            if inspect.iscoroutinefunction(definition.preflight):
+                raise ValueError("Tool preflight must be synchronous")
+            if not definition.approval_required:
+                raise ValueError("Tool preflight runs only before an approval pause; it requires approval_required=True")
+            try:
+                inspect.signature(definition.preflight).bind({}, object())
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Tool preflight must accept arguments and context") from exc
         with self._lock:
             if definition.name in self._definitions:
                 raise ValueError(f"Tool '{definition.name}' is already registered")
@@ -216,6 +240,8 @@ class ToolRegistry:
             async_handler=definition.async_handler,
             handler_version=definition.handler_version,
             context_handler=definition.context_handler,
+            preflight=definition.preflight,
+            preflight_version=definition.preflight_version,
         )
 
     def revoke(self, name: str) -> bool:
