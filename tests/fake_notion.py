@@ -326,7 +326,8 @@ class FakeNotion:
             return False
         for item in items:
             if item.get("type") == "text":
-                if len(item["text"]["content"]) > 2000:
+                # Conservative: count UTF-16 code units, as a JavaScript string length would.
+                if len(item["text"]["content"].encode("utf-16-le")) // 2 > 2000:
                     return False
                 link = item["text"].get("link")
                 if link and not re.match(r"https?://", link.get("url", "")):

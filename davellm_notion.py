@@ -535,17 +535,51 @@ def _writable_item(item: Mapping[str, Any], ref: str) -> dict[str, Any]:
     return entry
 
 
+def utf16_length(text: str) -> int:
+    """Length as a JavaScript string counts it: astral characters such as emoji count twice."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _utf16_chunks(text: str, limit: int) -> list[str]:
+    """``text`` cut at code-point boundaries into pieces of at most ``limit`` UTF-16 units."""
+    pieces: list[str] = []
+    current: list[str] = []
+    size = 0
+    for character in text:
+        units = 2 if ord(character) > 0xFFFF else 1
+        if current and size + units > limit:
+            pieces.append("".join(current))
+            current, size = [], 0
+        current.append(character)
+        size += units
+    if current:
+        pieces.append("".join(current))
+    return pieces
+
+
+def _occurrences(text: str, needle: str) -> int:
+    """How often ``needle`` occurs, overlapping matches included: "aaa" holds "aa" twice."""
+    count, start = 0, text.find(needle)
+    while start != -1:
+        count += 1
+        start = text.find(needle, start + 1)
+    return count
+
+
 def _split_long_text(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Text runs longer than Notion's per-run limit become consecutive runs with the same formatting."""
+    """Text runs longer than Notion's per-run limit become consecutive runs with the same formatting.
+
+    The limit is measured in UTF-16 units, the safe reading of Notion's 2000 characters.
+    """
     out: list[dict[str, Any]] = []
     for entry in entries:
         content = entry["text"]["content"] if entry["type"] == "text" else None
-        if content is None or len(content) <= NOTION_TEXT_MAX_CHARS:
+        if content is None or utf16_length(content) <= NOTION_TEXT_MAX_CHARS:
             out.append(entry)
             continue
-        for start in range(0, len(content), NOTION_TEXT_MAX_CHARS):
+        for chunk in _utf16_chunks(content, NOTION_TEXT_MAX_CHARS):
             piece = json.loads(json.dumps(entry))
-            piece["text"]["content"] = content[start:start + NOTION_TEXT_MAX_CHARS]
+            piece["text"]["content"] = chunk
             out.append(piece)
     return out
 
@@ -571,7 +605,7 @@ def rewrite_rich_text(items: Sequence[Any], old: str, new: str, ref: str) -> lis
         else:
             pairs.append((text, entry))
     full = "".join(text for text, _ in pairs)
-    count = full.count(old)
+    count = _occurrences(full, old)
     if count == 0:
         raise NotionToolError(OLD_TEXT_NOT_FOUND.format(ref=ref))
     if count > 1:

@@ -328,3 +328,168 @@ def test_r2_a_database_configured_as_a_page_is_refused_cleanly():
     world.settings = notion.NotionSettings.from_values(
         world.settings.token, '{"adapter-test": "0123456789abcdef0123456789abcdef"}')
     assert world.refuse(read_page, page="adapter-test") == "Notion refused the read (object_not_found)"
+
+
+# ---- Run 3: rich-text fidelity -----------------------------------------------------
+
+from hypothesis import HealthCheck, assume, given, settings, strategies as st  # noqa: E402
+
+from fake_notion import ANNOTATIONS, FakeNotion, date_mention, equation, page_mention, user_mention  # noqa: E402
+
+TOKENS = ["a", "b", "Z", " ", ".", "-", "😀", "漢", "é", "👨‍👩‍👧", "\n", "\t", "<", "&", "’"]
+COLORS = ["default", "red", "blue_background", "gray"]
+PROPERTY = settings(max_examples=250, deadline=None, derandomize=True, database=None,
+                    suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much])
+
+texts = st.lists(st.sampled_from(TOKENS), min_size=1, max_size=12).map("".join)
+annotations = st.fixed_dictionaries({
+    "bold": st.booleans(), "italic": st.booleans(), "strikethrough": st.booleans(),
+    "underline": st.booleans(), "code": st.booleans(), "color": st.sampled_from(COLORS),
+})
+PAGE_ID = "0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b0b"
+USER_ID = "0c0c0c0c-0c0c-4c0c-8c0c-0c0c0c0c0c0c"
+
+
+@st.composite
+def runs(draw):
+    kind = draw(st.sampled_from(["text"] * 6 + ["page", "user", "date", "equation"]))
+    if kind == "text":
+        link = draw(st.sampled_from([None, None, "https://example.com/x"]))
+        return rt(draw(texts), link=link, **draw(annotations))
+    if kind == "page":
+        return {**page_mention(PAGE_ID, "Linked"), "annotations": {**ANNOTATIONS, **draw(annotations)}}
+    if kind == "user":
+        return user_mention(USER_ID, "Dave")
+    if kind == "date":
+        return date_mention(draw(st.sampled_from(["2026-10-01", "2026-10-01T09:00:00.000-04:00"])))
+    return equation(draw(st.sampled_from(["E=mc^2", "a+b"])))
+
+
+rich_texts = st.lists(runs(), min_size=1, max_size=8)
+
+
+def as_saved(entries):
+    """What Notion would store and return for request items."""
+    return FakeNotion(mention_titles={PAGE_ID: "Linked"}).response_rich_text(entries)
+
+
+def utf16(text):
+    return len(text.encode("utf-16-le")) // 2
+
+
+def occurrences(text, needle):
+    """Every occurrence, overlapping ones included: "aaa" holds "aa" twice."""
+    return sum(1 for start in range(len(text) - len(needle) + 1) if text.startswith(needle, start))
+
+
+@PROPERTY
+@given(rich_texts, st.data(), st.lists(st.sampled_from(TOKENS), max_size=6).map("".join))
+def test_r3_an_edit_changes_only_the_target_text_and_keeps_every_run(rich, data, new):
+    index = data.draw(st.sampled_from([i for i, item in enumerate(rich) if item["type"] == "text"] or [-1]))
+    assume(index >= 0)
+    content = rich[index]["text"]["content"]
+    start = data.draw(st.integers(0, len(content) - 1))
+    end = data.draw(st.integers(start + 1, len(content)))
+    old = content[start:end]
+    full = notion.rich_text_plain(rich)
+    assume(occurrences(full, old) == 1 and old != new)
+    written = notion.rewrite_rich_text(rich, old, new, "b1")
+    expected = [dict(item) for item in rich]
+    expected[index] = rt(content[:start] + new + content[end:], link=rich[index]["text"]["link"] and
+                         rich[index]["text"]["link"]["url"], **{k: v for k, v in rich[index]["annotations"].items()})
+    assert notion.rich_text_signature(as_saved(written)) == notion.rich_text_signature(expected)
+    assert len(written) <= notion.NOTION_RICH_TEXT_MAX_ITEMS
+    assert all(utf16(item["text"]["content"]) <= notion.NOTION_TEXT_MAX_CHARS
+               for item in written if item["type"] == "text")
+
+
+@PROPERTY
+@given(rich_texts, st.data())
+def test_r3_text_that_spans_two_runs_is_refused_never_rewritten(rich, data):
+    full = notion.rich_text_plain(rich)
+    assume(len(full) >= 2)
+    signature = notion.rich_text_signature(rich)
+    assume(len(signature) >= 2)
+    boundary = len(signature[0][1]) if signature[0][0] == "text" else len(notion.rich_text_plain(rich[:1]))
+    assume(0 < boundary < len(full))
+    start = data.draw(st.integers(0, boundary - 1))
+    end = data.draw(st.integers(boundary + 1, len(full)))
+    old = full[start:end]
+    assume(occurrences(full, old) == 1)
+    with pytest.raises(NotionToolError) as caught:
+        notion.rewrite_rich_text(rich, old, "x", "b1")
+    assert "crosses a formatting change" in str(caught.value) or "cannot be written back" in str(caught.value)
+
+
+@PROPERTY
+@given(rich_texts, st.data())
+def test_r3_the_signature_ignores_how_notion_splits_uniform_text(rich, data):
+    index = data.draw(st.sampled_from([i for i, item in enumerate(rich) if item["type"] == "text"] or [-1]))
+    assume(index >= 0)
+    item = rich[index]
+    content = item["text"]["content"]
+    assume(len(content) >= 2)
+    cut = data.draw(st.integers(1, len(content) - 1))
+    link = item["text"]["link"] and item["text"]["link"]["url"]
+    split = rich[:index] + [rt(content[:cut], link=link, **item["annotations"]),
+                            rt(content[cut:], link=link, **item["annotations"])] + rich[index + 1:]
+    assert notion.rich_text_signature(split) == notion.rich_text_signature(rich)
+
+
+@settings(max_examples=40, deadline=None, derandomize=True, database=None,
+          suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much])
+@given(rich_texts, st.data(), st.lists(st.sampled_from(TOKENS), max_size=6).map("".join))
+def test_r3_round_trip_through_notion_is_verified_exactly_when_saved_as_expected(rich, data, new):
+    world = World()
+    world.fake.mention_titles[PAGE_ID] = "Linked"
+    block = world.fake.add_block(world.page, "paragraph", rich)
+    full = notion.rich_text_plain(rich)
+    index = data.draw(st.sampled_from([i for i, item in enumerate(rich) if item["type"] == "text"] or [-1]))
+    assume(index >= 0)
+    content = rich[index]["text"]["content"]
+    start = data.draw(st.integers(0, len(content) - 1))
+    old = content[start:data.draw(st.integers(start + 1, len(content)))]
+    assume(occurrences(full, old) == 1 and old != new)
+    world.read()
+    result = world.call(update_block, page="adapter-test", block=world.ref(block), old_text=old, new_text=new)
+    assert result["outcome"] == "verified"
+    saved = world.fake.blocks[block]["paragraph"]["rich_text"]
+    assert notion.rich_text_plain(saved) == full.replace(old, new, 1)
+    others = [run for run in notion.rich_text_signature(saved) if run[0] != "text"]
+    assert others == [run for run in notion.rich_text_signature(rich) if run[0] != "text"]
+
+
+def test_r3_text_is_split_by_utf16_length_so_emoji_heavy_text_is_accepted():
+    world = World()
+    text = "😀" * 1500 + "tail"  # 1504 code points, 3004 UTF-16 units
+    result = world.call(append_blocks, page="adapter-test", blocks=[{"type": "paragraph", "text": text}])
+    assert result["outcome"] == "verified"
+    assert world.fake.page_texts(world.page) == [("paragraph", text)]
+    block = world.fake.children[world.page][0]
+    assert [utf16(item["text"]["content"]) for item in world.fake.blocks[block]["paragraph"]["rich_text"]] == [2000, 1004]
+    world.read()
+    grown = "😀" * 600 + "tail"
+    assert world.call(update_block, page="adapter-test", block=world.ref(block), old_text="tail", new_text=grown)[
+        "outcome"] == "verified"
+    saved = world.fake.blocks[block]["paragraph"]["rich_text"]
+    assert all(utf16(item["text"]["content"]) <= 2000 for item in saved)
+    assert notion.rich_text_plain(saved) == "😀" * 2100 + "tail"
+
+
+def test_r3_deleting_a_block_s_only_text_leaves_an_empty_block():
+    world = World()
+    block = world.fake.add_block(world.page, "paragraph", [rt("remove me", bold=True)])
+    world.read()
+    result = world.call(update_block, page="adapter-test", block=world.ref(block), old_text="remove me", new_text="")
+    assert result["outcome"] == "verified"
+    assert world.fake.blocks[block]["paragraph"]["rich_text"] == []
+
+
+@pytest.mark.parametrize("text, old", [("aaa", "aa"), ("babab", "bab"), ("😀😀😀", "😀😀"), ("xyxyx", "xyx")])
+def test_r3_overlapping_occurrences_are_ambiguous_and_refused(text, old):
+    world = World()
+    block = world.fake.add_block(world.page, "paragraph", [rt(text)])
+    world.read()
+    message = world.refuse(update_block, page="adapter-test", block=world.ref(block), old_text=old, new_text="Q")
+    assert message == f"old_text occurs 2 times in block {world.ref(block)}; include more surrounding text so it occurs once"
+    assert world.fake.writes() == []
