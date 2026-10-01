@@ -10,7 +10,7 @@ import respx
 
 import davellm_notion as notion
 from davellm_notion import NotionToolError, append_blocks, read_page, update_block
-from fake_notion import rt
+from fake_notion import new_id, rt
 from test_notion_tools import BLOCKS, World
 
 
@@ -111,7 +111,7 @@ CHILDREN = r"/blocks/[0-9a-f-]+/children"
     ("GET", CHILDREN, "reject", {}, "Nothing was written: Notion refused to read the page before writing (validation_error)", True),
     ("GET", CHILDREN, "connect_error", {}, "Nothing was written: Notion could not be reached to read the page before writing", True),
     ("GET", CHILDREN, "drop_before_apply", {}, "Nothing was written: Notion could not be reached to read the page before writing", True),
-    ("GET", CHILDREN, "server_error_before_apply", {}, "Nothing was written: Notion could not be reached to read the page before writing", True),
+    ("GET", CHILDREN, "server_error_before_apply", {"times": 2}, "Nothing was written: Notion could not be reached to read the page before writing", True),
     ("GET", CHILDREN, "rate_limit", {}, "verified", None),
     ("PATCH", CHILDREN, "server_error_before_apply", {}, "Outcome unknown: the connection to Notion failed during the append and the blocks are not on the page yet", False),
     ("PATCH", CHILDREN, "reject", {"status": 403, "code": "restricted_resource"}, "Nothing was written: Notion refused the append (restricted_resource)", True),
@@ -862,8 +862,22 @@ class Lifecycle:
 
 @pytest.fixture
 def lifecycle(router_factory, monkeypatch):
-    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock:
-        yield Lifecycle(router_factory, monkeypatch, mock)
+    """Keeps one event loop for the whole test, as uvicorn does.
+
+    A TestClient outside a ``with`` block starts a new loop per request, so a run task that
+    outlives its POST is cancelled when that request's loop closes and the run is left
+    "running". The persistent portal avoids the lifespan, whose summarizer would talk to the
+    scripted model.
+    """
+    import anyio.from_thread
+    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock, \
+            anyio.from_thread.start_blocking_portal(backend="asyncio") as portal:
+        world = Lifecycle(router_factory, monkeypatch, mock)
+        world.client.portal = portal
+        try:
+            yield world
+        finally:
+            world.client.portal = None
 
 
 APPEND_CALL = ("notion.page.append", {"page": "adapter-test", "blocks": [{"type": "paragraph", "text": "from the run"}]})
@@ -1472,3 +1486,138 @@ def test_r9_the_required_checks_compile_the_same_modules_as_ci():
     tracked = {path.name for path in REPO_ROOT.glob("davellm_*.py")}
     assert tracked <= claude and tracked <= ci, {"missing from CLAUDE.md": tracked - claude, "missing from CI": tracked - ci}
     assert claude == ci
+
+
+# ---- Run 10: acceptance sequence and Notion's own contract ---------------------------------
+
+def test_r10_the_live_acceptance_sequence_end_to_end(lifecycle):
+    """The proposal's live test: read, approved append, verified result, targeted edit with formatting
+    preserved, rejected edit with no change, out-of-scope page refused, then a re-read that matches."""
+    fake, page = lifecycle.fake, lifecycle.page
+    fake.add_block(page, "heading_2", [rt("DaveLLM Adapter Test")])
+    status = fake.add_block(page, "paragraph", [rt("Status: "), rt("draft", bold=True), rt(" — see "),
+                                                rt("spec", link="https://example.com/spec", italic=True)])
+    todo = fake.add_block(page, "to_do", [rt("Prove the adapter")], checked=False)
+    keep = fake.add_block(page, "callout", [rt("Do not touch this section", bold=True)])
+    untouched = _json.dumps(fake.blocks[keep], sort_keys=True)
+
+    # 1-3: read, approved append, verified result.
+    run_id = lifecycle.start(("notion.page.read", {"page": "adapter-test"}),
+                             ("notion.page.append", {"page": "adapter-test", "blocks": [
+                                 {"type": "heading_3", "text": "DaveLLM test 2026-10-01"},
+                                 {"type": "paragraph", "text": "Appended by the acceptance run."}]}),
+                             ("notion.block.update", {"page": "adapter-test", "block": "b2",
+                                                      "old_text": "draft", "new_text": "verified"}),
+                             ("notion.block.update", {"page": "adapter-test", "block": "b3", "checked": True,
+                                                      "block_text": "Prove the adapter"}),
+                             ("notion.page.read", {"page": "elsewhere"}),
+                             ("notion.page.read", {"page": "adapter-test"}),
+                             (None, "Acceptance run complete."))
+    step = lifecycle.settle(run_id)
+    assert step["snapshot"]["pending_call"]["tool_name"] == "notion.page.append"
+    step = lifecycle.decide(run_id, step["snapshot"]["pending_call"]).json()
+    appended = _json.loads(lifecycle.tool_results(step)[-1]["result"])
+    assert appended == {"outcome": "verified", "page": "adapter-test", "blocks_added": 2, "refs": ["b5", "b6"]}
+
+    # 4: targeted edit, formatting preserved, with the card's trusted context.
+    context = context_of(lifecycle, run_id).json()
+    assert context["before"] == "Status: draft — see spec" and context["after"] == "Status: verified — see spec"
+    step = lifecycle.decide(run_id, step["snapshot"]["pending_call"]).json()
+    saved = fake.blocks[status]["paragraph"]["rich_text"]
+    assert [(r["plain_text"], r["annotations"]["bold"], r["annotations"]["italic"], (r["text"]["link"] or {}).get("url"))
+            for r in saved] == [("Status: ", False, False, None), ("verified", True, False, None),
+                                (" — see ", False, False, None), ("spec", False, True, "https://example.com/spec")]
+
+    # 5: rejected edit, no change.
+    assert step["snapshot"]["pending_call"]["tool_name"] == "notion.block.update"
+    rejected = lifecycle.decide(run_id, step["snapshot"]["pending_call"], decision="reject").json()
+    assert rejected["status"] == "approval_rejected"
+    assert fake.blocks[todo]["to_do"]["checked"] is False
+
+    # 6: out-of-scope page refused (a new run continues the script), 7: re-read matches.
+    run_two = lifecycle.start(("notion.page.read", {"page": "elsewhere"}),
+                              ("notion.page.read", {"page": "adapter-test"}), (None, "done"))
+    finished = lifecycle.settle(run_two)
+    assert finished["status"] == "completed", finished["status"]
+    refused, reread = lifecycle.tool_results(finished)
+    assert refused["status"] == "error" and refused["error"] == (
+        "Unknown Notion page 'elsewhere'. Configured pages: adapter-test")
+    blocks = _json.loads(reread["result"])["blocks"]
+    assert [(b["type"], b.get("text"), b.get("checked")) for b in blocks] == [
+        ("heading_2", "DaveLLM Adapter Test", None), ("paragraph", "Status: verified — see spec", None),
+        ("to_do", "Prove the adapter", False), ("callout", "Do not touch this section", None),
+        ("heading_3", "DaveLLM test 2026-10-01", None), ("paragraph", "Appended by the acceptance run.", None)]
+    assert _json.dumps(fake.blocks[keep], sort_keys=True) == untouched
+    assert len(fake.writes()) == 2
+
+
+def _overloaded(world, method, pattern, *, retry_after=None):
+    original = world.fake.handle
+    state = {"left": 1}
+
+    def overloaded(request):
+        if request.method == method and _re.fullmatch(pattern, request.url.path.removeprefix("/v1")) and state["left"]:
+            state["left"] -= 1
+            world.fake.requests.append(request)
+            headers = {"Retry-After": retry_after} if retry_after is not None else {}
+            return httpx.Response(529, json={"object": "error", "status": 529, "code": "service_overload",
+                                             "message": "busy"}, headers=headers)
+        return original(request)
+
+    world.fake.handle = overloaded
+
+
+def test_r10_a_write_refused_as_service_overload_was_not_carried_out():
+    world = World()
+    _overloaded(world, "PATCH", CHILDREN, retry_after="30")
+    assert world.refuse(append_blocks, page="adapter-test", blocks=BLOCKS) == (
+        "Nothing was written: Notion refused the append (service_overload)")
+    assert world.call(append_blocks, page="adapter-test", blocks=BLOCKS)["outcome"] == "verified"
+
+
+def test_r10_a_short_service_overload_is_retried_once_like_a_rate_limit():
+    world = World()
+    _overloaded(world, "PATCH", CHILDREN, retry_after="0")
+    assert world.call(append_blocks, page="adapter-test", blocks=BLOCKS)["outcome"] == "verified"
+    assert len(world.fake.writes()) == 2 and len(world.fake.page_texts(world.page)) == 3
+
+
+@pytest.mark.parametrize("status, code", [(500, "internal_server_error"), (503, "service_unavailable")])
+def test_r10_a_read_survives_one_transient_server_error(status, code, monkeypatch):
+    monkeypatch.setattr(notion, "NOTION_GET_RETRY_SECONDS", 0.0, raising=False)
+    world = World()
+    world.fake.add_block(world.page, "paragraph", [rt("still readable")])
+    world.fake.fail("GET", CHILDREN, "reject", status=status, code=code)
+    assert world.read()["blocks"][0]["text"] == "still readable"
+
+
+def test_r10_a_write_answered_with_a_server_error_is_never_retried():
+    world = World()
+    world.fake.fail("PATCH", CHILDREN, "server_error_after_apply")
+    assert world.call(append_blocks, page="adapter-test", blocks=BLOCKS)["outcome"] == "verified"
+    assert len(world.fake.writes()) == 1
+
+
+def test_r10_listing_shapes_from_notion_s_own_types_are_handled():
+    world = World()
+    partial = new_id()
+    tab = world.fake.add_block(world.page, "tab", body={})
+    world.fake.add_block(tab, "paragraph", [rt("inside a tab")])
+    legacy = world.fake.add_block(world.page, "transcription", body={"title": [rt("old meeting")]})
+    world.fake.add_block(legacy, "paragraph", [rt("never listed")])
+    original = world.fake.handle
+
+    def with_partial(request):
+        response = original(request)
+        if request.method == "GET" and request.url.path.endswith(f"{world.page}/children"):
+            body = _json.loads(response.content)
+            body["results"].insert(0, {"object": "block", "id": partial})  # PartialBlockObjectResponse
+            return httpx.Response(200, json=body)
+        return response
+
+    world.fake.handle = with_partial
+    entries = world.read()["blocks"]
+    assert [(e["type"], e.get("text"), e.get("depth", 0), e.get("children_not_read", False)) for e in entries] == [
+        ("unsupported", None, 0, False), ("tab", None, 0, False), ("paragraph", "inside a tab", 1, False),
+        ("transcription", None, 0, True)]
+    assert not any(r.url.path.endswith(f"{legacy}/children") for r in world.fake.requests)

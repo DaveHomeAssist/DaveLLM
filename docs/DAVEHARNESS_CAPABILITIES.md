@@ -587,6 +587,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `NOTION_API_HOST` | `api.notion.com` |
 | `NOTION_APPEND_MAX_BLOCKS` | `50` |
 | `NOTION_DISPLAY_MAX_CHARS` | `4000` |
+| `NOTION_GET_RETRY_SECONDS` | `1.0` |
 | `NOTION_LIST_MAX_PAGES` | `10` |
 | `NOTION_MAX_PAGES` | `20` |
 | `NOTION_MAX_RESPONSE_BYTES` | `2000000` |
@@ -606,6 +607,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `NOTION_READ_TIMEOUT_SECONDS` | `30.0` |
 | `NOTION_REF_MAX_CHARS` | `8` |
 | `NOTION_REQUEST_TIMEOUT_SECONDS` | `10.0` |
+| `NOTION_RETRY_SECONDS` | `1.0` |
 | `NOTION_RICH_TEXT_MAX_ITEMS` | `100` |
 | `NOTION_RUN_MAX_REFS` | `2000` |
 | `NOTION_RUN_MAX_SNAPSHOT_BYTES` | `8388608` |

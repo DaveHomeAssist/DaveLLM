@@ -61,6 +61,8 @@ NOTION_REQUEST_TIMEOUT_SECONDS = 10.0
 NOTION_MIN_REQUEST_SECONDS = 1.0
 NOTION_MAX_RESPONSE_BYTES = 2_000_000
 NOTION_RATE_LIMIT_MAX_WAIT_SECONDS = 5.0
+NOTION_RETRY_SECONDS = 1.0
+NOTION_GET_RETRY_SECONDS = 1.0
 NOTION_READ_TIMEOUT_SECONDS = 30.0
 NOTION_WRITE_TIMEOUT_SECONDS = 60.0
 NOTION_READ_BUDGET_SECONDS = 25.0
@@ -96,7 +98,8 @@ APPEND_BLOCK_TYPES = (
 )
 WRITABLE_MENTIONS = frozenset({"page", "database", "user", "date"})
 # Children of these are separate pages, databases, or content that may live on another page.
-_NO_DESCEND = frozenset({"child_page", "child_database", "synced_block", "meeting_notes", "unsupported"})
+_NO_DESCEND = frozenset({"child_page", "child_database", "synced_block", "meeting_notes", "transcription",
+                         "unsupported"})
 _ANNOTATION_DEFAULTS = (
     ("bold", False), ("italic", False), ("strikethrough", False), ("underline", False),
     ("code", False), ("color", "default"),
@@ -705,7 +708,8 @@ class NotionApi:
 
     async def call(self, method: str, path: str, *, params: Optional[dict[str, Any]] = None,
                    body: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        """One API call; a 429 with a short Retry-After is retried once, because Notion did not carry it out."""
+        """One API call, retried at most once: after a 429 or 529, which Notion did not carry out, or
+        after a 500 or 503 to a read. A write is never retried after any other answer."""
         for attempt in range(2):
             remaining = self.deadline - time.monotonic()
             if remaining < NOTION_MIN_REQUEST_SECONDS or self.requests >= self.max_requests:
@@ -726,14 +730,18 @@ class NotionApi:
                     raise _Uncertain()
                 return payload
             code = _safe_code(payload.get("code")) if isinstance(payload, dict) else "error"
-            if status == 429 and attempt == 0:
-                wait = _retry_after(headers)
+            # Notion's own client: 429 and 529 (service_overload) mean "try again later" for every
+            # method, so the request was not carried out; 500 and 503 are retried only for reads.
+            not_carried_out = status in {429, 529} or code in {"rate_limited", "service_overload"}
+            if attempt == 0 and (not_carried_out or (method == "GET" and status in {500, 503})):
+                wait = _retry_after(headers) if "retry-after" in headers else (
+                    NOTION_RETRY_SECONDS if not_carried_out else NOTION_GET_RETRY_SECONDS)
                 if wait is not None and time.monotonic() + wait + NOTION_MIN_REQUEST_SECONDS < self.deadline:
                     await asyncio.sleep(wait)
                     continue
-            if 400 <= status < 500:
+            if not_carried_out or 400 <= status < 500:
                 raise _Rejected(status, code)
-            raise _Uncertain()  # 3xx (never followed) and 5xx do not prove the request was dropped
+            raise _Uncertain()  # 3xx (never followed) and other 5xx do not prove the request was dropped
         raise _Uncertain()
 
     async def _send(self, method: str, path: str, params: Optional[dict[str, Any]],
