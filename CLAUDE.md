@@ -92,7 +92,7 @@ export DAVE_NODES='[{"id":"<node-id>","name":"<display-name>","url":"http://<oll
 npm start
 ```
 
-GitHub Actions enforces these checks on every push to `main` and every pull request via `.github/workflows/ci.yml`.
+GitHub Actions runs these checks on every push to `main` and every pull request via `.github/workflows/ci.yml`. Branch protection on `main` (since 2026-10-01) requires `checks (3.12)`, `checks (3.13)` and `checks (3.14)` to pass before a pull request merges; administrators are not enforced and can bypass it.
 
 Required checks after relevant changes:
 
