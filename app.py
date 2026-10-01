@@ -4835,9 +4835,23 @@ def export_conversation(conversation_id: str, format: str = "markdown", user_id:
 # STATIC FILES
 # ============================================================
 
+class RevalidatedStaticFiles(StaticFiles):
+    """Static bundle that browsers revalidate on every load.
+
+    index.html loads its scripts and styles by fixed URLs, so heuristic freshness
+    kept an old app.js running against a newer router. `no-cache` keeps the
+    ETag/Last-Modified 304 path; API routes set their own headers.
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Serve only the explicit browser bundle. Source, Git metadata, and data stay private.
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+app.mount("/", RevalidatedStaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 # ============================================================
 # STARTUP/SHUTDOWN HOOKS
