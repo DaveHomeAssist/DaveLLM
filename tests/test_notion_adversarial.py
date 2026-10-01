@@ -763,18 +763,22 @@ def test_r5_a_cursor_that_loops_never_duplicates_blocks():
     assert result["truncated"] is True
 
 
-def test_r5_the_output_budget_keeps_document_order_and_trims_quickly():
+def test_r5_the_output_budget_keeps_document_order_and_trims_quickly(monkeypatch):
     world = World()
     for index in range(300):
         world.fake.add_block(world.page, "paragraph", [rt(f"{index:03d} " + "x" * 2000)] + [rt("y" * 1996)])
-    started = _time.perf_counter()
+    measured = []
+    real = notion._encoded
+    monkeypatch.setattr(notion, "_encoded", lambda payload: measured.append(real(payload)) or measured[-1])
     result = world.read()
-    elapsed = _time.perf_counter() - started
     encoded = len(_json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode())
     assert encoded <= notion.NOTION_OUTPUT_BUDGET_BYTES
+    assert encoded > notion.NOTION_OUTPUT_BUDGET_BYTES - 5000, "the budget is used, not wasted"
     assert result["truncated"] is True
     assert [entry["text"][:3] for entry in result["blocks"]] == [f"{i:03d}" for i in range(len(result["blocks"]))]
-    assert elapsed < 1.0, f"read took {elapsed:.2f}s"
+    # Deterministic, not wall-clock: the work is proportional to the content, measured once
+    # (about 1.2 MB here), not re-encoded after every removal (about 170 MB before).
+    assert sum(measured) <= 2 * 300 * 4100, f"{sum(measured):,} bytes encoded"
 
 
 def test_r5_clipped_text_is_flagged_and_still_editable_beyond_the_clip():

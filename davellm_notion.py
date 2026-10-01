@@ -968,11 +968,16 @@ async def read_page(arguments: Mapping[str, Any], *, settings: NotionSettings,
         raise _read_error(exc) from None
     entries = [_describe(run.remember(name, page_id, item.block), item.block, item.depth, item.unread)
                for item in blocks]
-    payload: dict[str, Any] = {"page": name, "title": title, "blocks": entries, "truncated": truncated}
-    while entries and _encoded(payload) > NOTION_OUTPUT_BUDGET_BYTES:
+    # Fit the result in the output budget in one pass: each entry is measured once, and the
+    # envelope is measured with truncated=true (the longer form only if nothing is cut).
+    sizes = [_encoded(entry) for entry in entries]
+    envelope = _encoded({"page": name, "title": title, "blocks": [], "truncated": truncated})
+    total = envelope + sum(sizes) + max(len(entries) - 1, 0)
+    while entries and total > NOTION_OUTPUT_BUDGET_BYTES:
+        total -= sizes.pop() + (1 if len(entries) > 1 else 0)
         entries.pop()
-        payload["truncated"] = True
-    return payload
+        truncated = True
+    return {"page": name, "title": title, "blocks": entries, "truncated": truncated}
 
 
 @dataclass
