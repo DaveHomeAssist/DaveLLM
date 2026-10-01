@@ -105,9 +105,13 @@ BLOCK_REF = re.compile(r"b[1-9][0-9]{0,5}")
 _HEX_ID = re.compile(r"[0-9a-f]{32}")
 _TRAILING_HEX_ID = re.compile(r"([0-9a-f]{32})$")
 _ERROR_CODE = re.compile(r"[a-z_]{1,40}")
+# Notion secrets are opaque printable ASCII; anything else could not travel in a header unchanged.
+_TOKEN = re.compile(r"[\x21-\x7e]{20,256}")
 
 NOT_IN_RUN = "Notion tools work only inside a tool run started from DaveLLM"
 NO_TOKEN = "Notion is not configured on this router (DAVE_NOTION_TOKEN is unset)"
+BAD_TOKEN = "DAVE_NOTION_TOKEN is not a valid Notion secret"
+TOO_LARGE = "Notion's response was larger than the 2 MB limit"
 NO_PAGES = "No Notion pages are configured on this router (DAVE_NOTION_PAGES is unset)"
 BAD_PAGES = "DAVE_NOTION_PAGES is not a JSON object of page names to Notion page IDs"
 UNKNOWN_REF = "Unknown block ref {ref}; refs come from notion.page.read in this run"
@@ -126,7 +130,7 @@ REPEAT_UNDELIVERED = (
     "run stopped waiting for it, so it is not repeated."
 )
 UNREACHABLE = "Notion could not be reached"
-READ_FAILED = "Notion refused the read ({code})"
+READ_FAILED = "Notion refused the read {code}"
 LEDGER_FULL = "This run has read too many Notion blocks; start a new run"
 OLD_TEXT_NOT_FOUND = "old_text was not found in block {ref}"
 OLD_TEXT_REPEATED = "old_text occurs {count} times in block {ref}; include more surrounding text so it occurs once"
@@ -169,6 +173,23 @@ class _Budget(Exception):
 
 class _Uncertain(Exception):
     """The request may have reached Notion, but no usable answer came back."""
+
+
+class _TooLarge(_Uncertain):
+    """The answer exceeded the response cap; for a write, the request still reached Notion."""
+
+
+_REFUSAL_HINTS = {
+    "unauthorized": "check DAVE_NOTION_TOKEN",
+    "object_not_found": "share the page with DaveLLM's Notion connection",
+    "restricted_resource": "share the page with DaveLLM's Notion connection",
+}
+
+
+def _refused(code: str) -> str:
+    """``(code)`` plus the operator's fix for the refusals a first setup runs into."""
+    hint = _REFUSAL_HINTS.get(code)
+    return f"({code}): {hint}" if hint else f"({code})"
 
 
 class _TooDeep(Exception):
@@ -220,17 +241,23 @@ class NotionSettings:
     token: Optional[str] = field(default=None, repr=False)
     pages: Mapping[str, str] = field(default_factory=dict)
     pages_invalid: bool = False
+    token_invalid: bool = False
 
     @classmethod
     def from_values(cls, token: Optional[str], pages: Optional[str]) -> "NotionSettings":
         token = (token or "").strip() or None
+        token_invalid = token is not None and not _TOKEN.fullmatch(token)
+        if token_invalid:
+            token = None  # never sent anywhere
         if not (pages or "").strip():
-            return cls(token=token)
+            return cls(token=token, token_invalid=token_invalid)
         parsed = parse_pages(pages)
-        return cls(token=token, pages=parsed or {}, pages_invalid=parsed is None)
+        return cls(token=token, pages=parsed or {}, pages_invalid=parsed is None, token_invalid=token_invalid)
 
     def page(self, name: Any) -> tuple[str, str]:
         """The configured (name, page ID) for ``name``, or a refusal naming the configured pages."""
+        if self.token_invalid:
+            raise NotionToolError(BAD_TOKEN)
         if not self.token:
             raise NotionToolError(NO_TOKEN)
         if self.pages_invalid:
@@ -710,14 +737,15 @@ class NotionApi:
                 async for chunk in response.aiter_bytes():
                     data.extend(chunk)
                     if len(data) > NOTION_MAX_RESPONSE_BYTES:
-                        raise _Uncertain()
+                        raise _TooLarge()
                 try:
                     payload = json.loads(bytes(data)) if data else None
                 except ValueError:
                     payload = None
                 return response.status_code, response.headers, payload
-        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
-            raise _Unsent() from None
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout,
+                httpx.LocalProtocolError, httpx.UnsupportedProtocol):
+            raise _Unsent() from None  # nothing left this process
         except httpx.HTTPError:
             raise _Uncertain() from None
 
@@ -731,7 +759,9 @@ def _require(settings: NotionSettings, ledger: Optional[RunLedger], page: Any) -
 
 def _read_error(exc: Exception) -> NotionToolError:
     if isinstance(exc, _Rejected):
-        return NotionToolError(READ_FAILED.format(code=exc.code))
+        return NotionToolError(READ_FAILED.format(code=_refused(exc.code)))
+    if isinstance(exc, _TooLarge):
+        return NotionToolError(TOO_LARGE)
     return NotionToolError(UNREACHABLE)
 
 
@@ -991,7 +1021,7 @@ async def _append_attempt(token: str, run: RunLedger, name: str, page_id: str,
         try:
             before, more = await _list_children(api, page_id, max_pages=NOTION_LIST_MAX_PAGES)
         except _Rejected as exc:
-            return _Outcome("failed", f"Notion refused to read the page before writing ({exc.code})")
+            return _Outcome("failed", f"Notion refused to read the page before writing {_refused(exc.code)}")
         except (_Unsent, _Uncertain, _Budget):
             return _Outcome("failed", "Notion could not be reached to read the page before writing")
         if more:
@@ -1001,7 +1031,7 @@ async def _append_attempt(token: str, run: RunLedger, name: str, page_id: str,
         try:
             response = await api.call("PATCH", f"/blocks/{page_id}/children", body=body)
         except _Rejected as exc:
-            return _Outcome("failed", f"Notion refused the append ({exc.code})")
+            return _Outcome("failed", f"Notion refused the append {_refused(exc.code)}")
         except (_Unsent, _Budget):
             return _Outcome("failed", "the request could not be sent to Notion")
         except _Uncertain:
@@ -1132,7 +1162,7 @@ async def _page_check(api: NotionApi, name: str, page_id: str) -> Optional[_Outc
     try:
         page = await api.call("GET", f"/pages/{page_id}")
     except _Rejected as exc:
-        return _Outcome("failed", f"Notion refused to read page '{name}' before writing ({exc.code})")
+        return _Outcome("failed", f"Notion refused to read page '{name}' before writing {_refused(exc.code)}")
     except (_Unsent, _Uncertain, _Budget):
         return _Outcome("failed", f"Notion could not be reached to check page '{name}' before writing")
     if page.get("in_trash"):
@@ -1172,7 +1202,7 @@ async def _update_attempt(token: str, run: RunLedger, record: BlockRecord,
             return _Outcome("failed", f"block {record.ref} is nested too deeply to confirm it is still on "
                                       f"page '{record.page}'")
         except _Rejected as exc:
-            return _Outcome("failed", f"Notion refused to read block {record.ref} before writing ({exc.code})")
+            return _Outcome("failed", f"Notion refused to read block {record.ref} before writing {_refused(exc.code)}")
         except (_Unsent, _Uncertain, _Budget):
             return _Outcome("failed", f"Notion could not be reached to check block {record.ref} before writing")
         if _state(current) != seen:
@@ -1190,7 +1220,7 @@ async def _update_attempt(token: str, run: RunLedger, record: BlockRecord,
             await api.call("PATCH", f"/blocks/{record.block_id}", body={record.block_type: body})
             accepted = True
         except _Rejected as exc:
-            return _Outcome("failed", f"Notion refused the edit ({exc.code})")
+            return _Outcome("failed", f"Notion refused the edit {_refused(exc.code)}")
         except (_Unsent, _Budget):
             return _Outcome("failed", "the request could not be sent to Notion")
         except _Uncertain:

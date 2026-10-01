@@ -576,6 +576,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `ALREADY_CHECKED` | `Block {ref} is already {state}` |
 | `APPEND_BLOCK_TYPES` | `["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "quote"]` |
 | `BAD_PAGES` | `DAVE_NOTION_PAGES is not a JSON object of page names to Notion page IDs` |
+| `BAD_TOKEN` | `DAVE_NOTION_TOKEN is not a valid Notion secret` |
 | `BLOCK_TEXT_MISMATCH` | `block_text does not match block {ref}; read the page again` |
 | `BLOCK_TEXT_REQUIRED` | `block_text is required when only checked changes: copy the to-do's text from notion.page.read` |
 | `CROSSES_RUNS` | `old_text in block {ref} crosses a formatting change, a link, a mention, or an equation; edit text inside one run so its formatting is kept` |
@@ -619,12 +620,13 @@ Public constants each module defines, including the fixed refusal messages.
 | `OLD_TEXT_REPEATED` | `old_text occurs {count} times in block {ref}; include more surrounding text so it occurs once` |
 | `OTHER_PAGE_REF` | `Block {ref} belongs to page '{actual}', not '{requested}'` |
 | `PAGE_BUSY` | `Another write to this Notion page is still in progress; try again when it has finished` |
-| `READ_FAILED` | `Notion refused the read ({code})` |
+| `READ_FAILED` | `Notion refused the read {code}` |
 | `REPEAT_IN_FLIGHT` | `An earlier append of these exact blocks to '{page}' in this run is still being written or checked, so it is not repeated. Read the page in a moment to see whether it arrived.` |
 | `REPEAT_REFUSED` | `An earlier append of these exact blocks to '{page}' in this run has an unknown outcome, so it is not repeated. Read the page to check whether it arrived, and ask the user before trying again.` |
 | `REPEAT_UNDELIVERED` | `An earlier append of these exact blocks to '{page}' in this run was verified on the page after the run stopped waiting for it, so it is not repeated.` |
 | `SAME_TEXT` | `old_text and new_text are the same` |
 | `TEXT_BLOCK_TYPES` | `["bulleted_list_item", "callout", "code", "heading_1", "heading_2", "heading_3", "heading_4", "numbered_list_item", "paragraph", "quote", "to_do", "toggle"]` |
+| `TOO_LARGE` | `Notion's response was larger than the 2 MB limit` |
 | `TOO_MANY_RUNS` | `Block {ref} would need more than 100 rich text runs` |
 | `UNKNOWN_REF` | `Unknown block ref {ref}; refs come from notion.page.read in this run` |
 | `UNREACHABLE` | `Notion could not be reached` |

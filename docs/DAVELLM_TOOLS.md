@@ -440,7 +440,7 @@ The write and its check run in a task shielded from cancellation, so a run deadl
 
 ### Transport
 
-Requests go only to `https://api.notion.com/v1` with `Notion-Version: 2026-03-11`, redirects off, environment proxies off, a 10-second limit per request, and a 2 MB response cap. The secret travels only in the `Authorization` header. Only fixed messages and Notion's short error codes (such as `object_not_found`) reach the model; Notion's message text does not.
+Requests go only to `https://api.notion.com/v1` with `Notion-Version: 2026-03-11`, redirects off, environment proxies off, a 10-second limit per request covering the whole response, and a 2 MB response cap. A request the HTTP client refuses to build, like a refused connection, counts as not sent. The secret travels only in the `Authorization` header. Only fixed messages and Notion's short error codes (such as `object_not_found`) reach the model; Notion's message text does not.
 
 ### Notion errors
 
@@ -449,6 +449,7 @@ Requests go only to `https://api.notion.com/v1` with `Notion-Version: 2026-03-11
 | `Notion is not configured on this router (DAVE_NOTION_TOKEN is unset)` | No secret |
 | `No Notion pages are configured on this router (DAVE_NOTION_PAGES is unset)` | No page list |
 | `DAVE_NOTION_PAGES is not a JSON object of page names to Notion page IDs` | The page list could not be parsed |
+| `DAVE_NOTION_TOKEN is not a valid Notion secret` | The secret is not 20–256 printable ASCII characters without spaces; nothing is sent |
 | `Unknown Notion page 'x'. Configured pages: …` | The name is not configured |
 | `Notion tools work only inside a tool run started from DaveLLM` | Called outside a lifecycle run |
 | `Unknown block ref bN; refs come from notion.page.read in this run` | The ref was never issued in this run |
@@ -462,6 +463,9 @@ Requests go only to `https://api.notion.com/v1` with `Notion-Version: 2026-03-11
 | `Another write to this Notion page is still in progress; …` | Another run is writing to the page |
 | `An earlier append of these exact blocks to 'x' in this run has an unknown outcome, …` | The repeat guard |
 | `Notion refused the read (code)` / `Notion could not be reached` | A read failed |
+| `… (unauthorized): check DAVE_NOTION_TOKEN` | Notion rejected the secret |
+| `… (object_not_found): share the page with DaveLLM's Notion connection` / `… (restricted_resource): …` | The page is not shared with the connection (Notion answers as if it did not exist) |
+| `Notion's response was larger than the 2 MB limit` | A read answer over the response cap |
 | `Nothing was written: …` | A failed write |
 | `Outcome unknown: …` | An unknown write |
 | `notion.page.read failed` / `notion.page.append failed` / `notion.block.update failed` | Any other failure; details stay out of the model's view |

@@ -162,7 +162,7 @@ def test_read_outside_a_run_is_refused_without_contacting_notion(world):
 
 
 @pytest.mark.parametrize("mode, expected", [
-    ("reject", "Notion refused the read (object_not_found)"),
+    ("reject", "Notion refused the read (object_not_found): share the page with DaveLLM's Notion connection"),
     ("connect_error", "Notion could not be reached"),
     ("redirect", "Notion could not be reached"),
     ("drop_before_apply", "Notion could not be reached"),

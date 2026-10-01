@@ -327,14 +327,15 @@ def test_r2_a_database_configured_as_a_page_is_refused_cleanly():
     world = World()
     world.settings = notion.NotionSettings.from_values(
         world.settings.token, '{"adapter-test": "0123456789abcdef0123456789abcdef"}')
-    assert world.refuse(read_page, page="adapter-test") == "Notion refused the read (object_not_found)"
+    assert world.refuse(read_page, page="adapter-test") == (
+        "Notion refused the read (object_not_found): share the page with DaveLLM's Notion connection")
 
 
 # ---- Run 3: rich-text fidelity -----------------------------------------------------
 
 from hypothesis import HealthCheck, assume, given, settings, strategies as st  # noqa: E402
 
-from fake_notion import ANNOTATIONS, FakeNotion, date_mention, equation, page_mention, user_mention  # noqa: E402
+from fake_notion import ANNOTATIONS, FakeNotion, date_mention, equation, page_mention, user_mention  # noqa: E402,F401
 
 TOKENS = ["a", "b", "Z", " ", ".", "-", "😀", "漢", "é", "👨‍👩‍👧", "\n", "\t", "<", "&", "’"]
 COLORS = ["default", "red", "blue_background", "gray"]
@@ -493,3 +494,183 @@ def test_r3_overlapping_occurrences_are_ambiguous_and_refused(text, old):
     message = world.refuse(update_block, page="adapter-test", block=world.ref(block), old_text=old, new_text="Q")
     assert message == f"old_text occurs 2 times in block {world.ref(block)}; include more surrounding text so it occurs once"
     assert world.fake.writes() == []
+
+
+# ---- Run 4: transport and secrets ----------------------------------------------------
+
+import json as _json  # noqa: E402
+import logging  # noqa: E402
+
+import httpx  # noqa: E402
+
+from test_notion_tools import TOKEN, _model_turns, _settled  # noqa: E402
+
+
+def test_r4_the_client_ignores_proxy_settings_and_never_follows_redirects(monkeypatch):
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")
+    monkeypatch.setenv("SSL_CERT_FILE", "/nonexistent.pem")
+    world = World()
+    world.fake.add_block(world.page, "paragraph", [rt("through no proxy")])
+    assert world.read()["blocks"][0]["text"] == "through no proxy"
+    assert {(request.url.scheme, request.url.host, request.url.port) for request in world.fake.requests} == {
+        ("https", "api.notion.com", None)}
+
+    async def inspect_client():
+        async with notion.NotionApi(TOKEN, budget_seconds=5, max_requests=1) as api:
+            return api._client.follow_redirects, api._client._trust_env, dict(api._client._mounts)
+
+    assert asyncio.run(inspect_client()) == (False, False, {})
+
+
+def test_r4_a_redirected_write_is_not_followed_and_the_token_goes_nowhere_else():
+    world = World()
+    seen_hosts = []
+    world.fake.on_request = lambda request: seen_hosts.append(request.url.host)
+    world.fake.fail("PATCH", CHILDREN, "redirect")
+    message = world.refuse(append_blocks, page="adapter-test", blocks=BLOCKS)
+    assert message.startswith("Outcome unknown:")
+    assert set(seen_hosts) == {"api.notion.com"}
+    assert world.fake.page_texts(world.page) == []
+
+
+def test_r4_an_oversized_response_is_reported_as_such():
+    world = World()
+    original = world.fake.handle
+
+    def huge(request):
+        if request.url.path.endswith("/children"):
+            world.fake.requests.append(request)
+            return httpx.Response(200, content=b'{"results": [' + b" " * (notion.NOTION_MAX_RESPONSE_BYTES + 10) + b"]}")
+        return original(request)
+
+    world.fake.handle = huge
+    assert world.refuse(read_page, page="adapter-test") == "Notion's response was larger than the 2 MB limit"
+
+
+@pytest.mark.parametrize("status, code, expected", [
+    (401, "unauthorized", "Notion refused the read (unauthorized): check DAVE_NOTION_TOKEN"),
+    (403, "restricted_resource", "Notion refused the read (restricted_resource): share the page with DaveLLM's Notion connection"),
+    (404, "object_not_found", "Notion refused the read (object_not_found): share the page with DaveLLM's Notion connection"),
+    (400, "validation_error", "Notion refused the read (validation_error)"),
+    (409, "conflict_error", "Notion refused the read (conflict_error)"),
+])
+def test_r4_refusals_name_the_code_and_the_operator_fix(status, code, expected):
+    world = World()
+    world.fake.fail("GET", r"/pages/.*", "reject", status=status, code=code)
+    assert world.refuse(read_page, page="adapter-test") == expected
+
+
+@pytest.mark.parametrize("token", ["secret\r\nX-Evil: 1", "has space", "tab\tinside", "\x00nul", "é-unicode"])
+def test_r4_a_malformed_token_is_a_configuration_error_and_nothing_is_sent(token):
+    world = World()
+    world.settings = notion.NotionSettings.from_values(token, '{"adapter-test": "%s"}' % world.page)
+    assert world.refuse(read_page, page="adapter-test") == "DAVE_NOTION_TOKEN is not a valid Notion secret"
+    assert world.fake.requests == []
+
+
+@pytest.mark.parametrize("code", ["<script>alert(1)</script>", "x" * 500, "Validation Error", 42, None])
+def test_r4_untrusted_error_codes_are_reduced_to_a_fixed_word(code):
+    world = World()
+    original = world.fake.handle
+
+    def odd(request):
+        world.fake.requests.append(request)
+        return httpx.Response(400, json={"object": "error", "status": 400, "code": code, "message": "page title"})
+
+    world.fake.handle = odd
+    assert world.refuse(read_page, page="adapter-test") == "Notion refused the read (error)"
+
+
+def test_r4_cursors_and_ids_from_responses_cannot_steer_requests():
+    world = World()
+    seen = []
+
+    def crafted(request):
+        seen.append(str(request.url))
+        path = request.url.path.removeprefix("/v1")
+        if path == f"/pages/{world.page}":
+            return httpx.Response(200, json={"object": "page", "id": world.page, "in_trash": False, "properties": {}})
+        if request.url.params.get("start_cursor"):
+            return httpx.Response(200, json={"results": [], "has_more": False, "next_cursor": None})
+        return httpx.Response(200, json={"results": [
+            {"object": "block", "id": "../../users/me", "type": "toggle", "has_children": True, "toggle": {"rich_text": []}},
+            {"object": "block", "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "type": "paragraph",
+             "has_children": False, "paragraph": {"rich_text": [rt("ok")]}},
+        ], "has_more": True, "next_cursor": "abc&page_size=1000#frag"})
+
+    world.fake.handle = crafted
+    result = world.read()
+    assert [entry["text"] for entry in result["blocks"]] == ["ok"]
+    assert all("users/me" not in url for url in seen)
+    assert any("start_cursor=abc%26page_size%3D1000%23frag" in url for url in seen)
+
+
+def test_r4_the_token_never_reaches_logs_routes_events_or_the_transcript(router_factory, monkeypatch, caplog):
+    caplog.set_level(logging.DEBUG)
+    fake = FakeNotion()
+    page = fake.add_page("DaveLLM Adapter Test")
+    fake.add_block(page, "to_do", [rt("Prove the adapter")], checked=False)
+    monkeypatch.setenv("DAVE_ENABLE_NOTION_TOOLS", "true")
+    monkeypatch.setenv("DAVE_NOTION_TOKEN", TOKEN)
+    monkeypatch.setenv("DAVE_NOTION_PAGES", _json.dumps({"adapter-test": page}))
+    router, client, _ = router_factory(tools=True)
+    auth = {"X-API-Key": "test-only-api-key"}
+    bodies = []
+    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock:
+        fake.mount(mock)
+        mock.get("http://ollama.test:11434/api/tags").mock(return_value=httpx.Response(
+            200, json={"models": [{"name": "inventory-model:latest", "model": "inventory-model:latest"}]}))
+        client.get("/nodes/node-test/models", headers=auth)
+        chat = mock.post("http://ollama.test:11434/api/chat")
+        chat.side_effect = _model_turns(
+            ("notion.page.read", {"page": "adapter-test"}),
+            ("notion.page.append", {"page": "adapter-test", "blocks": [{"type": "paragraph", "text": "x"}]}),
+            (None, "done"),
+        )
+        run_id = client.post("/tools/agent/runs", headers=auth, json={
+            "messages": [{"role": "user", "content": "go"}], "node_id": "node-test",
+            "model": "inventory-model:latest"}).json()["run_id"]
+        paused = _settled(client, run_id)
+        pending = paused["snapshot"]["pending_call"]
+        decided = client.post(f"/tools/agent/runs/{run_id}/decisions", headers=auth, json={
+            **{key: pending[key] for key in ("call_id", "digest", "definition_fingerprint", "permission", "nonce")},
+            "decision": "approve"})
+        bodies += [paused, decided.json(),
+                   client.get(f"/tools/agent/runs/{run_id}/events", headers=auth).json()]
+        for route in ("/health", "/nodes", "/nodes/status", "/tools", "/monitoring/health", "/analytics/costs"):
+            bodies.append(client.get(route, headers=auth).text)
+    assert decided.json()["status"] == "completed"
+    everything = _json.dumps(bodies) + "\n".join(record.getMessage() for record in caplog.records)
+    assert TOKEN not in everything
+    assert "Bearer" not in everything
+
+
+def test_r4_the_manifest_never_captures_the_token(monkeypatch):
+    import importlib.util
+    import pathlib
+    monkeypatch.setenv("DAVE_NOTION_TOKEN", TOKEN)
+    monkeypatch.setenv("DAVE_ENABLE_NOTION_TOOLS", "true")
+    path = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "generate_capabilities_manifest.py"
+    spec = importlib.util.spec_from_file_location("manifest_probe", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    rendered = module.render_json(module.build_manifest())
+    assert TOKEN not in rendered
+    assert "notion.page.read" in rendered
+
+
+def test_r4_a_request_the_client_refuses_to_build_is_unsent_not_uncertain(monkeypatch):
+    world = World()
+    original = httpx.AsyncClient.stream
+
+    def refuse_patch(self, method, url, **kwargs):
+        if method == "PATCH":
+            raise httpx.LocalProtocolError("Illegal header value")
+        return original(self, method, url, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", refuse_patch)
+    message = world.refuse(append_blocks, page="adapter-test", blocks=BLOCKS)
+    assert message == "Nothing was written: the request could not be sent to Notion"
+    monkeypatch.undo()
+    assert world.call(append_blocks, page="adapter-test", blocks=BLOCKS)["outcome"] == "verified"
