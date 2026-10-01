@@ -391,7 +391,7 @@ There are two scopes, and both must allow a page: what Notion lets the connectio
 
 Returns `page`, `title`, `blocks`, and `truncated`. Each block has a `ref` (`b1`, `b2`, …), its `type`, its plain `text`, `depth` when nested, `checked` for to-dos, `formatted` when it holds formatting, links, mentions, or equations, `text_editable: false` when its text cannot be written back unchanged (for example a link preview mention or an internal link), and `children_not_read: true` when it has children that were not read. Children are read up to three levels deep. Child pages, child databases, synced blocks, and meeting notes are listed but not opened. At most 300 blocks, 30 requests, and 48 KiB of result; listing stops once 300 blocks are held, and past any limit `truncated` is `true`. When the request budget runs out, blocks already fetched are still returned and marked `children_not_read` where their children were skipped. A nested listing that Notion refuses marks its block `children_not_read` instead of failing the read; only a failure to list the page itself fails it. A listing that repeats a block, repeats a cursor, or claims more without a cursor is cut there and reported as `truncated`.
 
-Refs belong to the run. The server keeps, for each ref, the page, the Notion block ID, and the content the run saw. A block keeps the same ref for the whole run, and a later read refreshes what the run saw.
+Refs belong to the run. The server keeps, for each ref, the page, the Notion block ID, and the content the run saw. A block keeps the same ref for the whole run, and a later read refreshes what the run saw. A run remembers at most 2,000 blocks and 8 MiB of block content; past that, reads answer `This run has read too many Notion blocks; start a new run`.
 
 ### `notion.page.append`
 
@@ -422,7 +422,7 @@ The adapter refuses before sending anything when the arguments cannot be carried
 - the block must still sit under the configured page, walking up through at most eight parent blocks (a block moved elsewhere on the same page is fine; a block moved to another page or into a child page is refused, and a block nested more deeply is refused as too deep to confirm);
 - the block must still hold exactly what the run saw (type, text, formatting, mentions, and checked state); if someone edited it since the read, nothing is written.
 
-This narrows the window for overwriting someone else's edit. It is not a lock, because Notion offers none. Writes to one page are serialized within the router process.
+This narrows the window for overwriting someone else's edit. It is not a lock, because Notion offers none. Writes to one page are serialized within the router process: a write that finds another DaveLLM write to the same page in progress waits up to 8 seconds for it, then refuses. Two router processes sharing one Notion connection do not see each other's writes.
 
 DaveHarness asks for approval before any tool runs, so these checks happen after you approve. A call the adapter will refuse, such as an edit by a ref this run never read, can still show an approval card; approving it writes nothing, and the run continues with the refusal. The card warns about such a call (see below).
 
@@ -468,7 +468,7 @@ Requests go only to `https://api.notion.com/v1` with `Notion-Version: 2026-03-11
 | `old_text was not found in block bN` / `old_text occurs N times in block bN; …` | The text does not occur exactly once |
 | `old_text in block bN crosses a formatting change, a link, a mention, or an equation; …` | The text spans more than one run |
 | `Block bN contains … that cannot be written back, so its text cannot be edited` | The block's rich text cannot round-trip |
-| `Another write to this Notion page is still in progress; …` | Another run is writing to the page |
+| `Another write to this Notion page is still in progress after waiting; …` | Another run kept writing to the page for more than 8 seconds |
 | `An earlier append of these exact blocks to 'x' in this run has an unknown outcome, …` | The repeat guard |
 | `Notion refused the read (code)` / `Notion could not be reached` | A read failed |
 | `… (unauthorized): check DAVE_NOTION_TOKEN` | Notion rejected the secret |

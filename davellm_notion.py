@@ -78,6 +78,9 @@ NOTION_RICH_TEXT_MAX_ITEMS = 100
 NOTION_DISPLAY_MAX_CHARS = 4000
 NOTION_OUTPUT_BUDGET_BYTES = 48 * 1024
 NOTION_RUN_MAX_REFS = 2000
+NOTION_RUN_MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
+NOTION_PAGE_WAIT_SECONDS = 8.0
+NOTION_PAGE_POLL_SECONDS = 0.05
 NOTION_MAX_RUNS = 64
 NOTION_MAX_PAGES = 20
 NOTION_PAGE_NAME_MAX_CHARS = 40
@@ -116,7 +119,7 @@ NO_PAGES = "No Notion pages are configured on this router (DAVE_NOTION_PAGES is 
 BAD_PAGES = "DAVE_NOTION_PAGES is not a JSON object of page names to Notion page IDs"
 UNKNOWN_REF = "Unknown block ref {ref}; refs come from notion.page.read in this run"
 OTHER_PAGE_REF = "Block {ref} belongs to page '{actual}', not '{requested}'"
-PAGE_BUSY = "Another write to this Notion page is still in progress; try again when it has finished"
+PAGE_BUSY = "Another write to this Notion page is still in progress after waiting; try again when it has finished"
 REPEAT_REFUSED = (
     "An earlier append of these exact blocks to '{page}' in this run has an unknown outcome, so it "
     "is not repeated. Read the page to check whether it arrived, and ask the user before trying again."
@@ -299,9 +302,13 @@ class BlockRecord:
 class RunLedger:
     """Refs, block snapshots, and append outcomes for one tool run."""
 
-    def __init__(self, max_refs: int = NOTION_RUN_MAX_REFS) -> None:
+    def __init__(self, max_refs: int = NOTION_RUN_MAX_REFS,
+                 max_bytes: int = NOTION_RUN_MAX_SNAPSHOT_BYTES) -> None:
         self._lock = threading.Lock()
         self._max_refs = max_refs
+        self._max_bytes = max_bytes
+        self._bytes = 0
+        self._sizes: dict[str, int] = {}
         self._records: dict[str, BlockRecord] = {}
         self._refs_by_block: dict[str, str] = {}
         self._appends: dict[tuple[str, str], _AppendState] = {}
@@ -312,16 +319,21 @@ class RunLedger:
         if block_id is None:
             raise NotionToolError(UNREACHABLE)
         kind = str(block.get("type") or "unsupported")
+        rich_text = _copy_json(block_rich_text(block))
+        size = len(json.dumps(rich_text)) if rich_text is not None else 0
         with self._lock:
             ref = self._refs_by_block.get(block_id)
+            previous = self._sizes.get(ref, 0) if ref is not None else 0
+            if (ref is None and len(self._records) >= self._max_refs) or \
+                    self._bytes - previous + size > self._max_bytes:
+                raise NotionToolError(LEDGER_FULL)
             if ref is None:
-                if len(self._records) >= self._max_refs:
-                    raise NotionToolError(LEDGER_FULL)
                 ref = f"b{len(self._records) + 1}"
                 self._refs_by_block[block_id] = ref
-            record = BlockRecord(ref, page, page_id, block_id, kind, _copy_json(block_rich_text(block)),
-                                 block_checked(block))
+            record = BlockRecord(ref, page, page_id, block_id, kind, rich_text, block_checked(block))
             self._records[ref] = record
+            self._bytes += size - previous
+            self._sizes[ref] = size
             return record
 
     def get(self, ref: Any) -> Optional[BlockRecord]:
@@ -981,6 +993,16 @@ def _finish(outcome: _Outcome) -> dict[str, Any]:
     )
 
 
+async def _wait_for_page(guard: PageWriteGuard, page_id: str) -> bool:
+    """Take the page's write guard, waiting up to NOTION_PAGE_WAIT_SECONDS for another write to finish."""
+    deadline = time.monotonic() + NOTION_PAGE_WAIT_SECONDS
+    while not guard.acquire(page_id):
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(NOTION_PAGE_POLL_SECONDS)
+    return True
+
+
 async def _shielded(guard: PageWriteGuard, page_id: str, work: Coroutine[Any, Any, _Outcome],
                     on_start: Optional[Any] = None) -> _Outcome:
     """Run ``work`` under the page guard in a task shielded from the caller's cancellation.
@@ -990,7 +1012,12 @@ async def _shielded(guard: PageWriteGuard, page_id: str, work: Coroutine[Any, An
     runs once the guard is held and before the work starts, so a refused write leaves
     no trace in the run ledger.
     """
-    if not guard.acquire(page_id):
+    try:
+        acquired = await _wait_for_page(guard, page_id)
+    except BaseException:
+        work.close()  # cancelled while waiting: nothing was held and nothing will run
+        raise
+    if not acquired:
         work.close()
         raise NotionToolError(PAGE_BUSY)
     if on_start is not None:

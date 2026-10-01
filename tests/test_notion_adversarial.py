@@ -181,7 +181,8 @@ def test_r1_an_in_flight_append_refuses_an_identical_repeat_with_its_own_message
     assert len(world.fake.writes()) == 1
 
 
-def test_r1_a_busy_refusal_keeps_the_earlier_record():
+def test_r1_a_busy_refusal_keeps_the_earlier_record(monkeypatch):
+    monkeypatch.setattr(notion, "NOTION_PAGE_WAIT_SECONDS", 0.2)
     world = World()
     assert world.call(append_blocks, page="adapter-test", blocks=BLOCKS)["outcome"] == "verified"
     digest = notion._append_digest("adapter-test", notion._append_blocks_argument(BLOCKS))
@@ -1122,3 +1123,129 @@ def test_r7_the_context_route_is_scoped_to_the_run_owner_and_to_notion_calls(lif
     assert context_of(lifecycle, run_id).status_code == 404  # no pending call
     assert context_of(lifecycle, "run_missing").status_code == 404
     assert lifecycle.client.get(f"/tools/agent/runs/{run_id}/pending/notion-context").status_code == 401
+
+
+# ---- Run 8: concurrency and state --------------------------------------------------------
+
+def second_run(world):
+    return {"settings": world.settings, "ledger": notion.RunLedger(), "guard": world.guard}
+
+
+def test_r8_two_runs_appending_to_one_page_take_turns_instead_of_failing():
+    world = World()
+    world.fake.delay("PATCH", CHILDREN, 0.2, apply_first=True)
+    first = {"page": "adapter-test", "blocks": [{"type": "paragraph", "text": "from run A"}]}
+    second = {"page": "adapter-test", "blocks": [{"type": "paragraph", "text": "from run B"}]}
+
+    async def scenario():
+        return await asyncio.gather(append_blocks(first, **kwargs(world)), append_blocks(second, **second_run(world)),
+                                    return_exceptions=True)
+
+    results = run_in_fake(world, scenario)
+    assert [r["outcome"] if isinstance(r, dict) else str(r) for r in results] == ["verified", "verified"]
+    assert [text for _, text in world.fake.page_texts(world.page)] == ["from run A", "from run B"]
+    assert not world.guard.busy(world.page)
+
+
+def test_r8_the_wait_for_a_busy_page_is_bounded_and_a_cancelled_waiter_takes_nothing(monkeypatch):
+    monkeypatch.setattr(notion, "NOTION_PAGE_WAIT_SECONDS", 0.3, raising=False)
+    world = World()
+    assert world.guard.acquire(world.page)
+
+    async def scenario():
+        started = _time.perf_counter()
+        with pytest.raises(NotionToolError) as caught:
+            await append_blocks({"page": "adapter-test", "blocks": BLOCKS}, **kwargs(world))
+        waited = _time.perf_counter() - started
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(append_blocks({"page": "adapter-test", "blocks": BLOCKS}, **kwargs(world)), 0.05)
+        return str(caught.value), waited
+
+    message, waited = run_in_fake(world, scenario)
+    assert message == notion.PAGE_BUSY
+    assert 0.25 <= waited < 1.0, f"waited {waited:.2f}s"
+    assert world.guard.busy(world.page), "the original holder still owns the page"
+    world.guard.release(world.page)
+    assert world.fake.writes() == []
+
+
+def test_r8_an_edit_based_on_another_run_s_stale_read_is_refused():
+    world = World()
+    block = world.fake.add_block(world.page, "paragraph", [rt("shared draft")])
+    other = notion.RunLedger()
+    world.read()
+    world.call(read_page, other, page="adapter-test")
+    assert world.call(update_block, page="adapter-test", block="b1", old_text="draft", new_text="final")[
+        "outcome"] == "verified"
+    message = world.refuse(update_block, other, page="adapter-test", block="b1", old_text="draft", new_text="copy")
+    assert message == "Nothing was written: block b1 changed after it was read; read the page again"
+    assert world.fake.text_of(block) == "shared final"
+
+
+def test_r8_ten_runs_writing_ten_pages_at_once_stay_separate():
+    world = World()
+    pages = {f"p{i}": world.fake.add_page(f"Page {i}") for i in range(10)}
+    world.settings = notion.NotionSettings.from_values(TOKEN, _json.dumps(pages))
+    for name in pages.values():
+        world.fake.delay("PATCH", rf"/blocks/{name}/children", 0.05, apply_first=True)
+
+    async def scenario():
+        return await asyncio.gather(*(
+            append_blocks({"page": name, "blocks": [{"type": "paragraph", "text": f"only for {name}"}]},
+                          **second_run(world)) for name in pages))
+
+    results = run_in_fake(world, scenario)
+    assert [r["outcome"] for r in results] == ["verified"] * 10
+    for name, page_id in pages.items():
+        assert world.fake.page_texts(page_id) == [("paragraph", f"only for {name}")]
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("bug"), asyncio.CancelledError()])
+def test_r8_the_page_guard_is_released_on_every_failure_inside_the_write(monkeypatch, failure):
+    world = World()
+
+    async def broken(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(notion, "_append_attempt", broken)
+
+    async def scenario():
+        try:
+            await append_blocks({"page": "adapter-test", "blocks": BLOCKS}, **kwargs(world))
+        except (NotionToolError, asyncio.CancelledError):
+            pass
+        await drain_writes()
+
+    run_in_fake(world, scenario)
+    assert not world.guard.busy(world.page)
+
+
+def test_r8_dropping_a_run_s_ledger_mid_write_is_harmless():
+    world = World()
+    ledgers = notion.NotionLedgers()
+    ledger = ledgers.for_run("run_a")
+    world.fake.delay("PATCH", CHILDREN, 0.2, apply_first=True)
+
+    async def scenario():
+        task = asyncio.ensure_future(append_blocks({"page": "adapter-test", "blocks": BLOCKS},
+                                                   settings=world.settings, ledger=ledger, guard=world.guard))
+        await asyncio.sleep(0.05)
+        ledgers.drop("run_a")
+        return await task
+
+    assert run_in_fake(world, scenario)["outcome"] == "verified"
+    assert len(ledgers) == 0 and not world.guard.busy(world.page)
+
+
+def test_r8_a_run_s_ledger_has_a_memory_bound():
+    ledger = notion.RunLedger()
+    big = [rt("x" * 2000, bold=i % 2 == 0) for i in range(100)]  # Notion's own per-block maximum
+    stored = 0
+    with pytest.raises(NotionToolError) as caught:
+        for index in range(notion.NOTION_RUN_MAX_REFS):
+            block = {"object": "block", "id": f"{index:08x}-0000-4000-8000-000000000000", "type": "paragraph",
+                     "paragraph": {"rich_text": big}}
+            ledger.remember("adapter-test", "0" * 8 + "-0000-4000-8000-" + "0" * 12, block)
+            stored += len(_json.dumps(big))
+    assert str(caught.value) == notion.LEDGER_FULL
+    assert stored <= notion.NOTION_RUN_MAX_SNAPSHOT_BYTES + len(_json.dumps(big))

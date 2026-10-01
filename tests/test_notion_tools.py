@@ -261,7 +261,8 @@ def test_append_rate_limit_is_retried_once_after_retry_after(world):
     assert len(world.fake.page_texts(world.page)) == 3
 
 
-def test_a_second_write_to_a_busy_page_is_refused(world):
+def test_a_second_write_to_a_busy_page_is_refused(world, monkeypatch):
+    monkeypatch.setattr(notion, "NOTION_PAGE_WAIT_SECONDS", 0.2)
     assert world.guard.acquire(world.page)
     assert world.refuse(append_blocks, page="adapter-test", blocks=BLOCKS) == notion.PAGE_BUSY
     assert world.fake.requests == []

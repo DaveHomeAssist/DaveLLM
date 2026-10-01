@@ -594,7 +594,9 @@ Public constants each module defines, including the fixed refusal messages.
 | `NOTION_MIN_REQUEST_SECONDS` | `1.0` |
 | `NOTION_OUTPUT_BUDGET_BYTES` | `49152` |
 | `NOTION_PAGE_NAME_MAX_CHARS` | `40` |
+| `NOTION_PAGE_POLL_SECONDS` | `0.05` |
 | `NOTION_PAGE_SIZE` | `100` |
+| `NOTION_PAGE_WAIT_SECONDS` | `8.0` |
 | `NOTION_PARENT_MAX_DEPTH` | `8` |
 | `NOTION_RATE_LIMIT_MAX_WAIT_SECONDS` | `5.0` |
 | `NOTION_READ_BUDGET_SECONDS` | `25.0` |
@@ -606,6 +608,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `NOTION_REQUEST_TIMEOUT_SECONDS` | `10.0` |
 | `NOTION_RICH_TEXT_MAX_ITEMS` | `100` |
 | `NOTION_RUN_MAX_REFS` | `2000` |
+| `NOTION_RUN_MAX_SNAPSHOT_BYTES` | `8388608` |
 | `NOTION_TEXT_MAX_CHARS` | `2000` |
 | `NOTION_VERSION` | `2026-03-11` |
 | `NOTION_WRITE_BUDGET_SECONDS` | `50.0` |
@@ -620,7 +623,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `OLD_TEXT_NOT_FOUND` | `old_text was not found in block {ref}` |
 | `OLD_TEXT_REPEATED` | `old_text occurs {count} times in block {ref}; include more surrounding text so it occurs once` |
 | `OTHER_PAGE_REF` | `Block {ref} belongs to page '{actual}', not '{requested}'` |
-| `PAGE_BUSY` | `Another write to this Notion page is still in progress; try again when it has finished` |
+| `PAGE_BUSY` | `Another write to this Notion page is still in progress after waiting; try again when it has finished` |
 | `READ_FAILED` | `Notion refused the read {code}` |
 | `REPEAT_IN_FLIGHT` | `An earlier append of these exact blocks to '{page}' in this run is still being written or checked, so it is not repeated. Read the page in a moment to see whether it arrived.` |
 | `REPEAT_REFUSED` | `An earlier append of these exact blocks to '{page}' in this run has an unknown outcome, so it is not repeated. Read the page to check whether it arrived, and ask the user before trying again.` |
