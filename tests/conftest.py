@@ -43,6 +43,13 @@ def ollama_chat_ndjson(*lines):
     )
 
 
+@pytest.fixture(autouse=True)
+def no_operator_notion(monkeypatch):
+    """A shell's Notion secret or page list must never reach a test; tests set their own."""
+    for name in ("DAVE_ENABLE_NOTION_TOOLS", "DAVE_NOTION_TOKEN", "DAVE_NOTION_PAGES"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def hostile_tree(tmp_path):
     """Planted secrets, escaping symlinks, and awkward files; see tests/hostile_fs.py."""

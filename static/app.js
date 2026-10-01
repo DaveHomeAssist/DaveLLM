@@ -3471,10 +3471,12 @@ async function toolRunRequest(path, options = {}) {
     return response.json();
 }
 
-// A readable before/after view of a pending file.edit, so an approval covers the
-// exact change. Text nodes only: the model supplies every string shown here.
+// A readable before/after view of a pending file.edit or Notion write, so an approval
+// covers the exact change. Text nodes only: the model supplies every string shown here.
 function approvalPreview(pending) {
     const args = pending.arguments || {};
+    if (pending.tool_name === "notion.page.append") return notionAppendPreview(args);
+    if (pending.tool_name === "notion.block.update") return notionUpdatePreview(args);
     if (pending.tool_name !== "file.edit"
         || typeof args.path !== "string"
         || typeof args.old_text !== "string"
@@ -3503,6 +3505,73 @@ function approvalPreview(pending) {
         block.className = `edit-preview-${kind}`;
         block.textContent = text;
         preview.appendChild(block);
+    }
+    return preview;
+}
+
+const NOTION_BLOCK_LABELS = {
+    paragraph: "Paragraph", heading_1: "Heading 1", heading_2: "Heading 2", heading_3: "Heading 3",
+    bulleted_list_item: "Bulleted item", numbered_list_item: "Numbered item", to_do: "To-do", quote: "Quote",
+};
+
+function notionPreviewShell(targetText) {
+    const preview = document.createElement("div");
+    preview.className = "edit-preview";
+    const target = document.createElement("p");
+    target.className = "edit-preview-target";
+    target.textContent = targetText;
+    preview.appendChild(target);
+    return preview;
+}
+
+// Every block that notion.page.append would add, in order, as plain text.
+function notionAppendPreview(args) {
+    const blocks = args.blocks;
+    if (typeof args.page !== "string" || !Array.isArray(blocks) || blocks.length === 0
+        || !blocks.every((block) => block && typeof block === "object"
+            && Object.hasOwn(NOTION_BLOCK_LABELS, block.type) && typeof block.text === "string")) {
+        return null;
+    }
+    const count = blocks.length;
+    const preview = notionPreviewShell(
+        `Append to Notion page ${args.page} · ${count} ${count === 1 ? "block" : "blocks"} at the end`
+    );
+    const list = document.createElement("ol");
+    list.className = "edit-preview-blocks";
+    for (const block of blocks) {
+        const item = document.createElement("li");
+        const box = block.type === "to_do" ? (block.checked === true ? " [x]" : " [ ]") : "";
+        item.textContent = `${NOTION_BLOCK_LABELS[block.type]}${box}: ${block.text === "" ? "(empty)" : block.text}`;
+        list.appendChild(item);
+    }
+    preview.appendChild(list);
+    return preview;
+}
+
+// The block, the text before and after, and any to-do change notion.block.update would make.
+function notionUpdatePreview(args) {
+    const hasText = typeof args.old_text === "string" && typeof args.new_text === "string";
+    const hasChecked = typeof args.checked === "boolean";
+    if (typeof args.page !== "string" || typeof args.block !== "string" || (!hasText && !hasChecked)) {
+        return null;
+    }
+    const preview = notionPreviewShell(`Edit Notion page ${args.page} · block ${args.block}`);
+    if (hasText) {
+        for (const [label, text, kind] of [["Before", args.old_text, "before"], ["After", args.new_text, "after"]]) {
+            const heading = document.createElement("h5");
+            heading.textContent = label;
+            preview.appendChild(heading);
+            const block = document.createElement(text === "" ? "p" : "pre");
+            block.className = text === "" ? "edit-preview-empty" : `edit-preview-${kind}`;
+            block.textContent = text === "" ? "Nothing: the text above is deleted." : text;
+            preview.appendChild(block);
+        }
+    }
+    if (hasChecked) {
+        const note = document.createElement("p");
+        note.className = "edit-preview-checked";
+        note.textContent = args.checked ? "Mark the to-do as done." : "Mark the to-do as not done.";
+        preview.appendChild(note);
     }
     return preview;
 }

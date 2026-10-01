@@ -1,6 +1,6 @@
 # DaveLLM tools
 
-DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, the native read tools added in PR-05, the approved `file.edit` added in PR-06, and the web tools `web.search` and `web.read`.
+DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, the native read tools added in PR-05, the approved `file.edit` added in PR-06, the web tools `web.search` and `web.read`, and the Notion tools.
 
 [DAVEHARNESS_CAPABILITIES.md](DAVEHARNESS_CAPABILITIES.md) lists every tool's full schema, flags, run budgets, host limits, routes, and tool-module constants in one place. It and its machine-readable twin, [DAVEHARNESS_CAPABILITIES.json](DAVEHARNESS_CAPABILITIES.json), are generated from the registry by `scripts/generate_capabilities_manifest.py`.
 
@@ -13,6 +13,9 @@ DaveLLM offers tools to Ollama models through the in-process DaveHarness registr
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | Second opt-in for `shell.exec`. |
 | `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | Adds `file.list`, `file.search`, `file.read_lines`, `md.outline`, `md.section`, `git.status`, `git.diff`, `git.log`, `git.show`, `project.notepad.read`, `project.brain.read`, `project.artifacts`, `chat.search`, `cluster.status`, `file.edit`, `web.search`, and `web.read`. Honored only when `DAVE_ENABLE_TOOLS` is also on. |
 | `DAVE_SEARCH_URL` | unset | Base URL of a SearXNG instance with JSON output enabled. Only `web.search` uses it; unset, `web.search` says search is not configured. |
+| `DAVE_ENABLE_NOTION_TOOLS` | `false` | Adds `notion.page.read`, `notion.page.append`, and `notion.block.update`. Honored only when `DAVE_ENABLE_TOOLS` is also on. See [Notion tools](#notion-tools). |
+| `DAVE_NOTION_TOKEN` | unset | The internal Notion connection's secret. Read once at startup from the environment; never stored by the launcher, logged, or returned. |
+| `DAVE_NOTION_PAGES` | unset | JSON object of short page names to Notion page IDs or page URLs, such as `{"adapter-test": "https://www.notion.so/...-<32 hex>"}`. Names are 1–40 lowercase letters, digits, or hyphens; at most 20 pages. |
 
 ```bash
 export DAVE_ENABLE_TOOLS=true
@@ -353,6 +356,110 @@ Fetches one public page and returns its visible text: scripts, styles, and marku
 | `Unsupported content type: T` | Not HTML or text |
 | `Response exceeds N byte limit` / `Too many redirects` | Transport limits |
 | `web.search failed` / `web.read failed` | Any other failure; details stay out of the model's view |
+
+## Notion tools
+
+The Notion tools let a tool run read a Notion page and change it after you approve each change. Their implementation is `davellm_notion.py`. They talk to Notion through DaveLLM's own internal Notion connection, not through any connector another app uses.
+
+| Tool | Permission | Approval | Timeout |
+|---|---|---|---|
+| `notion.page.read` | `read` | No | 30 s |
+| `notion.page.append` | `write` | Yes, every call | 60 s |
+| `notion.block.update` | `write` | Yes, every call | 60 s |
+
+All three are asynchronous handlers with bounded cancellation, and they work only inside runs started with `POST /tools/agent/runs` (the Run tools button). Called through `POST /tools/execute` or the legacy `POST /tools/agent/run`, they answer `Notion tools work only inside a tool run started from DaveLLM` and contact nothing, so the legacy `approved_tools` list cannot pre-approve a Notion write.
+
+### Setup
+
+1. In Notion, create an internal connection for DaveLLM and copy its secret.
+2. Share each page DaveLLM may use with that connection, and nothing else. Notion then refuses every other page.
+3. Name those pages in `DAVE_NOTION_PAGES` and start the router with the secret in `DAVE_NOTION_TOKEN`:
+
+```bash
+export DAVE_ENABLE_NOTION_TOOLS=true
+export DAVE_NOTION_TOKEN='<internal connection secret>'
+export DAVE_NOTION_PAGES='{"adapter-test": "<page id or page URL>"}'
+```
+
+There are two scopes, and both must allow a page: what Notion lets the connection reach, and the pages named in `DAVE_NOTION_PAGES`. The model names a page only by its configured name. It never supplies a Notion page or block ID.
+
+### `notion.page.read`
+
+| Argument | Type | Limit |
+|---|---|---|
+| `page` | string | a configured page name |
+
+Returns `page`, `title`, `blocks`, and `truncated`. Each block has a `ref` (`b1`, `b2`, …), its `type`, its plain `text`, `depth` when nested, `checked` for to-dos, `formatted` when it holds formatting, links, mentions, or equations, and `text_editable: false` when its text cannot be written back unchanged (for example a link preview mention or an internal link). Children are read up to three levels deep. Child pages, child databases, and synced blocks are listed but not opened. At most 300 blocks, 30 requests, and 48 KiB of result; past that, `truncated` is `true`.
+
+Refs belong to the run. The server keeps, for each ref, the page, the Notion block ID, and the content the run saw. A block keeps the same ref for the whole run, and a later read refreshes what the run saw.
+
+### `notion.page.append`
+
+| Argument | Type | Limit |
+|---|---|---|
+| `page` | string | a configured page name |
+| `blocks` | array | 1–50 objects: `type` (`paragraph`, `heading_1`, `heading_2`, `heading_3`, `bulleted_list_item`, `numbered_list_item`, `to_do`, `quote`), `text` (plain, at most 2000 characters), and `checked` (to-dos only) |
+
+Adds the blocks to the end of the page and then checks that they are there. A verified result gives `outcome: "verified"`, `blocks_added`, and the new blocks' `refs`. Pages with more than 1,000 top-level blocks are refused, because the adapter could not check the result.
+
+### `notion.block.update`
+
+| Argument | Type | Limit |
+|---|---|---|
+| `page` | string | the page the ref came from |
+| `block` | string | a ref from `notion.page.read` in this run |
+| `old_text`, `new_text` | string or `null` | together; `old_text` 1–2000 characters, `new_text` 0–2000 |
+| `checked` | boolean or `null` | to-dos only |
+
+Replaces `old_text` with `new_text` inside one block, checks or unchecks a to-do, or both. `old_text` must occur exactly once in the block and must sit inside one run of uniformly formatted text. Every other run is sent back with its formatting, links, mentions, and equations, so the block keeps them. A change to `checked` alone sends only `checked`.
+
+### Before a write
+
+The adapter refuses before sending anything when the arguments cannot be carried out exactly: an unknown ref, a ref from another page, text that crosses a formatting change or a mention, text that occurs more or less than once, or a block whose rich text cannot be written back. Then, just before writing, it reads the target again:
+
+- the block must still sit under the configured page, walking up through parent blocks (a block moved elsewhere on the same page is fine; a block moved to another page is refused);
+- the block must still hold exactly what the run saw (text, formatting, mentions, and checked state); if someone edited it since the read, nothing is written.
+
+This narrows the window for overwriting someone else's edit. It is not a lock, because Notion offers none. Writes to one page are serialized within the router process.
+
+### Outcomes
+
+Every write ends in exactly one of three outcomes:
+
+| Outcome | Meaning | Result |
+|---|---|---|
+| verified | A read after the write shows the requested change | success, with `outcome: "verified"` |
+| failed | Nothing was written: the adapter refused, the connection never opened, or Notion refused the request (any 4xx, including a rate limit) | error starting `Nothing was written:` |
+| unknown | The request may have reached Notion, but no usable answer came back and a fresh read could not settle it | error starting `Outcome unknown:` |
+
+When an append's answer is lost, the adapter reads the page: if exactly the requested blocks, created by this connection, sit right after the page's previous last block, the append is verified; anything else is unknown. An append whose outcome is unknown is never repeated by the adapter, and the same append to the same page is refused for the rest of the run. A rate limit (`429`) with a `Retry-After` of at most five seconds is retried once, because Notion did not carry out the first request.
+
+The write and its check run in a task shielded from cancellation, so a run deadline can stop waiting for it but cannot cut it off between the request and the check.
+
+### Transport
+
+Requests go only to `https://api.notion.com/v1` with `Notion-Version: 2026-03-11`, redirects off, environment proxies off, a 10-second limit per request, and a 2 MB response cap. The secret travels only in the `Authorization` header. Only fixed messages and Notion's short error codes (such as `object_not_found`) reach the model; Notion's message text does not.
+
+### Notion errors
+
+| Message | Meaning |
+|---|---|
+| `Notion is not configured on this router (DAVE_NOTION_TOKEN is unset)` | No secret |
+| `No Notion pages are configured on this router (DAVE_NOTION_PAGES is unset)` | No page list |
+| `DAVE_NOTION_PAGES is not a JSON object of page names to Notion page IDs` | The page list could not be parsed |
+| `Unknown Notion page 'x'. Configured pages: …` | The name is not configured |
+| `Notion tools work only inside a tool run started from DaveLLM` | Called outside a lifecycle run |
+| `Unknown block ref bN; refs come from notion.page.read in this run` | The ref was never issued in this run |
+| `Block bN belongs to page 'a', not 'b'` | The ref came from another page |
+| `old_text was not found in block bN` / `old_text occurs N times in block bN; …` | The text does not occur exactly once |
+| `old_text in block bN crosses a formatting change, a link, a mention, or an equation; …` | The text spans more than one run |
+| `Block bN contains … that cannot be written back, so its text cannot be edited` | The block's rich text cannot round-trip |
+| `Another write to this Notion page is still in progress; …` | Another run is writing to the page |
+| `An earlier append of these exact blocks to 'x' in this run has an unknown outcome, …` | The repeat guard |
+| `Notion refused the read (code)` / `Notion could not be reached` | A read failed |
+| `Nothing was written: …` | A failed write |
+| `Outcome unknown: …` | An unknown write |
+| `notion.page.read failed` / `notion.page.append failed` / `notion.block.update failed` | Any other failure; details stay out of the model's view |
 
 ## Paths
 

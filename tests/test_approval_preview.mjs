@@ -68,3 +68,72 @@ test("other tools and malformed edit arguments keep the plain argument view", ()
     assert.equal(approvalPreview({ tool_name: "file.edit", arguments: { old_text: "a", new_text: "b" } }), null);
     assert.equal(approvalPreview({ tool_name: "file.edit" }), null);
 });
+
+test("a pending notion.page.append lists the page and every block as text", () => {
+    const approvalPreview = loadPreview();
+    const hostile = "<img src=x onerror=alert(1)>";
+    const preview = approvalPreview({
+        tool_name: "notion.page.append",
+        arguments: {
+            page: "adapter-test",
+            blocks: [
+                { type: "heading_2", text: "Findings" },
+                { type: "to_do", text: hostile, checked: true },
+                { type: "to_do", text: "Open item" },
+                { type: "paragraph", text: "" },
+            ],
+        },
+    });
+    assert.equal(preview.className, "edit-preview");
+    assert.deepEqual(summary(preview), [
+        ["P", "edit-preview-target", "Append to Notion page adapter-test · 4 blocks at the end"],
+        ["OL", "edit-preview-blocks", ""],
+    ]);
+    assert.deepEqual(preview.children[1].children.map((item) => [item.tagName, item.textContent]), [
+        ["LI", "Heading 2: Findings"],
+        ["LI", `To-do [x]: ${hostile}`],
+        ["LI", "To-do [ ]: Open item"],
+        ["LI", "Paragraph: (empty)"],
+    ]);
+    assert.ok(preview.children[1].children.every((item) => item.children.length === 0));
+});
+
+test("a pending notion.block.update shows the block, the text before and after, and the to-do change", () => {
+    const approvalPreview = loadPreview();
+    const preview = approvalPreview({
+        tool_name: "notion.block.update",
+        arguments: { page: "adapter-test", block: "b3", old_text: "</pre><b>x</b>", new_text: "", checked: true },
+    });
+    assert.deepEqual(summary(preview), [
+        ["P", "edit-preview-target", "Edit Notion page adapter-test · block b3"],
+        ["H5", "", "Before"],
+        ["PRE", "edit-preview-before", "</pre><b>x</b>"],
+        ["H5", "", "After"],
+        ["P", "edit-preview-empty", "Nothing: the text above is deleted."],
+        ["P", "edit-preview-checked", "Mark the to-do as done."],
+    ]);
+    const unchecked = approvalPreview({
+        tool_name: "notion.block.update", arguments: { page: "adapter-test", block: "b4", checked: false },
+    });
+    assert.deepEqual(summary(unchecked), [
+        ["P", "edit-preview-target", "Edit Notion page adapter-test · block b4"],
+        ["P", "edit-preview-checked", "Mark the to-do as not done."],
+    ]);
+});
+
+test("malformed Notion arguments keep the plain argument view", () => {
+    const approvalPreview = loadPreview();
+    for (const args of [
+        {}, { page: "p" }, { page: "p", blocks: [] }, { page: "p", blocks: [{ type: "image", text: "x" }] },
+        { page: "p", blocks: [{ type: "paragraph" }] }, { page: "p", blocks: [null] },
+        { page: "p", blocks: [{ type: "toString", text: "x" }] },
+    ]) {
+        assert.equal(approvalPreview({ tool_name: "notion.page.append", arguments: args }), null);
+    }
+    for (const args of [
+        {}, { page: "p", block: "b1" }, { page: "p", block: "b1", old_text: "a" },
+        { page: 1, block: "b1", checked: true }, { page: "p", block: "b1", checked: "yes" },
+    ]) {
+        assert.equal(approvalPreview({ tool_name: "notion.block.update", arguments: args }), null);
+    }
+});
