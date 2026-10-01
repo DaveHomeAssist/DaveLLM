@@ -1,4 +1,4 @@
-# H9 qualification blocked: model transport
+# H9 qualification incomplete: historical transport failure
 
 Recorded 2026-09-23. **Not qualified. H9 actions 55–60 remain incomplete.** DaveHarness remains `1.0.0-rc.1`; DaveLLM remains `2.1.0`. No release, tag, published package, human acceptance, or UX follow-through is claimed.
 
@@ -33,4 +33,8 @@ The diagnostic fix retains unknown-usage reservations, persists before dispatch,
 
 A second runner, `scripts/evaluate_live_daveharness.py` from PR #15, drives DaveLLM's own Ollama adapter and file/system handlers for any separately authorized target; see [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md). Its sandbox runs of `qwen2.5:0.5b` and `qwen2.5:3b` are development evidence and count toward no quota. The two runners define `qualified` differently: this protocol also requires every case to pass its fixed task and effect assertion. Dave decides which definition governs action 56.
 
-Resume requires reachable inference on Walter and access sufficient to diagnose its failure, or explicit approval of a different target model. The current six-hour/token allowance must remain cumulative; renewal after expiry requires a new budget. Keep PR #14 draft while the live gate is blocked. Convergence documentation, version changes, native candidate acceptance and final human approval follow a passing qualification gate.
+Resume requires reachable inference on Walter and access sufficient to diagnose its failure, or explicit approval of a different target model. The current six-hour/token allowance must remain cumulative; renewal after expiry requires a new budget. PR #14 merged on 2026-09-25 at `ebcd823eb7f0b43fb164c629ad7e46b3031ef9f4`; this engineering merge does not close the live gate. Convergence documentation, version changes, native candidate acceptance and final human approval follow a passing qualification gate.
+
+## Current-state reconciliation — 2026-10-01
+
+H2–H8 are complete. The original six-hour authorization expired on September 23 at 18:53:04 UTC; its 17,139-token reservation remains historical accounting and is not a renewed allowance. Actions 55–60 remain incomplete. Current inventory access does not establish that the September 23 inference failure persists or has recovered. See [H9 readiness review](DAVEHARNESS_H9_READINESS_REVIEW.md) for fresh access observations, runner differences and later merged integration work. Versions remain DaveHarness `1.0.0-rc.1` and DaveLLM `2.1.0`.
