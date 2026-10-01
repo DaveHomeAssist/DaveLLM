@@ -1526,7 +1526,8 @@ from davellm_notion import (  # Notion page tools, kept below the web handlers
     NOTION_DISPLAY_MAX_CHARS, NOTION_READ_TIMEOUT_SECONDS, NOTION_REF_MAX_CHARS, NOTION_TEXT_MAX_CHARS,
     NOTION_WRITE_TIMEOUT_SECONDS,
     NotionLedgers, NotionSettings, NotionToolError, PageWriteGuard, RunLedger,
-    append_blocks as notion_append_blocks, read_page as notion_read_page, update_block as notion_update_block,
+    append_blocks as notion_append_blocks, pending_context as notion_pending_context, read_page as notion_read_page,
+    update_block as notion_update_block,
 )
 
 # Honored only with DAVE_ENABLE_TOOLS. The token comes only from the environment
@@ -4063,6 +4064,21 @@ async def decide_agent_run(
     finally:
         HOST_RUN_CONTEXT.reset(token)
     return _lifecycle_response(run_id, decided, binding)
+
+
+@app.get("/tools/agent/runs/{run_id}/pending/notion-context")
+def notion_pending_context_route(run_id: str, user_id: str = Depends(get_current_user)):
+    """The run's own record of what a pending Notion call would change, for the approval card."""
+    if not TOOLS_ENABLED or not NOTION_TOOLS_ENABLED:
+        raise HTTPException(404, "No Notion approval is pending")
+    result, _ = _lifecycle_run(run_id, user_id)
+    pending = result.snapshot.pending_call if result.snapshot else None
+    context = notion_pending_context(
+        pending.tool_name, pending.arguments, settings=NOTION_SETTINGS, ledger=NOTION_LEDGERS.for_run(run_id),
+    ) if pending is not None else None
+    if context is None:
+        raise HTTPException(404, "No Notion approval is pending")
+    return context
 
 
 @app.post("/tools/agent/runs/{run_id}/cancel")

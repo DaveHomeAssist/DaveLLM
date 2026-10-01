@@ -424,7 +424,11 @@ The adapter refuses before sending anything when the arguments cannot be carried
 
 This narrows the window for overwriting someone else's edit. It is not a lock, because Notion offers none. Writes to one page are serialized within the router process.
 
-DaveHarness asks for approval before any tool runs, so these checks happen after you approve. A call the adapter will refuse, such as an edit by a ref this run never read, can still show an approval card; approving it writes nothing, and the run continues with the refusal.
+DaveHarness asks for approval before any tool runs, so these checks happen after you approve. A call the adapter will refuse, such as an edit by a ref this run never read, can still show an approval card; approving it writes nothing, and the run continues with the refusal. The card warns about such a call (see below).
+
+### Approval card
+
+The card shows the page and every appended block, or the block ref with the exact text before and after (and, for a to-do, the to-do's text). Beside those model-supplied arguments, it asks the router for the run's own record of the pending call through `GET /tools/agent/runs/{run_id}/pending/notion-context` (same authentication and run ownership as the other run routes). For an edit, that record is the whole block as the run read it and as it would read afterwards, plus a note when its formatting, links, and mentions are kept. For a call the adapter would refuse, it is the refusal, shown in red above the buttons: "This call will be refused, so approving it writes nothing: …". The record comes from the run ledger, never from the model, and computing it contacts nothing and changes nothing. Every string is rendered as text.
 
 ### Outcomes
 

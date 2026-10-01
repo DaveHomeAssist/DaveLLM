@@ -580,6 +580,14 @@
     },
     {
       "authentication": "X-API-Key",
+      "endpoint": "notion_pending_context_route",
+      "methods": [
+        "GET"
+      ],
+      "path": "/tools/agent/runs/{run_id}/pending/notion-context"
+    },
+    {
+      "authentication": "X-API-Key",
       "endpoint": "execute_tool_endpoint",
       "methods": [
         "POST"

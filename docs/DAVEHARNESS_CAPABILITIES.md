@@ -371,6 +371,7 @@ DaveHarness's default ceiling for any JSON payload it admits.
 | POST | `/tools/agent/runs/{run_id}/cancel` | X-API-Key | `cancel_agent_run` |
 | POST | `/tools/agent/runs/{run_id}/decisions` | X-API-Key | `decide_agent_run` |
 | GET | `/tools/agent/runs/{run_id}/events` | X-API-Key | `get_agent_run_events` |
+| GET | `/tools/agent/runs/{run_id}/pending/notion-context` | X-API-Key | `notion_pending_context_route` |
 | POST | `/tools/execute` | X-API-Key | `execute_tool_endpoint` |
 
 ## Constants

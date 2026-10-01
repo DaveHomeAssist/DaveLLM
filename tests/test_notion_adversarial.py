@@ -1023,3 +1023,102 @@ async def test_r6_cancelling_a_run_mid_write_lands_once_records_it_and_frees_the
     # The run is terminal, so it can never call a tool again; no repeat is reachable.
     assert router.HARNESS.snapshot(run_id).status == "cancellation_failed"
     assert not router.NOTION_WRITE_GUARD.busy(page)
+
+
+# ---- Run 7: approval UI ------------------------------------------------------------------
+
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+
+PREVIEW_SCRIPT = r"""
+const { readFileSync } = require("node:fs");
+const vm = require("node:vm");
+class El { constructor(t) { this.tagName = t.toUpperCase(); this.children = []; this.textContent = ""; this.className = ""; }
+  appendChild(c) { this.children.push(c); return c; } append(...c) { this.children.push(...c); } }
+const source = readFileSync(process.argv[1], "utf8");
+const start = source.indexOf("function approvalPreview(pending) {");
+const end = source.indexOf("\nfunction renderToolRun(run)", start);
+const context = { document: { createElement: (t) => new El(t) } };
+vm.createContext(context);
+vm.runInContext(source.slice(start, end) + "\nglobalThis.approvalPreview = approvalPreview;", context);
+const walk = (e) => [e.tagName, e.className, e.textContent, e.children.map(walk)];
+const preview = context.approvalPreview(JSON.parse(readFileSync(0, "utf8")));
+process.stdout.write(JSON.stringify(preview ? walk(preview) : null));
+"""
+
+
+def render_preview(pending):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    app_js = pathlib.Path(__file__).resolve().parents[1] / "static" / "app.js"
+    done = subprocess.run([node, "-e", PREVIEW_SCRIPT, str(app_js)], input=_json.dumps(pending),
+                          capture_output=True, text=True, timeout=30, check=True)
+    return _json.loads(done.stdout)
+
+
+import pathlib  # noqa: E402
+
+
+@pytest.mark.parametrize("call, expected", [
+    (APPEND_CALL, ["Append to Notion page adapter-test · 1 block at the end", "Paragraph: from the run"]),
+    (("notion.block.update", {"page": "adapter-test", "block": "b1", "checked": True,
+                              "block_text": "Prove the adapter"}),
+     ["Edit Notion page adapter-test · block b1", "Mark this to-do as done:", "Prove the adapter"]),
+    (("notion.block.update", {"page": "adapter-test", "block": "b1", "old_text": "draft", "new_text": "final"}),
+     ["Edit Notion page adapter-test · block b1", "Before", "draft", "After", "final"]),
+])
+def test_r7_the_router_s_real_pending_call_renders_the_notion_preview(lifecycle, call, expected):
+    lifecycle.fake.add_block(lifecycle.page, "to_do", [rt("Prove the adapter draft")], checked=False)
+    turns = [("notion.page.read", {"page": "adapter-test"}), call, (None, "done")] if call[0] != APPEND_CALL[0] \
+        else [call, (None, "done")]
+    run_id = lifecycle.start(*turns)
+    pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
+    assert pending["tool_name"] == call[0]
+    tree = render_preview(pending)
+    assert tree is not None, f"the preview fell back to raw JSON for {call[0]}: {sorted(pending)}"
+
+    def texts(node):
+        tag, _cls, text, children = node
+        return ([text] if text else []) + [t for child in children for t in texts(child)]
+
+    assert [t for t in texts(tree) if t] == expected
+
+
+def context_of(lifecycle, run_id, *, headers=LIFECYCLE_AUTH):
+    return lifecycle.client.get(f"/tools/agent/runs/{run_id}/pending/notion-context", headers=headers)
+
+
+def test_r7_the_card_gets_the_whole_block_before_and_after_from_the_run_ledger(lifecycle):
+    lifecycle.fake.add_block(lifecycle.page, "paragraph", [rt("Status: "), rt("draft", bold=True), rt(" wording")])
+    run_id = lifecycle.start(("notion.page.read", {"page": "adapter-test"}),
+                             ("notion.block.update", {"page": "adapter-test", "block": "b1",
+                                                      "old_text": "draft", "new_text": "final"}), (None, "done"))
+    lifecycle.settle(run_id)
+    response = context_of(lifecycle, run_id)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"page": "adapter-test", "block": "b1", "type": "paragraph", "formatted": True,
+                               "before": "Status: draft wording", "after": "Status: final wording"}
+
+
+def test_r7_the_card_is_told_in_advance_when_the_call_will_be_refused(lifecycle):
+    lifecycle.fake.add_block(lifecycle.page, "paragraph", [rt("plain "), rt("bold", bold=True)])
+    run_id = lifecycle.start(("notion.page.read", {"page": "adapter-test"}),
+                             ("notion.block.update", {"page": "adapter-test", "block": "b1",
+                                                      "old_text": "plain bold", "new_text": "x"}), (None, "done"))
+    lifecycle.settle(run_id)
+    body = context_of(lifecycle, run_id).json()
+    assert body["refused"].startswith("old_text in block b1 crosses a formatting change")
+    other = lifecycle.start(("notion.block.update", {"page": "adapter-test", "block": "b7", "checked": True,
+                                                    "block_text": "x"}), (None, "done"))
+    lifecycle.settle(other)
+    assert context_of(lifecycle, other).json()["refused"] == (
+        "Unknown block ref b7; refs come from notion.page.read in this run")
+
+
+def test_r7_the_context_route_is_scoped_to_the_run_owner_and_to_notion_calls(lifecycle):
+    run_id = lifecycle.start(("notion.page.read", {"page": "adapter-test"}), (None, "done"))
+    lifecycle.settle(run_id)
+    assert context_of(lifecycle, run_id).status_code == 404  # no pending call
+    assert context_of(lifecycle, "run_missing").status_code == 404
+    assert lifecycle.client.get(f"/tools/agent/runs/{run_id}/pending/notion-context").status_code == 401

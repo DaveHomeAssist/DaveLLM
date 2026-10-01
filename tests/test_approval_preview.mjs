@@ -139,3 +139,32 @@ test("malformed Notion arguments keep the plain argument view", () => {
         assert.equal(approvalPreview({ tool_name: "notion.block.update", arguments: args }), null);
     }
 });
+
+function loadContextPreview() {
+    const source = readFileSync(new URL("../static/app.js", import.meta.url), "utf8");
+    const start = source.indexOf("function approvalPreview(pending) {");
+    const end = source.indexOf("\nfunction renderToolRun(run)", start);
+    const context = { document: { createElement: (tag) => new FakeElement(tag) } };
+    vm.createContext(context);
+    vm.runInContext(`${source.slice(start, end)}\nglobalThis.notionContextPreview = notionContextPreview;`, context);
+    return context.notionContextPreview;
+}
+
+test("the server's whole-block context renders as text, and a refusal warns before approval", () => {
+    const notionContextPreview = loadContextPreview();
+    const hostile = "<b onclick=x>Status: draft</b>";
+    const context = notionContextPreview({ page: "adapter-test", block: "b1", type: "paragraph",
+        before: hostile, after: "Status: final", formatted: true });
+    assert.deepEqual(summary(context), [
+        ["H5", "", "Whole block now"],
+        ["PRE", "edit-preview-context", hostile],
+        ["H5", "", "Whole block after"],
+        ["PRE", "edit-preview-context", "Status: final"],
+        ["P", "edit-preview-note", "Its formatting, links, and mentions are kept."],
+    ]);
+    const refused = notionContextPreview({ refused: "Unknown block ref b7; refs come from notion.page.read in this run" });
+    assert.deepEqual(summary(refused), [
+        ["P", "edit-preview-refused", "This call will be refused, so approving it writes nothing: Unknown block ref b7; refs come from notion.page.read in this run"],
+    ]);
+    assert.equal(notionContextPreview(null), null);
+});

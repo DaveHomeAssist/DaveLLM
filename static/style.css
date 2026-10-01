@@ -271,6 +271,9 @@ small { color: var(--muted); font-size: 12px; }
 .edit-preview-before { background: var(--diff-del); }
 .edit-preview-after { background: var(--diff-add); }
 .edit-preview-blocks { margin: 4px 0; padding-left: 1.5em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.edit-preview-context { background: var(--surface-300); }
+.edit-preview-note { color: var(--muted); }
+.edit-preview-refused { color: var(--danger); font-weight: 600; }
 .approval-pending .response { flex: 0 1 22%; }
 .approval-pending .run-ledger { max-height: none; flex: 1; }
 .approval-pending .suggested-next, .approval-pending .starting-modes { display: none; }

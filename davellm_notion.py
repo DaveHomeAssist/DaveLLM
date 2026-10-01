@@ -926,8 +926,7 @@ def _describe(record: BlockRecord, block: Mapping[str, Any], depth: int, unread:
     elif text:
         entry["text"] = text
     if record.rich_text is not None:
-        runs = rich_text_signature(record.rich_text)
-        if any(run[0] != "text" or run[3] is not None or run[2] != _ANNOTATION_DEFAULTS for run in runs):
+        if _is_formatted(record.rich_text):
             entry["formatted"] = True
         try:
             for item in record.rich_text:
@@ -1320,17 +1319,62 @@ async def _update_attempt(token: str, run: RunLedger, record: BlockRecord,
         return _Outcome("unknown", f"the connection to Notion failed during the edit and block {record.ref} changed")
 
 
-async def update_block(arguments: Mapping[str, Any], *, settings: NotionSettings, ledger: Optional[RunLedger],
-                       guard: PageWriteGuard) -> dict[str, Any]:
-    """notion.block.update: replace text inside one block and/or check a to-do, then verify it."""
-    run, name, page_id = _require(settings, ledger, arguments.get("page"))
-    assert settings.token is not None
-    ref = arguments.get("block")
+def _resolve_ref(run: RunLedger, name: str, page_id: str, ref: Any) -> BlockRecord:
+    """The run's record for ``ref`` on page ``name``, or the refusal the model and the card both see."""
     record = run.get(ref)
     if record is None:
         shown = ref if isinstance(ref, str) and BLOCK_REF.fullmatch(ref) else "(invalid)"
         raise NotionToolError(UNKNOWN_REF.format(ref=shown))
     if record.page != name or record.page_id != page_id:
         raise NotionToolError(OTHER_PAGE_REF.format(ref=record.ref, actual=record.page, requested=name))
+    return record
+
+
+def _is_formatted(rich_text: Optional[Sequence[Any]]) -> bool:
+    return any(run[0] != "text" or run[3] is not None or run[2] != _ANNOTATION_DEFAULTS
+               for run in rich_text_signature(rich_text))
+
+
+def pending_context(tool: str, arguments: Mapping[str, Any], *, settings: NotionSettings,
+                    ledger: Optional[RunLedger]) -> Optional[dict[str, Any]]:
+    """What an approval card should show beside the model's arguments, from the run's own records.
+
+    For an edit, the whole block as the run read it and as it would read afterwards; for any
+    call the adapter would refuse, that refusal, so the user knows approving it writes nothing.
+    It never contacts Notion and changes nothing.
+    """
+    if tool not in {"notion.block.update", "notion.page.append"}:
+        return None
+    try:
+        run, name, page_id = _require(settings, ledger, arguments.get("page"))
+        if tool == "notion.page.append":
+            refusal = run.append_refusal(name, _append_digest(name, _append_blocks_argument(arguments.get("blocks"))))
+            return {"page": name, "refused": refusal} if refusal else {"page": name}
+        record = _resolve_ref(run, name, page_id, arguments.get("block"))
+        rich_text, checked = _edit_plan(record, arguments)
+    except NotionToolError as exc:
+        return {"refused": str(exc)}
+    context: dict[str, Any] = {"page": name, "block": record.ref, "type": record.block_type}
+    if record.rich_text is not None:
+        before = rich_text_plain(record.rich_text)
+        context["before"] = before[:NOTION_DISPLAY_MAX_CHARS]
+        if rich_text is not None:
+            old, new = str(arguments["old_text"]), str(arguments["new_text"])
+            at = before.find(old)  # _edit_plan proved it occurs exactly once
+            context["after"] = (before[:at] + new + before[at + len(old):])[:NOTION_DISPLAY_MAX_CHARS]
+        if _is_formatted(record.rich_text):
+            context["formatted"] = True
+    if checked is not None:
+        context["checked_before"] = record.checked
+        context["checked_after"] = checked
+    return context
+
+
+async def update_block(arguments: Mapping[str, Any], *, settings: NotionSettings, ledger: Optional[RunLedger],
+                       guard: PageWriteGuard) -> dict[str, Any]:
+    """notion.block.update: replace text inside one block and/or check a to-do, then verify it."""
+    run, name, page_id = _require(settings, ledger, arguments.get("page"))
+    assert settings.token is not None
+    record = _resolve_ref(run, name, page_id, arguments.get("block"))
     rich_text, checked = _edit_plan(record, arguments)
     return _finish(await _shielded(guard, page_id, _update_work(settings.token, run, record, rich_text, checked)))

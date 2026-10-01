@@ -3514,6 +3514,37 @@ const NOTION_BLOCK_LABELS = {
     bulleted_list_item: "Bulleted item", numbered_list_item: "Numbered item", to_do: "To-do", quote: "Quote",
 };
 
+// The router's own record of the block (whole text before and after), or the refusal the
+// call will meet. It comes from the run ledger, never from the model. Text nodes only.
+function notionContextPreview(context) {
+    if (!context || typeof context !== "object") return null;
+    const box = document.createElement("div");
+    box.className = "edit-preview-context-box";
+    if (typeof context.refused === "string") {
+        const note = document.createElement("p");
+        note.className = "edit-preview-refused";
+        note.textContent = `This call will be refused, so approving it writes nothing: ${context.refused}`;
+        box.appendChild(note);
+        return box;
+    }
+    for (const [label, text] of [["Whole block now", context.before], ["Whole block after", context.after]]) {
+        if (typeof text !== "string") continue;
+        const heading = document.createElement("h5");
+        heading.textContent = label;
+        const block = document.createElement("pre");
+        block.className = "edit-preview-context";
+        block.textContent = text;
+        box.append(heading, block);
+    }
+    if (context.formatted === true && typeof context.after === "string") {
+        const note = document.createElement("p");
+        note.className = "edit-preview-note";
+        note.textContent = "Its formatting, links, and mentions are kept.";
+        box.appendChild(note);
+    }
+    return box.children.length ? box : null;
+}
+
 function notionPreviewShell(targetText) {
     const preview = document.createElement("div");
     preview.className = "edit-preview";
@@ -3651,6 +3682,7 @@ function renderToolRun(run) {
             actions.appendChild(button);
         }
         const preview = approvalPreview(pending);
+        if (pending.tool_name.startsWith("notion.")) attachNotionContext(run.run_id, pending, preview);
         if (preview) {
             const exactArguments = document.createElement("details");
             const exactSummary = document.createElement("summary");
@@ -3666,6 +3698,17 @@ function renderToolRun(run) {
     runLedgerStop.disabled = TERMINAL_TOOL_RUNS.has(run.status) || run.status === "approval_required";
     runLedgerStop.title = run.status === "approval_required"
         ? "Reject the pending call to stop this run" : "Stop the active run";
+}
+
+async function attachNotionContext(runId, pending, preview) {
+    try {
+        const context = await toolRunRequest(`/tools/agent/runs/${runId}/pending/notion-context`);
+        if (activeToolRunId !== runId || runLedgerApproval.dataset.callId !== pending.call_id) return;
+        const section = notionContextPreview(context);
+        if (section) (preview || runLedgerApproval).appendChild(section);
+    } catch {
+        // The card still shows the exact arguments; the context is an aid, not the approval.
+    }
 }
 
 async function refreshToolRun(runId) {
