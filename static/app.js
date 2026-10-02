@@ -3471,10 +3471,12 @@ async function toolRunRequest(path, options = {}) {
     return response.json();
 }
 
-// A readable before/after view of a pending file.edit, so an approval covers the
-// exact change. Text nodes only: the model supplies every string shown here.
+// A readable before/after view of a pending file.edit or Notion write, so an approval
+// covers the exact change. Text nodes only: the model supplies every string shown here.
 function approvalPreview(pending) {
     const args = pending.arguments || {};
+    if (pending.tool_name === "notion.page.append") return notionAppendPreview(args);
+    if (pending.tool_name === "notion.block.update") return notionUpdatePreview(args);
     if (pending.tool_name !== "file.edit"
         || typeof args.path !== "string"
         || typeof args.old_text !== "string"
@@ -3503,6 +3505,111 @@ function approvalPreview(pending) {
         block.className = `edit-preview-${kind}`;
         block.textContent = text;
         preview.appendChild(block);
+    }
+    return preview;
+}
+
+const NOTION_BLOCK_LABELS = {
+    paragraph: "Paragraph", heading_1: "Heading 1", heading_2: "Heading 2", heading_3: "Heading 3",
+    bulleted_list_item: "Bulleted item", numbered_list_item: "Numbered item", to_do: "To-do", quote: "Quote",
+};
+
+// The router's own record of the block (whole text before and after), or the refusal the
+// call will meet. It comes from the run ledger, never from the model. Text nodes only.
+function notionContextPreview(context) {
+    if (!context || typeof context !== "object") return null;
+    const box = document.createElement("div");
+    box.className = "edit-preview-context-box";
+    if (typeof context.refused === "string") {
+        const note = document.createElement("p");
+        note.className = "edit-preview-refused";
+        note.textContent = `This call will be refused, so approving it writes nothing: ${context.refused}`;
+        box.appendChild(note);
+        return box;
+    }
+    for (const [label, text] of [["Whole block now", context.before], ["Whole block after", context.after]]) {
+        if (typeof text !== "string") continue;
+        const heading = document.createElement("h5");
+        heading.textContent = label;
+        const block = document.createElement("pre");
+        block.className = "edit-preview-context";
+        block.textContent = text;
+        box.append(heading, block);
+    }
+    if (context.formatted === true && typeof context.after === "string") {
+        const note = document.createElement("p");
+        note.className = "edit-preview-note";
+        note.textContent = "Its formatting, links, and mentions are kept.";
+        box.appendChild(note);
+    }
+    return box.children.length ? box : null;
+}
+
+function notionPreviewShell(targetText) {
+    const preview = document.createElement("div");
+    preview.className = "edit-preview";
+    const target = document.createElement("p");
+    target.className = "edit-preview-target";
+    target.textContent = targetText;
+    preview.appendChild(target);
+    return preview;
+}
+
+// Every block that notion.page.append would add, in order, as plain text.
+function notionAppendPreview(args) {
+    const blocks = args.blocks;
+    if (typeof args.page !== "string" || !Array.isArray(blocks) || blocks.length === 0
+        || !blocks.every((block) => block && typeof block === "object"
+            && Object.hasOwn(NOTION_BLOCK_LABELS, block.type) && typeof block.text === "string")) {
+        return null;
+    }
+    const count = blocks.length;
+    const preview = notionPreviewShell(
+        `Append to Notion page ${args.page} · ${count} ${count === 1 ? "block" : "blocks"} at the end`
+    );
+    const list = document.createElement("ol");
+    list.className = "edit-preview-blocks";
+    for (const block of blocks) {
+        const item = document.createElement("li");
+        const box = block.type === "to_do" ? (block.checked === true ? " [x]" : " [ ]") : "";
+        item.textContent = `${NOTION_BLOCK_LABELS[block.type]}${box}: ${block.text === "" ? "(empty)" : block.text}`;
+        list.appendChild(item);
+    }
+    preview.appendChild(list);
+    return preview;
+}
+
+// The block, the text before and after, and any to-do change notion.block.update would make.
+function notionUpdatePreview(args) {
+    const hasText = typeof args.old_text === "string" && typeof args.new_text === "string";
+    const hasChecked = typeof args.checked === "boolean";
+    if (typeof args.page !== "string" || typeof args.block !== "string" || (!hasText && !hasChecked)) {
+        return null;
+    }
+    const preview = notionPreviewShell(`Edit Notion page ${args.page} · block ${args.block}`);
+    if (hasText) {
+        for (const [label, text, kind] of [["Before", args.old_text, "before"], ["After", args.new_text, "after"]]) {
+            const heading = document.createElement("h5");
+            heading.textContent = label;
+            preview.appendChild(heading);
+            const block = document.createElement(text === "" ? "p" : "pre");
+            block.className = text === "" ? "edit-preview-empty" : `edit-preview-${kind}`;
+            block.textContent = text === "" ? "Nothing: the text above is deleted." : text;
+            preview.appendChild(block);
+        }
+    }
+    if (hasChecked) {
+        const named = typeof args.block_text === "string";
+        const note = document.createElement("p");
+        note.className = "edit-preview-checked";
+        note.textContent = `Mark ${named ? "this" : "the"} to-do as ${args.checked ? "done" : "not done"}${named ? ":" : "."}`;
+        preview.appendChild(note);
+        if (named) {
+            const todo = document.createElement("pre");
+            todo.className = "edit-preview-todo";
+            todo.textContent = args.block_text;
+            preview.appendChild(todo);
+        }
     }
     return preview;
 }
@@ -3575,6 +3682,7 @@ function renderToolRun(run) {
             actions.appendChild(button);
         }
         const preview = approvalPreview(pending);
+        if (pending.tool_name.startsWith("notion.")) attachNotionContext(run.run_id, pending, preview);
         if (preview) {
             const exactArguments = document.createElement("details");
             const exactSummary = document.createElement("summary");
@@ -3590,6 +3698,17 @@ function renderToolRun(run) {
     runLedgerStop.disabled = TERMINAL_TOOL_RUNS.has(run.status) || run.status === "approval_required";
     runLedgerStop.title = run.status === "approval_required"
         ? "Reject the pending call to stop this run" : "Stop the active run";
+}
+
+async function attachNotionContext(runId, pending, preview) {
+    try {
+        const context = await toolRunRequest(`/tools/agent/runs/${runId}/pending/notion-context`);
+        if (activeToolRunId !== runId || runLedgerApproval.dataset.callId !== pending.call_id) return;
+        const section = notionContextPreview(context);
+        if (section) (preview || runLedgerApproval).appendChild(section);
+    } catch {
+        // The card still shows the exact arguments; the context is an aid, not the approval.
+    }
 }
 
 async function refreshToolRun(runId) {

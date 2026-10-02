@@ -179,3 +179,46 @@ def test_edit_handler_sits_below_the_native_handlers():
 def test_web_handlers_sit_below_the_edit_handler():
     code = BASELINE["extended_handler_code"]
     assert min(code[name]["first_line"] for name in ("web.search", "web.read")) > code["file.edit"]["last_line"]
+
+
+@pytest.fixture
+def notion_router(router_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("DAVE_ENABLE_NOTION_TOOLS", "true")
+    loaded, _, _ = router_factory(tools=True, tool_roots=[str(tmp_path)])
+    return loaded
+
+
+def test_notion_tool_boundaries_match_the_catalog(notion_router):
+    expected = BASELINE["notion_tools"]
+    for registry in (notion_router.TOOL_REGISTRY, notion_router.HARNESS_REGISTRY):
+        actual = {}
+        for name in expected:
+            definition = registry.get(name)
+            actual[name] = {
+                "description": definition.description, "parameters": definition.parameters,
+                "permission": definition.permission, "approval_required": definition.approval_required,
+                "timeout_seconds": definition.timeout_seconds, "cancellation": definition.cancellation,
+                "async_handler": definition.async_handler, "context_handler": definition.context_handler,
+                "handler": f"{definition.handler.__module__}.{definition.handler.__qualname__}",
+                "handler_version": definition.handler_version,
+            }
+        assert actual == expected
+
+
+def test_notion_handlers_have_not_moved_or_changed(notion_router):
+    expected = BASELINE["notion_handler_code"]
+    assert expected.keys() == BASELINE["notion_tools"].keys()
+    for registry in ("TOOL_REGISTRY", "HARNESS_REGISTRY"):
+        actual = {name: code for name, code in handler_code(getattr(notion_router, registry)).items()
+                  if name in expected}
+        assert actual == expected, (
+            "A Notion tool handler moved or changed, so its definition fingerprint changed. "
+            f"Add new app.py code below the Notion handlers. {registry}"
+        )
+
+
+def test_notion_handlers_sit_below_the_web_handlers():
+    web = BASELINE["extended_handler_code"]
+    notion = BASELINE["notion_handler_code"]
+    assert min(code["first_line"] for code in notion.values()) > max(
+        web[name]["last_line"] for name in ("web.search", "web.read"))

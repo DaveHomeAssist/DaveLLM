@@ -56,7 +56,7 @@ def test_check_names_each_stale_file(tmp_path):
 
 def test_manifest_tools_match_the_pinned_catalog():
     tools = json.loads((REPO / "docs" / JSON_NAME).read_text())["tools"]
-    pinned = {**CATALOG["HARNESS_REGISTRY"], **CATALOG["extended_tools"]}
+    pinned = {**CATALOG["HARNESS_REGISTRY"], **CATALOG["extended_tools"], **CATALOG["notion_tools"]}
 
     assert set(tools) == set(pinned)
     for name, tool in tools.items():
@@ -66,6 +66,7 @@ def test_manifest_tools_match_the_pinned_catalog():
         **{name: ["DAVE_ENABLE_TOOLS"] for name in CATALOG["default_tools"]},
         "shell.exec": ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_SHELL_TOOL"],
         **{name: ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_EXTENDED_TOOLS"] for name in CATALOG["extended_tools"]},
+        **{name: ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_NOTION_TOOLS"] for name in CATALOG["notion_tools"]},
     }
     assert {name: tool["requires_flags"] for name, tool in tools.items()} == expected_flags
 

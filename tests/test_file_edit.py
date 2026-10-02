@@ -16,12 +16,14 @@ import time
 import httpx
 import pytest
 import respx
+from hypothesis import given, settings, strategies as st
 
 import davellm_edit
 from conftest import TEST_API_KEY, TEST_NODE_URL
 from daveharness import run_tool
 from davellm_edit import (
-    COUNT_MISMATCH, EDIT_FAILED, FILE_CHANGED, MULTIPLE_LINKS, NO_CHANGE, TEMP_PREFIX, TEXT_NOT_FOUND,
+    COUNT_MISMATCH, EDIT_FAILED, EDIT_MAX_REPLACEMENTS, FILE_CHANGED, MULTIPLE_LINKS, NO_CHANGE, OVERLAPPING,
+    TEMP_PREFIX, TEXT_NOT_FOUND, occurrences,
 )
 from davellm_files import (
     FILE_NOT_FOUND, NOT_A_REGULAR_FILE, NOT_TEXT, PATH_NOT_ALLOWED, READ_MAX_FILE_BYTES, FileTooLarge,
@@ -135,6 +137,71 @@ def test_expected_count_must_match_before_every_occurrence_is_replaced(editor, h
     assert target.read_text(encoding="utf-8") == "debug = False\nverbose = False\ncache = False\n"
     # An explicit null means the default count, as the schema allows.
     ok(router, path=str(target), old_text="cache = False", new_text="cache = None", expected_count=None)
+
+
+@pytest.mark.parametrize(("content", "old_text"), [
+    pytest.param(b"aaa\n", "aa", id="aaa"),
+    pytest.param(b"babab\n", "bab", id="babab"),
+    pytest.param("party: \U0001f389\U0001f389\U0001f389\n".encode("utf-8"), "\U0001f389\U0001f389", id="emoji-run"),
+    pytest.param(b"x\r\nx\r\nx\r\n", "x\nx", id="crlf"),
+])
+def test_overlapping_occurrences_count_and_are_never_replaced(editor, hostile_tree, content, old_text):
+    # str.count sees one non-overlapping match in each file, so a count of 1 used to pass and
+    # the edit silently took the first. There are two, and they share text.
+    router, _ = editor()
+    target = hostile_tree.at("docs/overlap.txt")
+    target.write_bytes(content)
+    refused_without_effects(
+        router, hostile_tree, COUNT_MISMATCH.format(found=2, expected=1),
+        path=str(target), old_text=old_text, new_text="X",
+    )
+    # A matching count is still refused: no single replacement can apply to both.
+    refused_without_effects(
+        router, hostile_tree, OVERLAPPING.format(found=2),
+        path=str(target), old_text=old_text, new_text="X", expected_count=2,
+    )
+    assert target.read_bytes() == content
+
+
+def test_any_overlapping_pair_refuses_and_touching_matches_are_not_overlapping(editor, hostile_tree):
+    router, _ = editor()
+    target = hostile_tree.at("docs/overlap.txt")
+    target.write_text("aa then aaa\n", encoding="utf-8")  # "aa" at 0, 8 and 9: only the last pair overlaps
+    refused_without_effects(
+        router, hostile_tree, OVERLAPPING.format(found=3),
+        path=str(target), old_text="aa", new_text="b", expected_count=3,
+    )
+    target.write_text("abab\n", encoding="utf-8")  # "ab" at 0 and 2: adjacent, sharing nothing
+    result = ok(router, path=str(target), old_text="ab", new_text="X", expected_count=2)
+    assert result["replacements"] == 2
+    assert target.read_text(encoding="utf-8") == "XX\n"
+
+
+def test_counts_past_the_largest_expected_count_are_reported_as_more_than_it(editor, hostile_tree):
+    router, _ = editor()
+    target = hostile_tree.at("docs/many.txt")
+    target.write_text("a" * 150 + "\n", encoding="utf-8")  # "aa" 149 times overlapping, 75 by str.count
+    refused_without_effects(
+        router, hostile_tree, COUNT_MISMATCH.format(found=f"more than {EDIT_MAX_REPLACEMENTS}", expected=100),
+        path=str(target), old_text="aa", new_text="b", expected_count=100,
+    )
+    target.write_text("a" * 101 + "\n", encoding="utf-8")  # "a" exactly 101 times, still too many
+    refused_without_effects(
+        router, hostile_tree, COUNT_MISMATCH.format(found=f"more than {EDIT_MAX_REPLACEMENTS}", expected=1),
+        path=str(target), old_text="a", new_text="b",
+    )
+
+
+@settings(max_examples=300, derandomize=True, deadline=None)
+@given(
+    # Two symbols, so needles that overlap themselves ("aa", "a\U0001f389a") come up often.
+    st.text(alphabet="a\U0001f389", max_size=30),
+    st.text(alphabet="a\U0001f389", min_size=1, max_size=4),
+    st.integers(1, 8),
+)
+def test_occurrences_finds_every_start_overlaps_included(text, needle, limit):
+    every = [index for index in range(len(text)) if text.startswith(needle, index)]
+    assert occurrences(text, needle, limit) == every[:limit]
 
 
 def test_crlf_files_match_lf_text_and_keep_crlf(editor, hostile_tree):
@@ -587,6 +654,71 @@ def test_an_edit_that_cannot_apply_is_refused_before_approval(editor, hostile_tr
     assert len(route.calls) == 2
     assert hostile_tree.snapshot() == before
     assert temporaries(hostile_tree) == []
+
+
+@pytest.mark.parametrize(("content", "old_text"), [
+    (b"aaa\n", "aa"),
+    (b"babab\n", "bab"),
+    ("🎉🎉🎉\n".encode("utf-8"), "🎉🎉"),
+    (b"x\r\nx\r\nx\r\n", "x\nx"),
+])
+@pytest.mark.parametrize("expected", [1, 2])
+def test_overlaps_are_refused_before_approval(editor, hostile_tree, content, old_text, expected):
+    _, client = editor()
+    hostile_tree.at("docs/overlap.txt").write_bytes(content)
+    before = hostile_tree.snapshot()
+    with client, respx.mock(assert_all_called=True) as mock:
+        error, state, _ = refused_before_approval(client, mock, {
+            "path": "docs/overlap.txt", "old_text": old_text, "new_text": "X", "expected_count": expected,
+        })
+    message = COUNT_MISMATCH.format(found=2, expected=1) if expected == 1 else OVERLAPPING.format(found=2)
+    assert error == message
+    assert state["snapshot"]["errors"] == 1 and state["snapshot"]["tool_calls"] == 1
+    assert hostile_tree.snapshot() == before
+    assert temporaries(hostile_tree) == []
+
+
+def test_overlap_count_limit_is_preserved_before_approval(editor, hostile_tree):
+    _, client = editor()
+    hostile_tree.at("docs/many.txt").write_text("a" * 150, encoding="utf-8")
+    before = hostile_tree.snapshot()
+    with client, respx.mock(assert_all_called=True) as mock:
+        error, _, _ = refused_before_approval(client, mock, {
+            "path": "docs/many.txt", "old_text": "aa", "new_text": "X", "expected_count": 100,
+        })
+    assert error == COUNT_MISMATCH.format(found=f"more than {EDIT_MAX_REPLACEMENTS}", expected=100)
+    assert hostile_tree.snapshot() == before
+
+
+def test_touching_matches_pass_preflight_and_write_only_after_approval(editor, hostile_tree):
+    _, client = editor()
+    target = hostile_tree.at("docs/touching.txt")
+    target.write_text("abab\n", encoding="utf-8")
+    with client, respx.mock(assert_all_called=True) as mock:
+        run_id, pending, _ = paused_edit(client, mock, {
+            "path": "docs/touching.txt", "old_text": "ab", "new_text": "X", "expected_count": 2,
+        })
+        assert target.read_text(encoding="utf-8") == "abab\n"
+        approved = decide(client, run_id, pending, "approve")
+        assert approved.status_code == 200 and approved.json()["status"] == "completed"
+    assert target.read_text(encoding="utf-8") == "XX\n"
+
+
+def test_overlaps_introduced_after_preflight_are_refused_on_approval(editor, hostile_tree):
+    _, client = editor()
+    target = hostile_tree.at("docs/overlap.txt")
+    target.write_text("aa aa\n", encoding="utf-8")
+    with client, respx.mock(assert_all_called=True) as mock:
+        run_id, pending, route = paused_edit(client, mock, {
+            "path": "docs/overlap.txt", "old_text": "aa", "new_text": "X", "expected_count": 2,
+        })
+        target.write_text("aaa\n", encoding="utf-8")
+        before = hostile_tree.snapshot()
+        approved = decide(client, run_id, pending, "approve")
+        assert approved.status_code == 200
+    [result] = tool_messages(route)
+    assert json.loads(result["content"])["error"] == OVERLAPPING.format(found=2)
+    assert hostile_tree.snapshot() == before
 
 
 def test_an_edit_outside_the_root_is_refused_before_approval(editor, hostile_tree):

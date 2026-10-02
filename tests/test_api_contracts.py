@@ -62,6 +62,36 @@ def test_static_root_is_isolated(router_factory):
         assert client.get(path).status_code == 404, path
 
 
+def test_static_bundle_revalidates_and_api_headers_are_unchanged(router_factory):
+    _, client, _ = router_factory()
+    for path in (
+        "/",
+        "/index.html",
+        "/app.js",
+        "/style.css",
+        "/console.js",
+        "/prompt-contract.js",
+        "/anticipation.js",
+        "/vendor/gsap/gsap.min.js",
+        "/monitoring.html",
+    ):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert response.headers["cache-control"] == "no-cache", path
+        assert response.headers["etag"], path
+        assert response.headers["last-modified"], path
+
+        revalidated = client.get(path, headers={"If-None-Match": response.headers["etag"]})
+        assert revalidated.status_code == 304, path
+        assert revalidated.headers["cache-control"] == "no-cache", path
+        assert revalidated.content == b"", path
+
+    assert "cache-control" not in client.get("/health").headers
+    assert "cache-control" not in client.get("/nodes", headers=AUTH).headers
+    assert "cache-control" not in client.get("/nodes").headers
+    assert "cache-control" not in client.get("/app.py").headers
+
+
 def test_inventory_backed_node_and_model_selection(router_factory):
     router, client, _ = router_factory()
     with respx.mock(assert_all_called=True) as mock:

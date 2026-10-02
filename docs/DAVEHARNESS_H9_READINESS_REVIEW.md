@@ -1,6 +1,6 @@
 # H9 readiness review
 
-Evidence date: 2026-10-01. Source baseline: `19eb774e75cb9e6f1de33c450342084004c8b07e` on local and remote main. This is an evidence reconciliation, not qualification or human acceptance. DaveHarness remains `1.0.0-rc.1`; DaveLLM remains `2.1.0`.
+Evidence date: 2026-10-01. Source baseline: `19eb774e75cb9e6f1de33c450342084004c8b07e` on local and remote main. This is an evidence reconciliation, not qualification or human acceptance. DaveHarness remains `1.0.0-rc.1`; DaveLLM remains `2.1.0`. Same-day follow-up corrections (context-size and access evidence, CI enforcement) start from `8822ce0d383d3dff2c00f7fb6fd533ab8f40a195`.
 
 ## Delivery and authorization
 
@@ -16,6 +16,7 @@ Baseline CI [36837819168](https://github.com/DaveHomeAssist/DaveLLM/actions/runs
 |---|---|---|
 | Boundary | Generic DaveHarness, independent HTTP client and case-confined handlers | DaveLLM's `invoke_harness_model`, registered handlers and host context, with an evaluation-owned Harness |
 | Transport at baseline | OpenAI-compatible `/v1/chat/completions` | Native Ollama `/api/chat` through DaveLLM |
+| Context size | None sent; the node's own Ollama setting decides | `num_ctx` from `chat_num_ctx`: model window capped at `DAVE_CHAT_NUM_CTX` (default 16,384, floor 8,192) |
 | Target | Fixed Walter `qwen3-coder:30b`, pinned digest | Explicit `--target NODE_ID:MODEL_ID` from configured inventory |
 | Corpus | 500 fixed cases: 20 families × five variants × five repeats | Eleven baseline cases repeated; selectable cases and optional extended cases |
 | Qualification | Four plan thresholds, full corpus and fixed task/effect assertions | Quota, four thresholds, no runner errors and valid lifecycle accounting; task success reported separately |
@@ -50,10 +51,24 @@ PR #45 records fixture-backed browser checks at seven widths and native startup/
 - Walter resolved from existing Tailscale inventory and reported online. Bounded GET `/api/tags` succeeded and included `qwen3-coder:30b` at the previously pinned digest `06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca`.
 - GET `/api/ps` returned an empty model list. A five-second TCP connection probe to SSH port 22 timed out. No authentication or service-log access was established. No completion request was sent.
 - Tailscale emitted a client/server version mismatch warning. This is an observation, not an established cause of SSH or inference failure.
-- Addresses and credentials are omitted. Current inference health and the underlying September 23 transport cause remain unknown; do not infer an OOM or crash.
+- Addresses and credentials are omitted. Current inference health remains unknown. The September 23 cause is not established; see [context-size and access evidence](#context-size-and-access-evidence) for later evidence that bears on it.
+
+## Context-size and access evidence
+
+Added 2026-10-01 after the reconciliation above. Each item carries its own date and source.
+
+- **Remote-shell ports unreachable from the tailnet (Confirmed 2026-10-01).** Tailscale lists Walter as a Windows host, so Tailscale's integrated SSH server is not available. Five-second TCP probes from the router host to SSH (22), RDP (3389) and WinRM (5985, 5986) all timed out; only the Ollama API port answered. A timeout shows only that the probe got no answer: a firewall rule, interface binding or stopped service would look the same, and Walter's service configuration was not inspected. The September 23 and October 1 SSH timeouts are therefore one standing condition, not a new fault. Until it changes, SSH cannot supply the diagnostic access the [results](DAVEHARNESS_H9_RESULTS.md) resume condition asks for; node-side diagnosis goes through the read-only Ollama API or through Dave at Walter (Ollama app settings and server log).
+- **Context-size out-of-memory on the pinned target (2026-09-25).** The local cluster benchmark (`perf-runs/2026-09-25/summary.md` in DaveLLM's application-support folder, outside this repository) loaded `qwen3-coder:30b` on Walter at Ollama's default context of 131,072 tokens and got HTTP 500, `llama-server reported out-of-memory during startup`. With `num_ctx` 8,192 the same model loaded (18.26 GiB resident, 32.4% on GPU) and generated at 21.56 tokens per second. Walter has 32 GB of RAM and an 8 GB laptop GPU.
+- **Server setting lowered (2026-09-26, not re-verified).** On Windows the Ollama app's Context length setting overrides `OLLAMA_CONTEXT_LENGTH`. Walter's was at 128k; Dave lowered it to 16k on 2026-09-26, and an operator check through `/v1` then loaded `qwen3-coder:30b` and generated normally. This comes from that day's operator session record. It was not re-checked on 2026-10-01: no inference was authorized, and `/api/ps` cannot show the setting while no model is loaded.
+- **Bearing on September 23 (Likely contributor, not established).** The September 23 attempts used the same node, model and `/v1` transport with no context option, before the setting changed, so a context-size out-of-memory is a likely contributor to the first `model_error`. It does not by itself explain the later 120-second `model_timeout`, and the September 23 record holds no node-side error text. The [results](DAVEHARNESS_H9_RESULTS.md) record's "not established" finding stands.
+- **Runner consequence.** The fixed runner sends no context option, so its context size is whatever Walter's server setting is at dispatch time. The adapter runner sets `num_ctx` itself (at most 16,384 by default). The two runners can therefore run the same target at different context sizes, which the governing-runner decision should account for.
+
+## CI enforcement
+
+Until 2026-10-01, `main` had no branch protection or rulesets. CI ran on every push and pull request but did not gate merges, so earlier "required check" statements, including this review's baseline paragraph, describe practice rather than enforcement; the cited checks did pass. On 2026-10-01 branch protection on `main` began requiring `checks (3.12)`, `checks (3.13)` and `checks (3.14)` from GitHub Actions before a pull request merges. Branches need not be up to date, and administrators are not enforced, so an administrator can still push directly or bypass the gate.
 
 ## Remaining gates and handoff
 
-Completed by this package: current-state documentation and bounded access observations. H9 actions 55–60 remain incomplete. Failed access probe: SSH TCP timeout. Skipped by scope: inference, model loading, service changes, runtime mutations and full desktop acceptance.
+Completed by this package: current-state documentation and bounded access observations. H9 actions 55–60 remain incomplete. SSH TCP timeout: the same unreachable condition seen on September 23, not a new failure (see [context-size and access evidence](#context-size-and-access-evidence)). Skipped by scope: inference, model loading, service changes, runtime mutations and full desktop acceptance.
 
-Next decision: define which qualification path/corpus/catalog governs action 56 and explicitly renew target, disposable roots, scope and budget before any live run. Resource enforcement and exit semantics must be reviewed against that decision before dispatch. Then collect the required per-model evidence and restrictions, complete actions 57–59 on the exact candidate and obtain action 60 human acceptance. Public release/tag/package/service/repository remains separately authorized. Preserve the historical attempt and do not reset its ledger.
+Next decision: define which qualification path/corpus/catalog governs action 56 and explicitly renew target, disposable roots, scope and budget before any live run. Resource enforcement and exit semantics must be reviewed against that decision before dispatch. Before any fixed-runner dispatch, record Walter's context setting in the run report (confirmed with Dave, since it cannot be read remotely without loading a model), or choose the adapter runner, which sets the context itself. Then collect the required per-model evidence and restrictions, complete actions 57–59 on the exact candidate and obtain action 60 human acceptance. Public release/tag/package/service/repository remains separately authorized. Preserve the historical attempt and do not reset its ledger.

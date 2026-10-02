@@ -1299,7 +1299,7 @@ def tool_shell_exec(params: Dict, context=None):
         return ToolResult(tool="shell.exec", status="error", result="", error=str(e))
 
 
-ASYNC_TOOL_HANDLER_ALLOWLIST = frozenset({"web.fetch", "web.search", "web.read"})
+ASYNC_TOOL_HANDLER_ALLOWLIST = frozenset({"web.fetch", "web.search", "web.read", "notion.page.read", "notion.page.append", "notion.block.update"})
 TOOL_REGISTRY = ToolRegistry(
     async_handler_allowlist=ASYNC_TOOL_HANDLER_ALLOWLIST,
 )
@@ -1519,6 +1519,57 @@ async def tool_web_read(params: Dict) -> ToolResult:
         params, validate_public_url=validate_public_url, max_bytes=MAX_WEB_FETCH_BYTES,
         max_redirects=MAX_WEB_FETCH_REDIRECTS, output_limit=MAX_TOOL_OUTPUT,
     ))
+
+
+from davellm_notion import (  # Notion page tools, kept below the web handlers
+    APPEND_BLOCK_TYPES as NOTION_APPEND_BLOCK_TYPES, NOTION_APPEND_MAX_BLOCKS, NOTION_PAGE_NAME_MAX_CHARS,
+    NOTION_DISPLAY_MAX_CHARS, NOTION_READ_TIMEOUT_SECONDS, NOTION_REF_MAX_CHARS, NOTION_TEXT_MAX_CHARS,
+    NOTION_WRITE_TIMEOUT_SECONDS,
+    NotionLedgers, NotionSettings, NotionToolError, PageWriteGuard, RunLedger,
+    append_blocks as notion_append_blocks, pending_context as notion_pending_context, read_page as notion_read_page,
+    update_block as notion_update_block,
+)
+
+# Honored only with DAVE_ENABLE_TOOLS. The token comes only from the environment
+# and is never stored by the launcher, logged, or returned.
+NOTION_TOOLS_ENABLED = TOOLS_ENABLED and _env_flag("DAVE_ENABLE_NOTION_TOOLS")
+NOTION_SETTINGS = NotionSettings.from_values(os.getenv("DAVE_NOTION_TOKEN"), os.getenv("DAVE_NOTION_PAGES"))
+NOTION_LEDGERS = NotionLedgers()
+NOTION_WRITE_GUARD = PageWriteGuard()
+
+
+def _notion_ledger() -> Optional[RunLedger]:
+    """Refs live in the run's own ledger; calls outside a lifecycle run get none and are refused."""
+    binding = HOST_RUN_CONTEXT.get()
+    if binding is None or not binding.run_id:
+        return None
+    return NOTION_LEDGERS.for_run(binding.run_id)
+
+
+async def _run_notion_tool(name: str, work) -> ToolResult:
+    """Only NotionToolError messages reach the model; anything else becomes a fixed message."""
+    try:
+        payload = await work
+    except NotionToolError as exc:
+        return ToolResult(tool=name, status="error", result="", error=str(exc))
+    except Exception:
+        return ToolResult(tool=name, status="error", result="", error=f"{name} failed")
+    return ToolResult(tool=name, status="success", result=encode_result(payload))
+
+
+async def tool_notion_page_read(params: Dict) -> ToolResult:
+    return await _run_notion_tool("notion.page.read", notion_read_page(
+        params, settings=NOTION_SETTINGS, ledger=_notion_ledger()))
+
+
+async def tool_notion_page_append(params: Dict) -> ToolResult:
+    return await _run_notion_tool("notion.page.append", notion_append_blocks(
+        params, settings=NOTION_SETTINGS, ledger=_notion_ledger(), guard=NOTION_WRITE_GUARD))
+
+
+async def tool_notion_block_update(params: Dict) -> ToolResult:
+    return await _run_notion_tool("notion.block.update", notion_update_block(
+        params, settings=NOTION_SETTINGS, ledger=_notion_ledger(), guard=NOTION_WRITE_GUARD))
 
 
 from davellm_edit import check_edit  # the file.edit approval preflight, kept below every tool handler
@@ -1933,6 +1984,121 @@ def extended_tool_definitions() -> List[ToolDefinition]:
     ]
 
 
+NOTION_PAGE_SCHEMA = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": NOTION_PAGE_NAME_MAX_CHARS,
+    "description": "The configured name of the Notion page, such as adapter-test; an unknown name lists the configured ones.",
+}
+NOTION_TEXT_SCHEMA = {"type": "string", "maxLength": NOTION_TEXT_MAX_CHARS}
+
+
+def notion_tool_definitions() -> List[ToolDefinition]:
+    """Tools gated by DAVE_ENABLE_NOTION_TOOLS: read configured pages, and approved, verified writes."""
+    return [
+        ToolDefinition(
+            name="notion.page.read",
+            description=(
+                "Read a Notion page the operator configured for DaveLLM, by its configured name. Returns the "
+                "title and the blocks in order, each with a ref such as b3 that notion.block.update uses in "
+                "this run. Text is plain; blocks marked formatted keep their formatting when edited."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {"page": NOTION_PAGE_SCHEMA},
+                "required": ["page"],
+                "additionalProperties": False,
+            },
+            handler=tool_notion_page_read,
+            permission="read",
+            timeout_seconds=NOTION_READ_TIMEOUT_SECONDS,
+            cancellation="bounded",
+            async_handler=True,
+        ),
+        ToolDefinition(
+            name="notion.page.append",
+            description=(
+                "Add plain-text blocks to the end of a configured Notion page: paragraphs, headings, list "
+                "items, quotes, or to-dos. The result says whether the blocks were verified on the page. "
+                "Needs the user's approval, which shows the page and every block."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "page": NOTION_PAGE_SCHEMA,
+                    "blocks": {
+                        "type": "array",
+                        "description": f"1 to {NOTION_APPEND_MAX_BLOCKS} blocks, added in this order.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string", "enum": list(NOTION_APPEND_BLOCK_TYPES)},
+                                "text": {**NOTION_TEXT_SCHEMA, "description": "Plain text; no Markdown."},
+                                "checked": _optional({
+                                    "type": "boolean", "description": "Only for to_do blocks; default false.",
+                                }),
+                            },
+                            "required": ["type", "text"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["page", "blocks"],
+                "additionalProperties": False,
+            },
+            handler=tool_notion_page_append,
+            permission="write",
+            approval_required=True,
+            timeout_seconds=NOTION_WRITE_TIMEOUT_SECONDS,
+            cancellation="bounded",
+            async_handler=True,
+        ),
+        ToolDefinition(
+            name="notion.block.update",
+            description=(
+                "Change one block that notion.page.read returned in this run: replace old_text with new_text "
+                "inside it, and/or check or uncheck a to-do. old_text must occur once and stay inside one "
+                "formatting run, so the block keeps its formatting. To check or uncheck a to-do, also give "
+                "block_text, the to-do's text. Nothing is sent if the block changed or moved since it was read. "
+                "Needs the user's approval, which shows the text before and after or the to-do."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "page": NOTION_PAGE_SCHEMA,
+                    "block": {
+                        "type": "string", "minLength": 2, "maxLength": NOTION_REF_MAX_CHARS,
+                        "description": "A block ref from notion.page.read in this run, such as b3.",
+                    },
+                    "old_text": _optional({
+                        **NOTION_TEXT_SCHEMA, "minLength": 1,
+                        "description": "The exact text to replace, copied from the block.",
+                    }),
+                    "new_text": _optional({
+                        **NOTION_TEXT_SCHEMA, "description": "The replacement text; empty deletes old_text.",
+                    }),
+                    "checked": _optional({
+                        "type": "boolean", "description": "For a to-do: true checks it, false unchecks it.",
+                    }),
+                    "block_text": _optional({
+                        "type": "string", "maxLength": NOTION_DISPLAY_MAX_CHARS,
+                        "description": "The block's whole text as notion.page.read showed it; required when only "
+                                       "checked changes.",
+                    }),
+                },
+                "required": ["page", "block"],
+                "additionalProperties": False,
+            },
+            handler=tool_notion_block_update,
+            permission="write",
+            approval_required=True,
+            timeout_seconds=NOTION_WRITE_TIMEOUT_SECONDS,
+            cancellation="bounded",
+            async_handler=True,
+        ),
+    ]
+
+
 def register_builtin_tools() -> None:
     """Load built-in schemas and handlers into the revocable runtime registry."""
     definitions = [
@@ -2047,6 +2213,8 @@ def register_builtin_tools() -> None:
         )
     if EXTENDED_TOOLS_ENABLED:
         definitions.extend(extended_tool_definitions())
+    if NOTION_TOOLS_ENABLED:
+        definitions.extend(notion_tool_definitions())
     for definition in definitions:
         TOOL_REGISTRY.register(definition)
         HARNESS_REGISTRY.register(
@@ -2069,6 +2237,7 @@ class HostRunBinding:
     brain_revision: Optional[int]
     brain_digest: Optional[str]
     context_budget: dict
+    run_id: Optional[str] = None
 
 
 HOST_RUN_BINDINGS: dict[str, HostRunBinding] = {}
@@ -2082,6 +2251,7 @@ MAX_HARNESS_MODEL_RESPONSE_BYTES = 1_000_000
 HARNESS_STORE_HEADROOM_BYTES = 4_000_000
 HARNESS_STORE = InMemoryRunStore(max_runs=32, max_bytes=268_435_456, ttl_seconds=3600)
 HARNESS_STORE.add_remove_listener(lambda run_id: HOST_RUN_BINDINGS.pop(run_id, None))
+HARNESS_STORE.add_remove_listener(NOTION_LEDGERS.drop)
 
 
 def _env_seconds(name: str, default: float) -> float:
@@ -3802,7 +3972,7 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
     binding = HostRunBinding(
         user_id, node.url, req.model, req.max_tokens, req.temperature,
         project_id, context_budget.get("brain_revision"),
-        context_budget.get("brain_digest"), context_budget,
+        context_budget.get("brain_digest"), context_budget, run_id,
     )
     try:
         request = RunRequest.create(
@@ -3910,6 +4080,21 @@ async def decide_agent_run(
     finally:
         HOST_RUN_CONTEXT.reset(token)
     return _lifecycle_response(run_id, decided, binding)
+
+
+@app.get("/tools/agent/runs/{run_id}/pending/notion-context")
+def notion_pending_context_route(run_id: str, user_id: str = Depends(get_current_user)):
+    """The run's own record of what a pending Notion call would change, for the approval card."""
+    if not TOOLS_ENABLED or not NOTION_TOOLS_ENABLED:
+        raise HTTPException(404, "No Notion approval is pending")
+    result, _ = _lifecycle_run(run_id, user_id)
+    pending = result.snapshot.pending_call if result.snapshot else None
+    context = notion_pending_context(
+        pending.tool_name, pending.arguments, settings=NOTION_SETTINGS, ledger=NOTION_LEDGERS.for_run(run_id),
+    ) if pending is not None else None
+    if context is None:
+        raise HTTPException(404, "No Notion approval is pending")
+    return context
 
 
 @app.post("/tools/agent/runs/{run_id}/cancel")
@@ -4851,9 +5036,23 @@ def export_conversation(conversation_id: str, format: str = "markdown", user_id:
 # STATIC FILES
 # ============================================================
 
+class RevalidatedStaticFiles(StaticFiles):
+    """Static bundle that browsers revalidate on every load.
+
+    index.html loads its scripts and styles by fixed URLs, so heuristic freshness
+    kept an old app.js running against a newer router. `no-cache` keeps the
+    ETag/Last-Modified 304 path; API routes set their own headers.
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Serve only the explicit browser bundle. Source, Git metadata, and data stay private.
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+app.mount("/", RevalidatedStaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 # ============================================================
 # STARTUP/SHUTDOWN HOOKS

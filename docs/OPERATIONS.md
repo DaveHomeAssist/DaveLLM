@@ -40,6 +40,10 @@ export DAVE_SEARCH_URL='http://<searxng-host>:8890'   # optional: enables web.se
 
 `DAVE_ENABLE_SHELL_TOOL=true` separately enables `shell.exec`. See [DaveLLM tools](DAVELLM_TOOLS.md) for arguments, limits, and protected paths.
 
+### Notion
+
+`DAVE_ENABLE_NOTION_TOOLS=true` adds the Notion tools. They need an internal Notion connection's secret in `DAVE_NOTION_TOKEN` and the pages shared with that connection named in `DAVE_NOTION_PAGES`; see [Notion tools](DAVELLM_TOOLS.md#notion-tools). The launcher does not store or set these. To try them, export the three variables in a terminal and start the router from that terminal (for example `zsh scripts/macos/launch-davellm.sh`, which passes its environment through); the Launcher app started from Finder does not see shell exports.
+
 ### Web search
 
 `web.search` needs a SearXNG instance the router can reach, with the JSON format enabled. A minimal `settings.yml`:

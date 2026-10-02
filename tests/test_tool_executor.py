@@ -315,6 +315,7 @@ async def test_executor_pauses_before_unapproved_mutation():
 
 
 EXTENDED_ASYNC_TOOLS = frozenset({"web.search", "web.read"})
+NOTION_ASYNC_TOOLS = frozenset({"notion.page.read", "notion.page.append", "notion.block.update"})
 
 
 def test_first_party_handlers_require_named_async_opt_in(router_factory):
@@ -330,7 +331,7 @@ def test_first_party_handlers_require_named_async_opt_in(router_factory):
             async_names.add(name)
             assert name in router.ASYNC_TOOL_HANDLER_ALLOWLIST
 
-    assert async_names == router.ASYNC_TOOL_HANDLER_ALLOWLIST - EXTENDED_ASYNC_TOOLS
+    assert async_names == router.ASYNC_TOOL_HANDLER_ALLOWLIST - EXTENDED_ASYNC_TOOLS - NOTION_ASYNC_TOOLS
     assert inspect.iscoroutinefunction(router.tool_web_fetch)
     for handler in (
         router.tool_system_info,

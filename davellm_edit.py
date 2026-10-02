@@ -3,8 +3,11 @@
 An edit replaces ``old_text`` with ``new_text`` in an existing UTF-8 text file
 inside a tool root. It is refused unless ``old_text`` occurs exactly
 ``expected_count`` times, so an approval always covers exactly the change it
-showed. The path goes through the same admission as every extended tool
-(``resolve_extended_tool_path``: anchoring, containment, secret denylist).
+showed. Occurrences are counted overlapping ones included ("aaa" holds "aa"
+twice), and an edit whose occurrences overlap is refused even when the count
+matches, because no single replacement can apply to all of them. The path goes
+through the same admission as every extended tool (``resolve_extended_tool_path``:
+anchoring, containment, secret denylist).
 
 The write is atomic and never follows a symlink:
 
@@ -53,6 +56,10 @@ TEMP_PREFIX = ".davellm-edit-"
 
 TEXT_NOT_FOUND = "old_text was not found in the file; nothing was written"
 COUNT_MISMATCH = "old_text was found {found} times, not the expected {expected}; nothing was written"
+OVERLAPPING = (
+    "old_text was found {found} times, but the occurrences overlap, so they cannot all be replaced; "
+    "nothing was written"
+)
 NO_CHANGE = "old_text and new_text are the same"
 FILE_CHANGED = "The file changed while the edit was being prepared; nothing was written"
 MULTIPLE_LINKS = "File has more than one hard link"
@@ -74,6 +81,21 @@ def line_endings(text: str) -> str:
 def in_file_style(value: str, endings: str) -> str:
     """``value`` with its line breaks written the way the file writes them."""
     return value.replace("\r\n", "\n").replace("\n", "\r\n") if endings == "crlf" else value
+
+
+def occurrences(text: str, needle: str, limit: int) -> list[int]:
+    """Where ``needle`` starts in ``text``, overlapping matches included, stopping after ``limit``.
+
+    "aaa" holds "aa" at 0 and 1; ``str.count`` sees only one. The limit keeps
+    the scan linear: without it, a long repetitive needle in a large repetitive
+    file would be checked again at every position.
+    """
+    starts: list[int] = []
+    start = text.find(needle)
+    while start != -1 and len(starts) < limit:
+        starts.append(start)
+        start = text.find(needle, start + 1)
+    return starts
 
 
 def _open_parent(path: Path) -> int:
@@ -178,12 +200,18 @@ def _plan(directory: int, name: str, old: str, new: str, expected: int) -> _Plan
         raise FileToolError(NOT_TEXT)
     endings = line_endings(text)
     needle, replacement = in_file_style(old, endings), in_file_style(new, endings)
-    found = text.count(needle)
+    # One match past the largest allowed count is enough to refuse any expected_count.
+    starts = occurrences(text, needle, EDIT_MAX_REPLACEMENTS + 1)
+    found = len(starts)
     if found == 0:
         raise FileToolError(TEXT_NOT_FOUND)
     if found != expected:
-        raise FileToolError(COUNT_MISMATCH.format(found=found, expected=expected))
-    first_line = text.count("\n", 0, text.index(needle)) + 1
+        shown = f"more than {EDIT_MAX_REPLACEMENTS}" if found > EDIT_MAX_REPLACEMENTS else found
+        raise FileToolError(COUNT_MISMATCH.format(found=shown, expected=expected))
+    if any(later - earlier < len(needle) for earlier, later in zip(starts, starts[1:])):
+        raise FileToolError(OVERLAPPING.format(found=found))
+    first_line = text.count("\n", 0, starts[0]) + 1
+    # The matches are disjoint, so replace() finds exactly these and no others.
     updated = text.replace(needle, replacement).encode("utf-8")
     if len(updated) > READ_MAX_FILE_BYTES:
         raise FileTooLarge(READ_MAX_FILE_BYTES)
