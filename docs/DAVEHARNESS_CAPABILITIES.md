@@ -8,9 +8,9 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 
 ## Summary
 
-- 23 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 17 from `DAVE_ENABLE_EXTENDED_TOOLS`.
-- Exact-call approval required: `file.append`, `file.edit`, `file.write`, `shell.exec`.
-- Tools by permission: `execute_process` 1; `public_network` 3; `read` 4; `read_files` 10; `read_system` 2; `write_files` 3.
+- 26 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 17 from `DAVE_ENABLE_EXTENDED_TOOLS`, 3 from `DAVE_ENABLE_NOTION_TOOLS`.
+- Exact-call approval required: `file.append`, `file.edit`, `file.write`, `notion.block.update`, `notion.page.append`, `shell.exec`.
+- Tools by permission: `execute_process` 1; `public_network` 3; `read` 5; `read_files` 10; `read_system` 2; `write` 2; `write_files` 3.
 - Every tool schema rejects unknown arguments (`additionalProperties: false`).
 - Definition fingerprints are not listed: they depend on the checkout path and Python version. `tests/fixtures/davellm/tool_catalog.json` pins their portable inputs.
 
@@ -21,6 +21,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | `DAVE_ENABLE_TOOLS` | `false` | `file.append`, `file.read`, `file.write`, `system.info`, `web.fetch` | Turns on tool execution and the core tools. |
 | `DAVE_ENABLE_SHELL_TOOL` | `false` | `shell.exec` | Registers shell.exec. Execution still needs DAVE_ENABLE_TOOLS. |
 | `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | `chat.search`, `cluster.status`, `file.edit`, `file.list`, `file.read_lines`, `file.search`, `git.diff`, `git.log`, `git.show`, `git.status`, `md.outline`, `md.section`, `project.artifacts`, `project.brain.read`, `project.notepad.read`, `web.read`, `web.search` | Registers the extended tools: bounded reads, web.search and web.read, plus file.edit, which needs approval for every call. Honored only with DAVE_ENABLE_TOOLS. |
+| `DAVE_ENABLE_NOTION_TOOLS` | `false` | `notion.block.update`, `notion.page.append`, `notion.page.read` | Registers notion.page.read, plus notion.page.append and notion.block.update, which need approval for every call and verify each write. Needs DAVE_NOTION_TOKEN and DAVE_NOTION_PAGES at call time. Honored only with DAVE_ENABLE_TOOLS. |
 | `DAVE_TOOL_ROOTS` | `[]` | — | JSON array of absolute folders that file and Git tools may use. |
 
 ## Tools
@@ -42,6 +43,9 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`git.status`](#gitstatus) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path` |
 | [`md.outline`](#mdoutline) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, `max_headings` |
 | [`md.section`](#mdsection) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, **`heading`**, `include_subsections` |
+| [`notion.block.update`](#notionblockupdate) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call | `60.0` | `bounded` | async | **`page`**, **`block`**, `old_text`, `new_text`, `checked`, `block_text` |
+| [`notion.page.append`](#notionpageappend) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call | `60.0` | `bounded` | async | **`page`**, **`blocks`** |
+| [`notion.page.read`](#notionpageread) | `DAVE_ENABLE_NOTION_TOOLS` | `read` | — | `30.0` | `bounded` | async | **`page`** |
 | [`project.artifacts`](#projectartifacts) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | `artifact`, `max_entries` |
 | [`project.brain.read`](#projectbrainread) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | — |
 | [`project.notepad.read`](#projectnotepadread) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | — |
@@ -195,6 +199,36 @@ Read the lines under one heading of a Markdown file inside an allowed tool root,
 | `heading` | string | yes | maxLength `500`, minLength `1` | The heading text, without the leading # marks. |
 | `include_subsections` | boolean or null | no | default `true` | false stops at the first subheading. |
 
+### notion.block.update
+
+Change one block that notion.page.read returned in this run: replace old_text with new_text inside it, and/or check or uncheck a to-do. old_text must occur once and stay inside one formatting run, so the block keeps its formatting. To check or uncheck a to-do, also give block_text, the to-do's text. Nothing is sent if the block changed or moved since it was read. Needs the user's approval, which shows the text before and after or the to-do.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `page` | string | yes | maxLength `40`, minLength `1` | The configured name of the Notion page, such as adapter-test; an unknown name lists the configured ones. |
+| `block` | string | yes | maxLength `8`, minLength `2` | A block ref from notion.page.read in this run, such as b3. |
+| `old_text` | string or null | no | maxLength `2000`, minLength `1` | The exact text to replace, copied from the block. |
+| `new_text` | string or null | no | maxLength `2000` | The replacement text; empty deletes old_text. |
+| `checked` | boolean or null | no | — | For a to-do: true checks it, false unchecks it. |
+| `block_text` | string or null | no | maxLength `4000` | The block's whole text as notion.page.read showed it; required when only checked changes. |
+
+### notion.page.append
+
+Add plain-text blocks to the end of a configured Notion page: paragraphs, headings, list items, quotes, or to-dos. The result says whether the blocks were verified on the page. Needs the user's approval, which shows the page and every block.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `page` | string | yes | maxLength `40`, minLength `1` | The configured name of the Notion page, such as adapter-test; an unknown name lists the configured ones. |
+| `blocks` | array | yes | items `{"type": "object", "properties": {"type": {"type": "string", "enum": ["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "quote"]}, "text": {"type": "string", "maxLength": 2000, "description": "Plain text; no Markdown."}, "checked": {"type": ["boolean", "null"], "description": "Only for to_do blocks; default false."}}, "required": ["type", "text"], "additionalProperties": false}` | 1 to 50 blocks, added in this order. |
+
+### notion.page.read
+
+Read a Notion page the operator configured for DaveLLM, by its configured name. Returns the title and the blocks in order, each with a ref such as b3 that notion.block.update uses in this run. Text is plain; blocks marked formatted keep their formatting when edited.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `page` | string | yes | maxLength `40`, minLength `1` | The configured name of the Notion page, such as adapter-test; an unknown name lists the configured ones. |
+
 ### project.artifacts
 
 List the saved artifacts of the project this run belongs to, or read one artifact's text by passing its identifier as artifact.
@@ -320,7 +354,7 @@ DaveHarness's default ceiling for any JSON payload it admits.
 | `max_harness_input_bytes` | `1000000` |
 | `max_harness_model_response_bytes` | `1000000` |
 | `harness_store_headroom_bytes` | `4000000` |
-| `async_handler_allowlist` | `["web.fetch", "web.read", "web.search"]` |
+| `async_handler_allowlist` | `["notion.block.update", "notion.page.append", "notion.page.read", "web.fetch", "web.read", "web.search"]` |
 | `harness_store.max_runs` | `32` |
 | `harness_store.max_bytes` | `268435456` |
 | `harness_store.ttl_seconds` | `3600` |
@@ -337,6 +371,7 @@ DaveHarness's default ceiling for any JSON payload it admits.
 | POST | `/tools/agent/runs/{run_id}/cancel` | X-API-Key | `cancel_agent_run` |
 | POST | `/tools/agent/runs/{run_id}/decisions` | X-API-Key | `decide_agent_run` |
 | GET | `/tools/agent/runs/{run_id}/events` | X-API-Key | `get_agent_run_events` |
+| GET | `/tools/agent/runs/{run_id}/pending/notion-context` | X-API-Key | `notion_pending_context_route` |
 | POST | `/tools/execute` | X-API-Key | `execute_tool_endpoint` |
 
 ## Constants
@@ -534,3 +569,71 @@ Public constants each module defines, including the fixed refusal messages.
 | `WEB_SEARCH_MAX_RESULTS` | `10` |
 | `WEB_SNIPPET_CHARS` | `300` |
 | `WEB_TIMEOUT_SECONDS` | `10.0` |
+
+### davellm_notion
+
+| Name | Value |
+|---|---|
+| `ALREADY_CHECKED` | `Block {ref} is already {state}` |
+| `APPEND_BLOCK_TYPES` | `["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "quote"]` |
+| `BAD_PAGES` | `DAVE_NOTION_PAGES is not a JSON object of page names to Notion page IDs` |
+| `BAD_TOKEN` | `DAVE_NOTION_TOKEN is not a valid Notion secret` |
+| `BLOCK_TEXT_MISMATCH` | `block_text does not match block {ref}; read the page again` |
+| `BLOCK_TEXT_REQUIRED` | `block_text is required when only checked changes: copy the to-do's text from notion.page.read` |
+| `CROSSES_RUNS` | `old_text in block {ref} crosses a formatting change, a link, a mention, or an equation; edit text inside one run so its formatting is kept` |
+| `LEDGER_FULL` | `This run has read too many Notion blocks; start a new run` |
+| `NEEDS_BOTH_TEXTS` | `old_text and new_text must be given together` |
+| `NOTHING_TO_CHANGE` | `Give old_text and new_text, or checked, or both` |
+| `NOTION_API_HOST` | `api.notion.com` |
+| `NOTION_APPEND_MAX_BLOCKS` | `50` |
+| `NOTION_DISPLAY_MAX_CHARS` | `4000` |
+| `NOTION_GET_RETRY_SECONDS` | `1.0` |
+| `NOTION_LIST_MAX_PAGES` | `10` |
+| `NOTION_MAX_PAGES` | `20` |
+| `NOTION_MAX_RESPONSE_BYTES` | `2000000` |
+| `NOTION_MAX_RUNS` | `64` |
+| `NOTION_MIN_REQUEST_SECONDS` | `1.0` |
+| `NOTION_OUTPUT_BUDGET_BYTES` | `49152` |
+| `NOTION_PAGE_NAME_MAX_CHARS` | `40` |
+| `NOTION_PAGE_POLL_SECONDS` | `0.05` |
+| `NOTION_PAGE_SIZE` | `100` |
+| `NOTION_PAGE_WAIT_SECONDS` | `8.0` |
+| `NOTION_PARENT_MAX_DEPTH` | `8` |
+| `NOTION_RATE_LIMIT_MAX_WAIT_SECONDS` | `5.0` |
+| `NOTION_READ_BUDGET_SECONDS` | `25.0` |
+| `NOTION_READ_MAX_BLOCKS` | `300` |
+| `NOTION_READ_MAX_DEPTH` | `3` |
+| `NOTION_READ_MAX_REQUESTS` | `30` |
+| `NOTION_READ_TIMEOUT_SECONDS` | `30.0` |
+| `NOTION_REF_MAX_CHARS` | `8` |
+| `NOTION_REQUEST_TIMEOUT_SECONDS` | `10.0` |
+| `NOTION_RETRY_SECONDS` | `1.0` |
+| `NOTION_RICH_TEXT_MAX_ITEMS` | `100` |
+| `NOTION_RUN_MAX_REFS` | `2000` |
+| `NOTION_RUN_MAX_SNAPSHOT_BYTES` | `8388608` |
+| `NOTION_TEXT_MAX_CHARS` | `2000` |
+| `NOTION_VERSION` | `2026-03-11` |
+| `NOTION_WRITE_BUDGET_SECONDS` | `50.0` |
+| `NOTION_WRITE_MAX_REQUESTS` | `30` |
+| `NOTION_WRITE_TIMEOUT_SECONDS` | `60.0` |
+| `NOT_IN_RUN` | `Notion tools work only inside a tool run started from DaveLLM` |
+| `NOT_REWRITABLE` | `Block {ref} contains {what} that cannot be written back, so its text cannot be edited` |
+| `NOT_TEXT_BLOCK` | `Block {ref} is a {kind} block; only text blocks can be edited` |
+| `NOT_TO_DO` | `Block {ref} is a {kind} block; only to-do blocks can be checked or unchecked` |
+| `NO_PAGES` | `No Notion pages are configured on this router (DAVE_NOTION_PAGES is unset)` |
+| `NO_TOKEN` | `Notion is not configured on this router (DAVE_NOTION_TOKEN is unset)` |
+| `OLD_TEXT_NOT_FOUND` | `old_text was not found in block {ref}` |
+| `OLD_TEXT_REPEATED` | `old_text occurs {count} times in block {ref}; include more surrounding text so it occurs once` |
+| `OTHER_PAGE_REF` | `Block {ref} belongs to page '{actual}', not '{requested}'` |
+| `PAGE_BUSY` | `Another write to this Notion page is still in progress after waiting; try again when it has finished` |
+| `READ_FAILED` | `Notion refused the read {code}` |
+| `REPEAT_IN_FLIGHT` | `An earlier append of these exact blocks to '{page}' in this run is still being written or checked, so it is not repeated. Read the page in a moment to see whether it arrived.` |
+| `REPEAT_REFUSED` | `An earlier append of these exact blocks to '{page}' in this run has an unknown outcome, so it is not repeated. Read the page to check whether it arrived, and ask the user before trying again.` |
+| `REPEAT_UNDELIVERED` | `An earlier append of these exact blocks to '{page}' in this run was verified on the page after the run stopped waiting for it, so it is not repeated.` |
+| `SAME_TEXT` | `old_text and new_text are the same` |
+| `TEXT_BLOCK_TYPES` | `["bulleted_list_item", "callout", "code", "heading_1", "heading_2", "heading_3", "heading_4", "numbered_list_item", "paragraph", "quote", "to_do", "toggle"]` |
+| `TOO_LARGE` | `Notion's response was larger than the 2 MB limit` |
+| `TOO_MANY_RUNS` | `Block {ref} would need more than 100 rich text runs` |
+| `UNKNOWN_REF` | `Unknown block ref {ref}; refs come from notion.page.read in this run` |
+| `UNREACHABLE` | `Notion could not be reached` |
+| `WRITABLE_MENTIONS` | `["database", "date", "page", "user"]` |

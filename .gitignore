@@ -15,6 +15,7 @@ dist/
 tmp_audio_*
 project_uploads/
 .coverage
+.coverage-*
 .hypothesis/
 coverage.xml
 qualification-report.json
