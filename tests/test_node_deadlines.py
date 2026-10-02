@@ -1,5 +1,6 @@
 """Real HTTP reads: inactivity timeouts must not replace whole-reply deadlines."""
 
+import gc
 import json
 import threading
 import time
@@ -68,6 +69,9 @@ def slow_node():
                 finally:
                     self.close_connection = True
 
+        # A full-suite collection pause (0.5-1 s on Python 3.14) exceeds the timing slack.
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
         thread.start()
@@ -78,6 +82,8 @@ def slow_node():
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
+            if gc_was_enabled:
+                gc.enable()
             assert not thread.is_alive()
 
     return serve

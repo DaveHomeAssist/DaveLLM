@@ -68,3 +68,103 @@ test("other tools and malformed edit arguments keep the plain argument view", ()
     assert.equal(approvalPreview({ tool_name: "file.edit", arguments: { old_text: "a", new_text: "b" } }), null);
     assert.equal(approvalPreview({ tool_name: "file.edit" }), null);
 });
+
+test("a pending notion.page.append lists the page and every block as text", () => {
+    const approvalPreview = loadPreview();
+    const hostile = "<img src=x onerror=alert(1)>";
+    const preview = approvalPreview({
+        tool_name: "notion.page.append",
+        arguments: {
+            page: "adapter-test",
+            blocks: [
+                { type: "heading_2", text: "Findings" },
+                { type: "to_do", text: hostile, checked: true },
+                { type: "to_do", text: "Open item" },
+                { type: "paragraph", text: "" },
+            ],
+        },
+    });
+    assert.equal(preview.className, "edit-preview");
+    assert.deepEqual(summary(preview), [
+        ["P", "edit-preview-target", "Append to Notion page adapter-test · 4 blocks at the end"],
+        ["OL", "edit-preview-blocks", ""],
+    ]);
+    assert.deepEqual(preview.children[1].children.map((item) => [item.tagName, item.textContent]), [
+        ["LI", "Heading 2: Findings"],
+        ["LI", `To-do [x]: ${hostile}`],
+        ["LI", "To-do [ ]: Open item"],
+        ["LI", "Paragraph: (empty)"],
+    ]);
+    assert.ok(preview.children[1].children.every((item) => item.children.length === 0));
+});
+
+test("a pending notion.block.update shows the block, the text before and after, and the to-do change", () => {
+    const approvalPreview = loadPreview();
+    const preview = approvalPreview({
+        tool_name: "notion.block.update",
+        arguments: { page: "adapter-test", block: "b3", old_text: "</pre><b>x</b>", new_text: "", checked: true },
+    });
+    assert.deepEqual(summary(preview), [
+        ["P", "edit-preview-target", "Edit Notion page adapter-test · block b3"],
+        ["H5", "", "Before"],
+        ["PRE", "edit-preview-before", "</pre><b>x</b>"],
+        ["H5", "", "After"],
+        ["P", "edit-preview-empty", "Nothing: the text above is deleted."],
+        ["P", "edit-preview-checked", "Mark the to-do as done."],
+    ]);
+    const unchecked = approvalPreview({
+        tool_name: "notion.block.update",
+        arguments: { page: "adapter-test", block: "b4", checked: false, block_text: "<i>Ship v1</i>" },
+    });
+    assert.deepEqual(summary(unchecked), [
+        ["P", "edit-preview-target", "Edit Notion page adapter-test · block b4"],
+        ["P", "edit-preview-checked", "Mark this to-do as not done:"],
+        ["PRE", "edit-preview-todo", "<i>Ship v1</i>"],
+    ]);
+});
+
+test("malformed Notion arguments keep the plain argument view", () => {
+    const approvalPreview = loadPreview();
+    for (const args of [
+        {}, { page: "p" }, { page: "p", blocks: [] }, { page: "p", blocks: [{ type: "image", text: "x" }] },
+        { page: "p", blocks: [{ type: "paragraph" }] }, { page: "p", blocks: [null] },
+        { page: "p", blocks: [{ type: "toString", text: "x" }] },
+    ]) {
+        assert.equal(approvalPreview({ tool_name: "notion.page.append", arguments: args }), null);
+    }
+    for (const args of [
+        {}, { page: "p", block: "b1" }, { page: "p", block: "b1", old_text: "a" },
+        { page: 1, block: "b1", checked: true }, { page: "p", block: "b1", checked: "yes" },
+    ]) {
+        assert.equal(approvalPreview({ tool_name: "notion.block.update", arguments: args }), null);
+    }
+});
+
+function loadContextPreview() {
+    const source = readFileSync(new URL("../static/app.js", import.meta.url), "utf8");
+    const start = source.indexOf("function approvalPreview(pending) {");
+    const end = source.indexOf("\nfunction renderToolRun(run)", start);
+    const context = { document: { createElement: (tag) => new FakeElement(tag) } };
+    vm.createContext(context);
+    vm.runInContext(`${source.slice(start, end)}\nglobalThis.notionContextPreview = notionContextPreview;`, context);
+    return context.notionContextPreview;
+}
+
+test("the server's whole-block context renders as text, and a refusal warns before approval", () => {
+    const notionContextPreview = loadContextPreview();
+    const hostile = "<b onclick=x>Status: draft</b>";
+    const context = notionContextPreview({ page: "adapter-test", block: "b1", type: "paragraph",
+        before: hostile, after: "Status: final", formatted: true });
+    assert.deepEqual(summary(context), [
+        ["H5", "", "Whole block now"],
+        ["PRE", "edit-preview-context", hostile],
+        ["H5", "", "Whole block after"],
+        ["PRE", "edit-preview-context", "Status: final"],
+        ["P", "edit-preview-note", "Its formatting, links, and mentions are kept."],
+    ]);
+    const refused = notionContextPreview({ refused: "Unknown block ref b7; refs come from notion.page.read in this run" });
+    assert.deepEqual(summary(refused), [
+        ["P", "edit-preview-refused", "This call will be refused, so approving it writes nothing: Unknown block ref b7; refs come from notion.page.read in this run"],
+    ]);
+    assert.equal(notionContextPreview(null), null);
+});

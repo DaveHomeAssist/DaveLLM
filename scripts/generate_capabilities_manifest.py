@@ -43,7 +43,7 @@ JSON_NAME = "DAVEHARNESS_CAPABILITIES.json"
 MARKDOWN_NAME = "DAVEHARNESS_CAPABILITIES.md"
 COMMAND = "python scripts/generate_capabilities_manifest.py"
 TOOL_MODULES = ("davellm_shell", "davellm_files", "davellm_markdown", "davellm_git", "davellm_native_tools",
-                "davellm_edit", "davellm_web")
+                "davellm_edit", "davellm_web", "davellm_notion")
 FLAGS = {
     "DAVE_ENABLE_TOOLS": "Turns on tool execution and the core tools.",
     "DAVE_ENABLE_SHELL_TOOL": "Registers shell.exec. Execution still needs DAVE_ENABLE_TOOLS.",
@@ -51,13 +51,18 @@ FLAGS = {
         "Registers the extended tools: bounded reads, web.search and web.read, plus file.edit, which needs "
         "approval for every call. Honored only with DAVE_ENABLE_TOOLS."
     ),
+    "DAVE_ENABLE_NOTION_TOOLS": (
+        "Registers notion.page.read, plus notion.page.append and notion.block.update, which need approval for "
+        "every call and verify each write. Needs DAVE_NOTION_TOKEN and DAVE_NOTION_PAGES at call time. "
+        "Honored only with DAVE_ENABLE_TOOLS."
+    ),
     "DAVE_TOOL_ROOTS": "JSON array of absolute folders that file and Git tools may use.",
 }
 # DAVE_ENABLE_TOOLS alone gives the core tools. Each optional flag is then turned
 # on by itself, so a tool lists only the flags it needs; turning every flag on
 # gives the full catalog.
 BASE_FLAG = "DAVE_ENABLE_TOOLS"
-OPTIONAL_FLAGS = ("DAVE_ENABLE_SHELL_TOOL", "DAVE_ENABLE_EXTENDED_TOOLS")
+OPTIONAL_FLAGS = ("DAVE_ENABLE_SHELL_TOOL", "DAVE_ENABLE_EXTENDED_TOOLS", "DAVE_ENABLE_NOTION_TOOLS")
 ALL_FLAGS = "all"
 HOST_LIMITS = (
     "MAX_ACTIVE_HARNESS_RUNS", "MAX_HARNESS_INPUT_BYTES", "MAX_HARNESS_MODEL_RESPONSE_BYTES",
@@ -189,6 +194,7 @@ def build_manifest() -> dict[str, Any]:
             "DAVE_ENABLE_TOOLS": defaults.TOOLS_ENABLED,
             "DAVE_ENABLE_SHELL_TOOL": defaults.SHELL_TOOL_ENABLED,
             "DAVE_ENABLE_EXTENDED_TOOLS": defaults.EXTENDED_TOOLS_ENABLED,
+            "DAVE_ENABLE_NOTION_TOOLS": defaults.NOTION_TOOLS_ENABLED,
             "DAVE_TOOL_ROOTS": [str(root) for root in defaults.TOOL_ROOTS],
         }
         base = {BASE_FLAG: "true"}
