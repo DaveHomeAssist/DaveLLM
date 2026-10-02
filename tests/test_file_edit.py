@@ -528,7 +528,7 @@ def test_an_approved_edit_writes_exactly_the_change_the_card_showed(editor, host
     target = hostile_tree.at("docs/plan.md")
     target.write_text("status: draft\n", encoding="utf-8")
     arguments = {"path": "docs/plan.md", "old_text": "status: draft", "new_text": "status: final"}
-    with respx.mock(assert_all_called=True) as mock:
+    with client, respx.mock(assert_all_called=True) as mock:
         run_id, pending, route = paused_edit(client, mock, arguments)
         assert pending["tool_name"] == "file.edit"
         assert pending["arguments"] == arguments
@@ -553,7 +553,7 @@ def test_a_rejected_edit_writes_nothing(editor, hostile_tree):
     router, client = editor()
     target = hostile_tree.at("docs/plan.md")
     target.write_text("status: draft\n", encoding="utf-8")
-    with respx.mock(assert_all_called=False) as mock:
+    with client, respx.mock(assert_all_called=False) as mock:
         run_id, pending, route = paused_edit(
             client, mock, {"path": "docs/plan.md", "old_text": "status: draft", "new_text": "status: final"},
         )
@@ -570,7 +570,7 @@ def test_a_file_changed_after_the_request_is_checked_again_when_approved(editor,
     router, client = editor()
     target = hostile_tree.at("docs/plan.md")
     target.write_text("status: draft\n", encoding="utf-8")
-    with respx.mock(assert_all_called=True) as mock:
+    with client, respx.mock(assert_all_called=True) as mock:
         run_id, pending, route = paused_edit(
             client, mock, {"path": "docs/plan.md", "old_text": "status: draft", "new_text": "status: final"},
         )
@@ -584,17 +584,186 @@ def test_a_file_changed_after_the_request_is_checked_again_when_approved(editor,
     assert TEXT_NOT_FOUND in result["content"]
 
 
-def test_an_approved_edit_outside_the_root_still_writes_nothing(editor, hostile_tree):
+def test_a_path_moved_outside_the_root_after_the_request_still_writes_nothing(editor, hostile_tree):
     router, client = editor()
+    target = hostile_tree.at("docs/plan.md")
+    target.write_text("hostile\n", encoding="utf-8")
     outside = hostile_tree.outside / "notes.txt"
-    with respx.mock(assert_all_called=True) as mock:
+    outside_before = outside.read_bytes()
+    with client, respx.mock(assert_all_called=True) as mock:
         run_id, pending, route = paused_edit(
-            client, mock, {"path": str(outside), "old_text": "hostile", "new_text": "edited"},
+            client, mock, {"path": "docs/plan.md", "old_text": "hostile", "new_text": "edited"},
         )
+        target.unlink()
+        target.symlink_to(outside)
         before = hostile_tree.snapshot()
         approved = decide(client, run_id, pending, "approve")
         assert approved.status_code == 200, approved.text
-    assert hostile_tree.snapshot() == before
+    assert hostile_tree.snapshot() == before and outside.read_bytes() == outside_before
     [result] = tool_messages(route)
     assert PATH_NOT_ALLOWED in result["content"]
     assert not hostile_tree.leaked(json.dumps(approved.json()), result["content"])
+
+
+# Preflight: an edit that cannot apply now is refused without asking for approval ------------
+
+def refused_before_approval(client, mock, arguments):
+    """Run a model that asks for ``arguments`` once; the run must finish without ever pausing."""
+    inventory(client, mock)
+    route = mock.post(f"{TEST_NODE_URL}/api/chat")
+    route.side_effect = [
+        edit_call(arguments),
+        httpx.Response(200, json={"message": {"role": "assistant", "content": "Finished"}, "done": True}),
+    ]
+    created = client.post("/tools/agent/runs", headers=AUTH, json={
+        "messages": [{"role": "user", "content": "Mark the plan final"}], "node_id": "node-test", "model": MODEL,
+    })
+    assert created.status_code == 200, created.text
+    run_id = created.json()["run_id"]
+    for _ in range(100):
+        state = client.get(f"/tools/agent/runs/{run_id}", headers=AUTH).json()
+        if state["status"] not in {"created", "running"}:
+            break
+        time.sleep(0.01)
+    assert state["status"] == "completed", state
+    assert state["snapshot"]["pending_call"] is None
+    [result] = tool_messages(route)
+    envelope = json.loads(result["content"])
+    assert (envelope["status"], envelope["termination"], envelope["result"]) == ("error", "denied", "")
+    return envelope["error"], state, route
+
+
+@pytest.mark.parametrize("arguments, message", [
+    ({"path": "docs/plan.md", "old_text": "status: absent", "new_text": "status: final"}, TEXT_NOT_FOUND),
+    ({"path": "docs/plan.md", "old_text": "status", "new_text": "state"},
+     COUNT_MISMATCH.format(found=2, expected=1)),
+    ({"path": "docs/plan.md", "old_text": "status: draft", "new_text": "x", "expected_count": 3},
+     COUNT_MISMATCH.format(found=1, expected=3)),
+    ({"path": "docs/plan.md", "old_text": "status: draft", "new_text": "status: draft"}, NO_CHANGE),
+    ({"path": "docs/absent.md", "old_text": "a", "new_text": "b"}, FILE_NOT_FOUND),
+])
+def test_an_edit_that_cannot_apply_is_refused_before_approval(editor, hostile_tree, arguments, message):
+    router, client = editor()
+    target = hostile_tree.at("docs/plan.md")
+    target.write_text("status: draft\nstatus line two\n", encoding="utf-8")
+    before = hostile_tree.snapshot()
+    with client, respx.mock(assert_all_called=True) as mock:
+        error, state, route = refused_before_approval(client, mock, arguments)
+    assert error == message
+    assert state["snapshot"]["errors"] == 1 and state["snapshot"]["tool_calls"] == 1
+    assert len(route.calls) == 2
+    assert hostile_tree.snapshot() == before
+    assert temporaries(hostile_tree) == []
+
+
+@pytest.mark.parametrize(("content", "old_text"), [
+    (b"aaa\n", "aa"),
+    (b"babab\n", "bab"),
+    ("🎉🎉🎉\n".encode("utf-8"), "🎉🎉"),
+    (b"x\r\nx\r\nx\r\n", "x\nx"),
+])
+@pytest.mark.parametrize("expected", [1, 2])
+def test_overlaps_are_refused_before_approval(editor, hostile_tree, content, old_text, expected):
+    _, client = editor()
+    hostile_tree.at("docs/overlap.txt").write_bytes(content)
+    before = hostile_tree.snapshot()
+    with client, respx.mock(assert_all_called=True) as mock:
+        error, state, _ = refused_before_approval(client, mock, {
+            "path": "docs/overlap.txt", "old_text": old_text, "new_text": "X", "expected_count": expected,
+        })
+    message = COUNT_MISMATCH.format(found=2, expected=1) if expected == 1 else OVERLAPPING.format(found=2)
+    assert error == message
+    assert state["snapshot"]["errors"] == 1 and state["snapshot"]["tool_calls"] == 1
+    assert hostile_tree.snapshot() == before
+    assert temporaries(hostile_tree) == []
+
+
+def test_overlap_count_limit_is_preserved_before_approval(editor, hostile_tree):
+    _, client = editor()
+    hostile_tree.at("docs/many.txt").write_text("a" * 150, encoding="utf-8")
+    before = hostile_tree.snapshot()
+    with client, respx.mock(assert_all_called=True) as mock:
+        error, _, _ = refused_before_approval(client, mock, {
+            "path": "docs/many.txt", "old_text": "aa", "new_text": "X", "expected_count": 100,
+        })
+    assert error == COUNT_MISMATCH.format(found=f"more than {EDIT_MAX_REPLACEMENTS}", expected=100)
+    assert hostile_tree.snapshot() == before
+
+
+def test_touching_matches_pass_preflight_and_write_only_after_approval(editor, hostile_tree):
+    _, client = editor()
+    target = hostile_tree.at("docs/touching.txt")
+    target.write_text("abab\n", encoding="utf-8")
+    with client, respx.mock(assert_all_called=True) as mock:
+        run_id, pending, _ = paused_edit(client, mock, {
+            "path": "docs/touching.txt", "old_text": "ab", "new_text": "X", "expected_count": 2,
+        })
+        assert target.read_text(encoding="utf-8") == "abab\n"
+        approved = decide(client, run_id, pending, "approve")
+        assert approved.status_code == 200 and approved.json()["status"] == "completed"
+    assert target.read_text(encoding="utf-8") == "XX\n"
+
+
+def test_overlaps_introduced_after_preflight_are_refused_on_approval(editor, hostile_tree):
+    _, client = editor()
+    target = hostile_tree.at("docs/overlap.txt")
+    target.write_text("aa aa\n", encoding="utf-8")
+    with client, respx.mock(assert_all_called=True) as mock:
+        run_id, pending, route = paused_edit(client, mock, {
+            "path": "docs/overlap.txt", "old_text": "aa", "new_text": "X", "expected_count": 2,
+        })
+        target.write_text("aaa\n", encoding="utf-8")
+        before = hostile_tree.snapshot()
+        approved = decide(client, run_id, pending, "approve")
+        assert approved.status_code == 200
+    [result] = tool_messages(route)
+    assert json.loads(result["content"])["error"] == OVERLAPPING.format(found=2)
+    assert hostile_tree.snapshot() == before
+
+
+def test_an_edit_outside_the_root_is_refused_before_approval(editor, hostile_tree):
+    router, client = editor()
+    outside = hostile_tree.outside / "notes.txt"
+    before = hostile_tree.snapshot()
+    with client, respx.mock(assert_all_called=True) as mock:
+        error, state, _ = refused_before_approval(
+            client, mock, {"path": str(outside), "old_text": "hostile", "new_text": "edited"},
+        )
+    assert error == PATH_NOT_ALLOWED
+    assert hostile_tree.snapshot() == before
+    assert not hostile_tree.leaked(json.dumps(state))
+
+
+def test_the_preflight_gives_the_handler_message_and_never_writes(editor, hostile_tree):
+    router, _ = editor()
+    hostile_tree.at("docs/plan.md").write_text("status: draft\r\nstatus: draft\r\n", encoding="utf-8")
+    applicable = [
+        {"path": "docs/plan.md", "old_text": "status: draft\n", "new_text": "x", "expected_count": 2},
+        {"path": "docs/plan.md", "old_text": "status: draft", "new_text": "x", "expected_count": 2},
+    ]
+    refused = [
+        {"path": "docs/plan.md", "old_text": "status: draft", "new_text": "x"},
+        {"path": "docs/plan.md", "old_text": "missing", "new_text": "x"},
+        {"path": str(hostile_tree.outside / "notes.txt"), "old_text": "hostile", "new_text": "x"},
+        {"path": OUTSIDE_LINK, "old_text": "hostile", "new_text": "x"},
+        {"path": BINARY_FILE, "old_text": "a", "new_text": "b"},
+    ]
+    before = hostile_tree.snapshot()
+    for arguments in applicable:
+        assert router.preflight_file_edit(arguments, None) is None, arguments
+    assert hostile_tree.snapshot() == before
+    for arguments in refused:
+        refusal = router.preflight_file_edit(arguments, None)
+        assert refusal and hostile_tree.snapshot() == before, arguments
+        execution = run(router, **arguments)
+        assert (execution.status, execution.error) == ("error", refusal), arguments
+        assert not hostile_tree.leaked(refusal)
+    assert hostile_tree.snapshot() == before
+    assert temporaries(hostile_tree) == []
+
+
+def test_file_edit_alone_declares_a_preflight(editor):
+    router, _ = editor()
+    for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
+        assert registry.get("file.edit").preflight is router.preflight_file_edit
+        assert [name for name in registry.public_catalog() if registry.get(name).preflight] == ["file.edit"]

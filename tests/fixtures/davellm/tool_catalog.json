@@ -313,7 +313,7 @@
       "timeout_seconds": 10.0
     }
   },
-  "_comment": "DaveLLM tool catalog. TOOL_REGISTRY, HARNESS_REGISTRY, default_tools and handler_code pin the qualified built-in tools from main before extended tools: every fingerprint input except the path-dependent compiled-code digest, plus each handler's first/last line and source digest. extended_tools and extended_handler_code pin the DAVE_ENABLE_EXTENDED_TOOLS definitions and handlers the same way. notion_tools and notion_handler_code pin the DAVE_ENABLE_NOTION_TOOLS definitions and handlers the same way.",
+  "_comment": "DaveLLM tool catalog. TOOL_REGISTRY, HARNESS_REGISTRY, default_tools and handler_code pin the qualified built-in tools from main before extended tools: every fingerprint input except the path-dependent compiled-code digest, plus each handler's first/last line and source digest. extended_tools and extended_handler_code pin the DAVE_ENABLE_EXTENDED_TOOLS definitions and handlers the same way. extended_preflight_code pins each extended tool's approval preflight, whose code provenance is part of its fingerprint; qualified tools declare none, so their fingerprints are unchanged. notion_tools and notion_handler_code pin the DAVE_ENABLE_NOTION_TOOLS definitions and handlers the same way.",
   "default_tools": [
     "file.append",
     "file.read",
@@ -506,7 +506,9 @@
         "type": "object"
       },
       "permission": "write_files",
-      "timeout_seconds": 10.0
+      "timeout_seconds": 10.0,
+      "preflight": "app.preflight_file_edit",
+      "preflight_version": ""
     },
     "file.list": {
       "approval_required": false,
@@ -1239,6 +1241,13 @@
       },
       "permission": "read",
       "timeout_seconds": 30.0
+    }
+  },
+  "extended_preflight_code": {
+    "file.edit": {
+      "first_line": 1578,
+      "last_line": 1587,
+      "source_sha256": "79c5fb9b608d5168377bfe8e23e8928f0945c7feb5c73865c2551e52e1893ff9"
     }
   }
 }

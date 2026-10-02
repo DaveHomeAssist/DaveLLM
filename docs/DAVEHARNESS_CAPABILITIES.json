@@ -739,6 +739,7 @@
         "type": "object"
       },
       "permission": "read",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -758,6 +759,7 @@
         "type": "object"
       },
       "permission": "read_system",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -789,6 +791,7 @@
         "type": "object"
       },
       "permission": "write_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS"
       ],
@@ -840,6 +843,7 @@
         "type": "object"
       },
       "permission": "write_files",
+      "preflight": true,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -898,6 +902,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -925,6 +930,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS"
       ],
@@ -971,6 +977,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1025,6 +1032,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1056,6 +1064,7 @@
         "type": "object"
       },
       "permission": "write_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS"
       ],
@@ -1110,6 +1119,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1158,6 +1168,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1206,6 +1217,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1236,6 +1248,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1274,6 +1287,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1318,6 +1332,7 @@
         "type": "object"
       },
       "permission": "read_files",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1386,6 +1401,7 @@
         "type": "object"
       },
       "permission": "write",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_NOTION_TOOLS"
@@ -1455,6 +1471,7 @@
         "type": "object"
       },
       "permission": "write",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_NOTION_TOOLS"
@@ -1484,6 +1501,7 @@
         "type": "object"
       },
       "permission": "read",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_NOTION_TOOLS"
@@ -1522,6 +1540,7 @@
         "type": "object"
       },
       "permission": "read",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1541,6 +1560,7 @@
         "type": "object"
       },
       "permission": "read",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1560,6 +1580,7 @@
         "type": "object"
       },
       "permission": "read",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1587,6 +1608,7 @@
         "type": "object"
       },
       "permission": "execute_process",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_SHELL_TOOL"
@@ -1617,6 +1639,7 @@
         "type": "object"
       },
       "permission": "read_system",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS"
       ],
@@ -1643,6 +1666,7 @@
         "type": "object"
       },
       "permission": "public_network",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS"
       ],
@@ -1671,6 +1695,7 @@
         "type": "object"
       },
       "permission": "public_network",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"
@@ -1710,6 +1735,7 @@
         "type": "object"
       },
       "permission": "public_network",
+      "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_EXTENDED_TOOLS"

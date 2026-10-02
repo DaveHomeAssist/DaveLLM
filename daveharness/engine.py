@@ -22,9 +22,9 @@ from .budgets import RunBudget
 from .contracts import ExecutorOutcome, ParsedToolCall, PendingCall, ToolExecution
 from .events import safe_identifier, safe_status
 from .parser import parse_tool_calls
-from .policy import RunPolicyContext, ToolPolicy
+from .policy import PolicyDecision, RunPolicyContext, ToolPolicy
 from .registry import ToolDefinition, ToolRegistry
-from .runtime import CancellableToolRunner, ExecutionContext
+from .runtime import CancellableToolRunner, CancellationToken, ExecutionContext, absolute_deadline
 from .schema import SchemaValidationError, validate_json_schema
 
 LOGGER = logging.getLogger("dave_llm.tools")
@@ -292,6 +292,59 @@ async def _run_tool(
     if log_result:
         _log_tool_result(execution)
     return execution
+
+
+async def _preflight_refusal(
+    definition: ToolDefinition,
+    call: ParsedToolCall,
+    arguments: dict[str, Any],
+    context: ExecutionContext,
+) -> ToolExecution | None:
+    """Ask an approval-required tool, before its approval pause, whether this call is certain to fail.
+
+    Only a nonempty string that fits the output budget refuses. None, any other
+    value, an exception, or the tool deadline lets the call pause as before, so a
+    preflight can spare an approval but never authorize an effect: the handler
+    still checks everything after approval. A refusal is an ordinary tool error
+    whose handler never ran: status "error", termination "denied".
+    """
+    preflight = definition.preflight
+    if preflight is None:
+        return None
+    started_at = utc_timestamp()
+    started_monotonic = time.monotonic()
+    remaining = context.remaining("tool")
+    refusal: object = None
+    outcome = "unavailable"
+    if remaining is None or remaining > 0:
+        try:
+            refusal = await asyncio.wait_for(
+                asyncio.to_thread(preflight, copy.deepcopy(arguments), context), timeout=remaining,
+            )
+        except Exception:
+            refusal = None  # a failed or late preflight has no say; the call pauses for approval
+        else:
+            outcome = "passed"
+    if isinstance(refusal, str) and refusal:
+        try:
+            if context.output_budget_bytes is not None:
+                text_bytes(refusal, context.output_budget_bytes)
+        except PayloadLimitError:
+            refusal, outcome = None, "unavailable"
+        else:
+            outcome = "refused"
+    duration_ms = round((time.monotonic() - started_monotonic) * 1000, 3)
+    LOGGER.info(json.dumps({
+        "event": "tool_preflight", "call_id": safe_identifier(call.call_id),
+        "tool": safe_identifier(call.name), "outcome": outcome, "duration_ms": duration_ms,
+    }))
+    if outcome != "refused":
+        return None
+    return ToolExecution(
+        call_id=call.call_id, name=call.name, status="error", result="", error=cast(str, refusal),
+        started_at=started_at, completed_at=utc_timestamp(), duration_ms=duration_ms, termination="denied",
+    )
+
 
 def _canonical_json(value: Any) -> str:
     validate_payload(value)
@@ -650,6 +703,51 @@ def _bounded_tool_timeout(state: _ExecutorState, definition: ToolDefinition | No
     return min(definition.timeout_seconds, remaining)
 
 
+def _pause_for_approval(
+    state: _ExecutorState,
+    pending_store: PendingCallStore,
+    call: ParsedToolCall,
+    remaining_calls: list[ParsedToolCall],
+    canonical_arguments: dict[str, Any],
+    decision: PolicyDecision,
+    definition: ToolDefinition,
+) -> ExecutorOutcome:
+    created_at = pending_store.now()
+    pending_call = PendingCall(
+        call_id=call.call_id,
+        tool_name=call.name,
+        arguments=canonical_arguments,
+        digest=_arguments_digest(canonical_arguments),
+        transcript_revision=_transcript_revision(state.transcript),
+        nonce=secrets.token_urlsafe(32),
+        created_at=created_at.isoformat(),
+        expires_at=(
+            created_at + timedelta(seconds=PENDING_CALL_TTL_SECONDS)
+        ).isoformat(),
+    )
+    pending_store.save(
+        state.run_id,
+        pending_call,
+        _PendingContinuation(
+            state=state,
+            remaining_calls=copy.deepcopy(remaining_calls),
+            definition_fingerprint=decision.fingerprint or "",
+            permission=decision.permission or "",
+            registration_revision=decision.registration_revision or 0,
+        ),
+    )
+    return _state_outcome(
+        state,
+        status="approval_required",
+        status_message=(
+            f"Approval is required before running {call.name}."
+        ),
+        pending_tool_call=pending_call.public_metadata(
+            permission=definition.permission
+        ),
+    )
+
+
 async def _process_calls(
     state: _ExecutorState,
     calls: list[ParsedToolCall],
@@ -699,40 +797,23 @@ async def _process_calls(
                     timeout_seconds=_bounded_tool_timeout(state, definition),
                 )
             else:
-                created_at = pending_store.now()
-                pending_call = PendingCall(
-                    call_id=call.call_id,
-                    tool_name=call.name,
-                    arguments=canonical_arguments,
-                    digest=_arguments_digest(canonical_arguments),
-                    transcript_revision=_transcript_revision(state.transcript),
-                    nonce=secrets.token_urlsafe(32),
-                    created_at=created_at.isoformat(),
-                    expires_at=(
-                        created_at + timedelta(seconds=PENDING_CALL_TTL_SECONDS)
-                    ).isoformat(),
-                )
-                pending_store.save(
-                    state.run_id,
-                    pending_call,
-                    _PendingContinuation(
-                        state=state,
-                        remaining_calls=copy.deepcopy(calls[index + 1 :]),
-                        definition_fingerprint=decision.fingerprint or "",
-                        permission=decision.permission or "",
-                        registration_revision=decision.registration_revision or 0,
+                remaining = _remaining_wall_time(state)
+                refused = await _preflight_refusal(
+                    definition, call, canonical_arguments,
+                    ExecutionContext(
+                        run_id=state.run_id, call_id=call.call_id,
+                        run_deadline=absolute_deadline(time.monotonic, None, remaining),
+                        model_deadline=None,
+                        tool_deadline=absolute_deadline(time.monotonic, definition.timeout_seconds, remaining),
+                        output_budget_bytes=state.budget.tool_output_bytes,
+                        cancellation=CancellationToken(),
                     ),
                 )
-                return _state_outcome(
-                    state,
-                    status="approval_required",
-                    status_message=(
-                        f"Approval is required before running {call.name}."
-                    ),
-                    pending_tool_call=pending_call.public_metadata(
-                        permission=definition.permission
-                    ),
-                )
+                if refused is None:
+                    return _pause_for_approval(
+                        state, pending_store, call, calls[index + 1 :], canonical_arguments, decision, definition,
+                    )
+                execution = refused
         else:
             execution = await _run_tool(
                 call.name,

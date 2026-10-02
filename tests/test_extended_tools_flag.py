@@ -35,6 +35,9 @@ def boundary(registry):
             "handler": f"{definition.handler.__module__}.{definition.handler.__qualname__}",
             "handler_version": definition.handler_version,
         }
+        if definition.preflight is not None:  # absent, like the fingerprint, when a tool has none
+            catalog[name]["preflight"] = f"{definition.preflight.__module__}.{definition.preflight.__qualname__}"
+            catalog[name]["preflight_version"] = definition.preflight_version
     return catalog
 
 

@@ -212,6 +212,8 @@ Runtime UI files are under `static/`; only that directory is mounted at `/`, wit
 
 DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, and Python 3.12–3.14 CI. See [H8 qualification](docs/DAVEHARNESS_H8_QUALIFICATION.md). This candidate does not establish live-model qualification or human acceptance. DaveLLM remains `2.1.0`.
 
+An approval-required tool can declare an optional [approval preflight](docs/DAVEHARNESS_PREFLIGHT.md) that refuses a call certain to fail before the run pauses for approval, as an ordinary tool error with termination `denied`. `file.edit` uses it to check `old_text` against the file as it is now. A preflight never authorizes an effect; the handler checks everything again after approval.
+
 H9 action 55 adds the authorized live-evaluation runner `scripts/evaluate_live_daveharness.py`, which runs DaveLLM's Ollama adapter and file/system tools inside disposable roots and reports the action 56 thresholds per model. See [H9 live evaluation](docs/DAVEHARNESS_H9_LIVE_EVALUATION.md). No target model is qualified yet, and DaveHarness remains `1.0.0-rc.1`.
 
 ### Optional console browser acceptance

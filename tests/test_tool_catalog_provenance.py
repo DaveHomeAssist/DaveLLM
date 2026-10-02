@@ -22,18 +22,24 @@ BASELINE = json.loads(
 )
 
 
+def source_pin(function):
+    lines, first = inspect.getsourcelines(function)
+    return {
+        "first_line": first,
+        "last_line": first + len(lines) - 1,
+        "source_sha256": hashlib.sha256(
+            "".join(lines).replace("\r\n", "\n").encode("utf-8")
+        ).hexdigest(),
+    }
+
+
 def handler_code(registry):
-    code = {}
-    for name in registry.public_catalog():
-        lines, first = inspect.getsourcelines(registry.get(name).handler)
-        code[name] = {
-            "first_line": first,
-            "last_line": first + len(lines) - 1,
-            "source_sha256": hashlib.sha256(
-                "".join(lines).replace("\r\n", "\n").encode("utf-8")
-            ).hexdigest(),
-        }
-    return code
+    return {name: source_pin(registry.get(name).handler) for name in registry.public_catalog()}
+
+
+def preflight_code(registry):
+    return {name: source_pin(registry.get(name).preflight) for name in registry.public_catalog()
+            if registry.get(name).preflight is not None}
 
 
 @pytest.fixture
@@ -99,6 +105,9 @@ def test_extended_tool_boundaries_match_the_catalog(extended_router):
                 "handler": f"{definition.handler.__module__}.{definition.handler.__qualname__}",
                 "handler_version": definition.handler_version,
             }
+            if definition.preflight is not None:  # absent, like the fingerprint, when a tool has none
+                actual[name]["preflight"] = f"{definition.preflight.__module__}.{definition.preflight.__qualname__}"
+                actual[name]["preflight_version"] = definition.preflight_version
         assert actual == expected
 
 
@@ -119,6 +128,27 @@ def test_extended_handlers_have_not_moved_or_changed(extended_router):
             "An extended tool handler moved or changed, so its definition fingerprint changed. "
             f"Add new app.py code below the extended handlers. {registry}"
         )
+
+
+def test_qualified_tools_declare_no_preflight(router):
+    for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
+        assert preflight_code(registry) == {}
+
+
+def test_extended_preflights_have_not_moved_or_changed(extended_router):
+    expected = BASELINE["extended_preflight_code"]
+    for registry in ("TOOL_REGISTRY", "HARNESS_REGISTRY"):
+        actual = preflight_code(getattr(extended_router, registry))
+        assert actual == expected, (
+            "A tool preflight moved or changed, so its definition fingerprint changed. "
+            f"Add new app.py code below it. {registry}"
+        )
+
+
+def test_preflights_sit_below_every_handler():
+    handlers = list(BASELINE["handler_code"].values()) + list(BASELINE["extended_handler_code"].values())
+    last_handler_line = max(item["last_line"] for item in handlers)
+    assert min(item["first_line"] for item in BASELINE["extended_preflight_code"].values()) > last_handler_line
 
 
 def test_markdown_handlers_sit_below_the_pr02_handlers():

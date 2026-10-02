@@ -61,6 +61,7 @@ def test_manifest_tools_match_the_pinned_catalog():
     assert set(tools) == set(pinned)
     for name, tool in tools.items():
         assert {field: tool[field] for field in PINNED_FIELDS} == {field: pinned[name][field] for field in PINNED_FIELDS}, name
+        assert tool["preflight"] is ("preflight" in pinned[name]), name
     expected_flags = {
         **{name: ["DAVE_ENABLE_TOOLS"] for name in CATALOG["default_tools"]},
         "shell.exec": ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_SHELL_TOOL"],

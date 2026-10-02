@@ -37,7 +37,7 @@ _SAFE_REASON = frozenset({
     "tool_revoked", "definition_changed", "registration_changed", "approved",
     "rejected", "tool_denied", "sink_error", "event_limit", "event_byte_limit",
     "permission_changed", "permission_unknown", "permission_denied",
-    "approval_granted", "policy_allowed",
+    "approval_granted", "policy_allowed", "preflight_refused",
 })
 
 

@@ -27,6 +27,11 @@ breaks in ``old_text`` and ``new_text`` are matched and written as CRLF. A
 byte order mark stays in place. Files with several hard links are refused,
 because replacing one link would silently leave the others unchanged.
 Refusals are fixed messages; OS error text never reaches the model.
+
+``check_edit`` runs every check before step 2 and writes nothing. DaveLLM uses
+it as the approval preflight, so an edit that cannot apply to the file as it is
+now is refused with the same message instead of asking for approval. The write
+still checks everything again, because the file can change after approval.
 """
 
 from __future__ import annotations
@@ -35,7 +40,7 @@ import os
 import secrets
 import stat
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, NamedTuple, Sequence
 
 from davellm_files import (
     DESCRIPTOR_WALK, FILE_NOT_FOUND, NOT_A_REGULAR_FILE, NOT_TEXT, READ_MAX_FILE_BYTES, FileTooLarge,
@@ -167,9 +172,16 @@ def _unchanged(directory: int, name: str, before: os.stat_result, data: bytes) -
         raise FileToolError(FILE_CHANGED)
 
 
-def edit_file(arguments: Mapping[str, Any], *, resolve: Callable[[str], Path],
-              roots: Sequence[Path]) -> dict[str, Any]:
-    """file.edit: replace ``old_text`` with ``new_text``, exactly ``expected_count`` times."""
+class _Plan(NamedTuple):
+    before: os.stat_result
+    data: bytes
+    updated: bytes
+    found: int
+    first_line: int
+    endings: str
+
+
+def _request(arguments: Mapping[str, Any], resolve: Callable[[str], Path]) -> tuple[Path, str, str, int]:
     if not REPLACE_SUPPORTED:
         raise FileToolError(EDIT_UNSUPPORTED)
     path = resolve(str(arguments["path"]))
@@ -177,32 +189,55 @@ def edit_file(arguments: Mapping[str, Any], *, resolve: Callable[[str], Path],
     expected = _option(arguments, "expected_count", EDIT_DEFAULT_REPLACEMENTS)
     if old == new:
         raise FileToolError(NO_CHANGE)
+    return path, old, new, expected
+
+
+def _plan(directory: int, name: str, old: str, new: str, expected: int) -> _Plan:
+    """Read the file and work out the edit, refusing exactly as the write would; writes nothing."""
+    before, data = _read_file(directory, name)
+    text = decode_text(data)
+    if text is None:
+        raise FileToolError(NOT_TEXT)
+    endings = line_endings(text)
+    needle, replacement = in_file_style(old, endings), in_file_style(new, endings)
+    # One match past the largest allowed count is enough to refuse any expected_count.
+    starts = occurrences(text, needle, EDIT_MAX_REPLACEMENTS + 1)
+    found = len(starts)
+    if found == 0:
+        raise FileToolError(TEXT_NOT_FOUND)
+    if found != expected:
+        shown = f"more than {EDIT_MAX_REPLACEMENTS}" if found > EDIT_MAX_REPLACEMENTS else found
+        raise FileToolError(COUNT_MISMATCH.format(found=shown, expected=expected))
+    if any(later - earlier < len(needle) for earlier, later in zip(starts, starts[1:])):
+        raise FileToolError(OVERLAPPING.format(found=found))
+    first_line = text.count("\n", 0, starts[0]) + 1
+    # The matches are disjoint, so replace() finds exactly these and no others.
+    updated = text.replace(needle, replacement).encode("utf-8")
+    if len(updated) > READ_MAX_FILE_BYTES:
+        raise FileTooLarge(READ_MAX_FILE_BYTES)
+    return _Plan(before, data, updated, found, first_line, endings)
+
+
+def check_edit(arguments: Mapping[str, Any], *, resolve: Callable[[str], Path]) -> None:
+    """Raise the refusal ``edit_file`` would give for the file as it is now; write nothing."""
+    path, old, new, expected = _request(arguments, resolve)
     directory = _open_parent(path)
     try:
-        before, data = _read_file(directory, path.name)
-        text = decode_text(data)
-        if text is None:
-            raise FileToolError(NOT_TEXT)
-        endings = line_endings(text)
-        needle, replacement = in_file_style(old, endings), in_file_style(new, endings)
-        # One match past the largest allowed count is enough to refuse any expected_count.
-        starts = occurrences(text, needle, EDIT_MAX_REPLACEMENTS + 1)
-        found = len(starts)
-        if found == 0:
-            raise FileToolError(TEXT_NOT_FOUND)
-        if found != expected:
-            shown = f"more than {EDIT_MAX_REPLACEMENTS}" if found > EDIT_MAX_REPLACEMENTS else found
-            raise FileToolError(COUNT_MISMATCH.format(found=shown, expected=expected))
-        if any(later - earlier < len(needle) for earlier, later in zip(starts, starts[1:])):
-            raise FileToolError(OVERLAPPING.format(found=found))
-        first_line = text.count("\n", 0, starts[0]) + 1
-        # The matches are disjoint, so replace() finds exactly these and no others.
-        updated = text.replace(needle, replacement).encode("utf-8")
-        if len(updated) > READ_MAX_FILE_BYTES:
-            raise FileTooLarge(READ_MAX_FILE_BYTES)
-        temporary: str | None = _write_temp(directory, updated, stat.S_IMODE(before.st_mode))
+        _plan(directory, path.name, old, new, expected)
+    finally:
+        os.close(directory)
+
+
+def edit_file(arguments: Mapping[str, Any], *, resolve: Callable[[str], Path],
+              roots: Sequence[Path]) -> dict[str, Any]:
+    """file.edit: replace ``old_text`` with ``new_text``, exactly ``expected_count`` times."""
+    path, old, new, expected = _request(arguments, resolve)
+    directory = _open_parent(path)
+    try:
+        plan = _plan(directory, path.name, old, new, expected)
+        temporary: str | None = _write_temp(directory, plan.updated, stat.S_IMODE(plan.before.st_mode))
         try:
-            _unchanged(directory, path.name, before, data)
+            _unchanged(directory, path.name, plan.before, plan.data)
             try:
                 os.rename(temporary, path.name, src_dir_fd=directory, dst_dir_fd=directory)
             except OSError:
@@ -219,9 +254,9 @@ def edit_file(arguments: Mapping[str, Any], *, resolve: Callable[[str], Path],
         os.close(directory)
     return {
         "path": display_path(path, roots),
-        "replacements": found,
-        "first_changed_line": first_line,
-        "line_endings": endings,
-        "bytes_before": len(data),
-        "bytes_after": len(updated),
+        "replacements": plan.found,
+        "first_changed_line": plan.first_line,
+        "line_endings": plan.endings,
+        "bytes_before": len(plan.data),
+        "bytes_after": len(plan.updated),
     }

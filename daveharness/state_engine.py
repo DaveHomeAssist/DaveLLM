@@ -16,13 +16,13 @@ from .limits import PayloadLimitError, PayloadLimits, validate_payload
 from .contracts import ParsedToolCall, ToolExecution
 from .engine import (
     DEFAULT_MODEL_TIMEOUT_SECONDS, ModelInvoker, _canonical_arguments,
-    _canonical_json, _invoke_model, _log_tool_result, _transcript_revision,
-    _run_tool as run_tool,
+    _canonical_json, _invoke_model, _log_tool_result, _preflight_refusal,
+    _transcript_revision, _run_tool as run_tool,
 )
 from .events import EventJournal, EventNote, RunEvent, safe_identifier, safe_reason, safe_status
 from .parser import parse_tool_calls
-from .policy import RunPolicyContext, ToolPolicy
-from .registry import DEFAULT_TOOL_TIMEOUT_SECONDS, ToolRegistry
+from .policy import PolicyDecision, RunPolicyContext, ToolPolicy
+from .registry import DEFAULT_TOOL_TIMEOUT_SECONDS, ToolDefinition, ToolRegistry
 from .runtime import (
     CancellationToken, CancellableToolRunner, ExecutionContext, MonotonicClock,
     OperationController, absolute_deadline, monotonic_now,
@@ -283,6 +283,57 @@ async def _execute_reserved(
     )
 
 
+def _preflight_context(
+    snapshot: RunSnapshot, call: ParsedToolCall, definition: ToolDefinition, clock: Clock,
+    monotonic_clock: MonotonicClock, controller: OperationController | None,
+) -> ExecutionContext:
+    """The run and call a preflight answers for, bounded by the tool's timeout and the run deadline."""
+    run_remaining = _run_remaining(snapshot, clock, monotonic_clock, controller)
+    return ExecutionContext(
+        run_id=snapshot.run_id, call_id=call.call_id,
+        run_deadline=absolute_deadline(monotonic_clock, None, run_remaining),
+        model_deadline=None,
+        tool_deadline=absolute_deadline(monotonic_clock, definition.timeout_seconds, run_remaining),
+        output_budget_bytes=snapshot.budget.tool_output_bytes,
+        cancellation=controller.token if controller is not None else CancellationToken(),
+        monotonic_clock=monotonic_clock,
+    )
+
+
+def _pause_for_approval(
+    store: SnapshotCAS, snapshot: RunSnapshot, call: ParsedToolCall, arguments: dict[str, Any],
+    tail: list[dict[str, Any]], decision: PolicyDecision, registry: ToolRegistry, clock: Clock,
+    events: EventJournal | None,
+) -> RunCommandResult:
+    created = _now(clock)
+    pending = PendingToolCall.create(
+        call_id=call.call_id, tool_name=call.name, arguments=arguments,
+        definition_fingerprint=decision.fingerprint or "",
+        permission=decision.permission or "",
+        registry_instance_id=registry.instance_id,
+        registration_revision=decision.registration_revision or 0,
+        transcript_revision=_transcript_revision(snapshot.transcript),
+        nonce=secrets.token_urlsafe(32),
+        created_at=created.isoformat(),
+        expires_at=(created + timedelta(seconds=300)).isoformat(),
+        remaining_calls=[ParsedToolCall(**item) for item in tail],
+    )
+    next_snapshot = transition_run(
+        snapshot, "approval_required", updated_at=_updated_at(snapshot, clock),
+        tool_calls=snapshot.tool_calls + 1, pending_call=pending,
+        queued_calls_json="[]",
+    )
+    committed = _save(store, snapshot, next_snapshot, events, (
+        EventNote("policy_decision", call_id=call.call_id, tool_name=call.name,
+                  status=decision.action, reason_code=decision.reason_code),
+        EventNote("approval_required", call_id=call.call_id, tool_name=call.name,
+                  status="approval_required", reason_code="approval_required"),
+    ))
+    if committed is None:
+        return _conflict(store.load(snapshot.run_id))
+    return _result(committed, "approval_required")
+
+
 async def _drain_calls(
     store: SnapshotCAS, snapshot: RunSnapshot, registry: ToolRegistry,
     policy: ToolPolicy, clock: Clock, monotonic_clock: MonotonicClock,
@@ -307,6 +358,7 @@ async def _drain_calls(
         definition = registry.get(call.name)
         if decision.action == "pause" and definition is None:
             return _terminal(store, snapshot, "run_conflict", "tool_unknown", clock, events)
+        refused: ToolExecution | None = None
         if decision.action == "pause" and definition is not None:
             try:
                 arguments = _canonical_arguments(definition, call.arguments)
@@ -320,48 +372,41 @@ async def _drain_calls(
                     ),
                 )
             else:
-                created = _now(clock)
-                pending = PendingToolCall.create(
-                    call_id=call.call_id, tool_name=call.name, arguments=arguments,
-                    definition_fingerprint=decision.fingerprint or "",
-                    permission=decision.permission or "",
-                    registry_instance_id=registry.instance_id,
-                    registration_revision=decision.registration_revision or 0,
-                    transcript_revision=_transcript_revision(snapshot.transcript),
-                    nonce=secrets.token_urlsafe(32),
-                    created_at=created.isoformat(),
-                    expires_at=(created + timedelta(seconds=300)).isoformat(),
-                    remaining_calls=[ParsedToolCall(**item) for item in tail],
+                refused = await _preflight_refusal(
+                    definition, call, arguments,
+                    _preflight_context(snapshot, call, definition, clock, monotonic_clock, controller),
                 )
-                next_snapshot = transition_run(
-                    snapshot, "approval_required", updated_at=_updated_at(snapshot, clock),
-                    tool_calls=snapshot.tool_calls + 1, pending_call=pending,
-                    queued_calls_json="[]",
-                )
-                committed = _save(store, snapshot, next_snapshot, events, (
+                if refused is None:
+                    return _pause_for_approval(
+                        store, snapshot, call, arguments, tail, decision, registry, clock, events,
+                    )
+        if refused is not None or decision.action == "deny":
+            if refused is not None:
+                # The preflight answered for the handler: a certain failure never asks for approval.
+                execution = refused
+                notes = (
                     EventNote("policy_decision", call_id=call.call_id, tool_name=call.name,
                               status=decision.action, reason_code=decision.reason_code),
-                    EventNote("approval_required", call_id=call.call_id, tool_name=call.name,
-                              status="approval_required", reason_code="approval_required"),
-                ))
-                if committed is None:
-                    return _conflict(store.load(snapshot.run_id))
-                return _result(committed, "approval_required")
-        if decision.action == "deny":
-            execution = _tool_result(call, "revoked" if decision.reason_code in {"tool_unknown", "tool_revoked", "definition_changed", "registration_changed"} else "denied", decision.reason_code, clock)
+                    EventNote("tool_result", call_id=call.call_id, tool_name=call.name,
+                              status=execution.status, reason_code="preflight_refused",
+                              duration_ms=execution.duration_ms, output_bytes=0),
+                )
+            else:
+                execution = _tool_result(call, "revoked" if decision.reason_code in {"tool_unknown", "tool_revoked", "definition_changed", "registration_changed"} else "denied", decision.reason_code, clock)
+                notes = (
+                    EventNote("policy_decision", call_id=call.call_id,
+                              tool_name=call.name, status="deny", reason_code=decision.reason_code),
+                    EventNote("tool_result", call_id=call.call_id,
+                              tool_name=call.name, status=execution.status, reason_code=decision.reason_code,
+                              duration_ms=0.0, output_bytes=0),
+                )
             transcript = snapshot.transcript
             transcript.append(execution.tool_message())
             if not _transcript_fits(snapshot, transcript):
                 return _terminal(store, snapshot, "budget_exceeded", "transcript_limit", clock, events)
             progressed = _progress(
                 store, snapshot, clock, events=events,
-                notes=(
-                    EventNote("policy_decision", call_id=call.call_id,
-                              tool_name=call.name, status="deny", reason_code=decision.reason_code),
-                    EventNote("tool_result", call_id=call.call_id,
-                              tool_name=call.name, status=execution.status, reason_code=decision.reason_code,
-                              duration_ms=0.0, output_bytes=0),
-                ),
+                notes=notes,
                 transcript=transcript,
                 tool_calls=snapshot.tool_calls + 1,
                 executed_call_ids=snapshot.executed_call_ids + (call.call_id,),
