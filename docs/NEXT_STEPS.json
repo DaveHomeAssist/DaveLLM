@@ -1,0 +1,564 @@
+{
+  "id": "davellm",
+  "name": "DaveLLM & DaveHarness",
+  "short": "DaveLLM",
+  "repos": [
+    "DaveHomeAssist/DaveLLM"
+  ],
+  "head": "bdbf91e Notion preflight implementation",
+  "lastActivity": "2026-10-04",
+  "status": "amber",
+  "statusReason": "Notion preflight implemented and locally verified; live Notion acceptance and H9 qualification remain incomplete. CI and merge evidence belong to the source revision and its pull request.",
+  "evidence": {
+    "checkedOn": "2026-10-04",
+    "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
+    "scope": "Notion preflight implementation revision; the containing projection commit changes planning data only. No live services contacted.",
+    "sources": [
+      "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
+      "docs/DAVEHARNESS_H9_RESULTS.md",
+      "docs/DAVEHARNESS_H9_READINESS_REVIEW.md",
+      "docs/DAVEHARNESS_PREFLIGHT.md",
+      "docs/DAVELLM_TOOLS.md"
+    ],
+    "baselineCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37178075989",
+    "baselineRevision": "7f4fb396c746b0f95ff14b5891f7f2febc13e4d4",
+    "validation": {
+      "python": "3.14.3",
+      "notionTestsPassed": 206,
+      "notionBranchCoveragePercent": 97,
+      "nodeTestsPassed": 9,
+      "offlineQualificationPassed": true,
+      "offlineEvaluations": 24,
+      "offlineLiveModels": false,
+      "loadPassed": true,
+      "strictTypes": "17 source files passed",
+      "compilation": "passed",
+      "syntax": "JavaScript and shell passed",
+      "npmAudit": "zero vulnerabilities",
+      "capabilityManifest": "current",
+      "deliveryGate": "Full local suite and all required Python 3.12/3.13/3.14 CI checks must pass before merge. Source delivery is established by GitHub main containing this implementation revision."
+    }
+  },
+  "shipped": [
+    "Notion adapter v1 (read, verified append, block edit) merged: PR #48, 10-02",
+    "Approval preflight (#51), file.edit overlap fix (#52), GC-proof deadline test (#54) merged 10-02",
+    "Console redesign (#45): side/bottom rail, light default, Cluster view; static no-cache (#53)",
+    "Native Ollama chat + tool loop, node deadlines/profiles/stats (#32-#44); Git/web/native tools",
+    "Branch protection on main requires checks 3.12/3.13/3.14 (10-01)",
+    "PR #55: H9 evidence and macOS symlink runner correction merged 2026-10-04; qualification remains incomplete"
+  ],
+  "nextStep": {
+    "title": "Establish DaveLLM connection access for controlled live Notion acceptance",
+    "why": "Simulated tests cannot prove the real API or configured page access.",
+    "doneWhen": "A separately authorized read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback are recorded; the preservation sentinel is unchanged.",
+    "effort": "S",
+    "owner": "either",
+    "blockedBy": "Verified router credential and page sharing; this package authorizes neither live Notion writes nor inference."
+  },
+  "findings": [
+    {
+      "id": "DL-01",
+      "type": "decision",
+      "sev": "P1",
+      "title": "Notion adapter never run against real Notion",
+      "detail": "The simulated acceptance suite passes, but no live DaveLLM-to-Notion acceptance is recorded. Verify router connection access and explicit page sharing before a separately authorized live sequence. Existing test-page preparation does not prove adapter access.",
+      "files": [
+        "davellm_notion.py:59",
+        "docs/DAVELLM_TOOLS.md:374",
+        "tests/fake_notion.py"
+      ],
+      "evidence": "doc",
+      "phase": 0,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Notion adapter never run against real Notion",
+          "detail": "Notion tests use tests/fake_notion.py only; no live run is recorded. Pinned Notion-Version 2026-03-11 and response shapes are unverified. Child pages/DBs wait on this.",
+          "evidence": "session"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "docs/DAVELLM_TOOLS.md; simulated tests; reviewed 2026-10-04"
+    },
+    {
+      "id": "DL-02",
+      "type": "decision",
+      "sev": "P1",
+      "title": "H9 run unqualified; D-006 remains pending",
+      "detail": "PR #55 records 406/500 evaluations, 374 task assertions passing, 32 failing and zero writes. The macOS symlink false positive is fixed but not rerun live. Text-form calls on /v1 and a blocked injection-driven task failure remain open. D-002 selected the fixed runner and a new window ending 2026-10-04 at 05:33:43 EDT. The run stopped; its record authorizes no restart. The September 23 grant is expired. Actions 55-60 remain incomplete.",
+      "files": [
+        "docs/DAVEHARNESS_H9_RESULTS.md",
+        "docs/DAVEHARNESS_H9_READINESS_REVIEW.md",
+        "scripts/evaluate_live_daveharness.py"
+      ],
+      "evidence": "doc",
+      "phase": 4,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "H9 live qualification is stalled; no model qualified",
+          "detail": "Actions 55-60 open: need governing runner, renewed authorization (expired 09-23), Walter context + inference check. DaveHarness stays 1.0.0-rc.1.",
+          "evidence": "doc"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "docs/DAVEHARNESS_H9_RESULTS.md and docs/DAVEHARNESS_H9_READINESS_REVIEW.md, PR #55"
+    },
+    {
+      "id": "DL-03",
+      "type": "docs",
+      "sev": "P2",
+      "title": "H9 edit_outside_root_approved now records 0 approvals",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. #51 merged: preflight refuses before approval; doc row 151 still says the operator approves. Recommend: keep it, relabel the case, re-baseline edit runs.",
+      "files": [
+        "docs/DAVEHARNESS_H9_LIVE_EVALUATION.md:151",
+        "docs/DAVEHARNESS_H9_LIVE_EVALUATION.md:294",
+        "tests/test_daveharness_live_evaluation.py:747"
+      ],
+      "evidence": "doc",
+      "phase": 1,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "H9 edit_outside_root_approved now records 0 approvals",
+          "detail": "#51 merged: preflight refuses before approval; doc row 151 still says the operator approves. Recommend: keep it, relabel the case, re-baseline edit runs.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-04",
+      "type": "security",
+      "sev": "P2",
+      "title": "Public /health lists node URLs; API key compare not constant-time",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Unauthenticated GET /health returns each node's id, name and url (observed). require_api_key compares with !=. Router binds 127.0.0.1 by default.",
+      "files": [
+        "app.py:3125",
+        "app.py:498",
+        "INTEGRATION.md:27"
+      ],
+      "evidence": "doc",
+      "phase": 3,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Public /health lists node URLs; API key compare not constant-time",
+          "detail": "Unauthenticated GET /health returns each node's id, name and url (observed). require_api_key compares with !=. Router binds 127.0.0.1 by default.",
+          "evidence": "observed"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-05",
+      "type": "a11y",
+      "sev": "P2",
+      "title": "Views lack <main>; skip link dead off Chat; focus stays on rail",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. axe: landmark-one-main on Projects/Cluster/Settings, main nested in a region on Chat; #chatPanel is hidden elsewhere; no focus move on view switch.",
+      "files": [
+        "static/index.html:74",
+        "static/console.js:34",
+        "static/index.html:12"
+      ],
+      "evidence": "doc",
+      "phase": 2,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Views lack <main>; skip link dead off Chat; focus stays on rail",
+          "detail": "axe: landmark-one-main on Projects/Cluster/Settings, main nested in a region on Chat; #chatPanel is hidden elsewhere; no focus move on view switch.",
+          "evidence": "observed"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-06",
+      "type": "a11y",
+      "sev": "P2",
+      "title": "Whole transcript is a polite live region with no aria-busy",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. #responseBox has aria-live=polite and never sets aria-busy while streaming, so appended tokens can be re-announced (screen reader not tested).",
+      "files": [
+        "static/index.html:135"
+      ],
+      "evidence": "doc",
+      "phase": 2,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Whole transcript is a polite live region with no aria-busy",
+          "detail": "#responseBox has aria-live=polite and never sets aria-busy while streaming, so appended tokens can be re-announced (screen reader not tested).",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-07",
+      "type": "bug",
+      "sev": "P2",
+      "title": "Dead controls: routing inputs, Router Stats, hidden monitor badge",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Max cost/Min quality inputs only write localStorage (no /route/decision call); Router Stats is hidden; the badge sits in a display:none link yet is still polled.",
+      "files": [
+        "static/index.html:240",
+        "static/app.js:123",
+        "static/style.css:88"
+      ],
+      "evidence": "doc",
+      "phase": 2,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Dead controls: routing inputs, Router Stats, hidden monitor badge",
+          "detail": "Max cost/Min quality inputs only write localStorage (no /route/decision call); Router Stats is hidden; the badge sits in a display:none link yet is still polled.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-08",
+      "type": "bug",
+      "sev": "P3",
+      "title": "5 unnamed dialogs; new-project fields prefilled with spaces",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Runtime, project, template, credential, new-project dialogs have no aria name; new-project description/instructions default to 4 spaces and save untrimmed.",
+      "files": [
+        "static/index.html:450",
+        "static/index.html:470",
+        "static/app.js:883"
+      ],
+      "evidence": "doc",
+      "phase": 2,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "5 unnamed dialogs; new-project fields prefilled with spaces",
+          "detail": "Runtime, project, template, credential, new-project dialogs have no aria name; new-project description/instructions default to 4 spaces and save untrimmed.",
+          "evidence": "observed"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-09",
+      "type": "feature",
+      "sev": "P3",
+      "title": "Replies with lists or tables show raw Markdown syntax",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. appendMarkdown handles code, bold, inline code, h1-h3 only; '- ', '1.' and '|---|' render as text (probe: 0 list/table nodes). Documented as a small subset.",
+      "files": [
+        "static/console.js:326",
+        "README.md:173"
+      ],
+      "evidence": "doc",
+      "phase": 2,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Replies with lists or tables show raw Markdown syntax",
+          "detail": "appendMarkdown handles code, bold, inline code, h1-h3 only; '- ', '1.' and '|---|' render as text (probe: 0 list/table nodes). Documented as a small subset.",
+          "evidence": "observed"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-10",
+      "type": "responsive",
+      "sev": "P3",
+      "title": "Touch targets under 44px; ultrawide leaves ~3,900px unused",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. At 390px touch: context-strip buttons 28px tall, details summaries 19px. At 5120x1440: 760px chat column in a 4,640px panel; inspector closed by default.",
+      "files": [
+        "static/style.css:170",
+        "static/style.css:418",
+        "static/console.js:244"
+      ],
+      "evidence": "doc",
+      "phase": 2,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Touch targets under 44px; ultrawide leaves ~3,900px unused",
+          "detail": "At 390px touch: context-strip buttons 28px tall, details summaries 19px. At 5120x1440: 760px chat column in a 4,640px panel; inspector closed by default.",
+          "evidence": "observed"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-11",
+      "type": "nav",
+      "sev": "P3",
+      "title": "Views are not addressable: Back leaves the app",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. setConsoleView never pushes history or a hash; only #cluster is read on load; document.title stays 'DaveLLM'. Phone/browser Back exits instead of changing view.",
+      "files": [
+        "static/console.js:34",
+        "static/console.js:402"
+      ],
+      "evidence": "doc",
+      "phase": 2,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Views are not addressable: Back leaves the app",
+          "detail": "setConsoleView never pushes history or a hash; only #cluster is read on load; document.title stays 'DaveLLM'. Phone/browser Back exits instead of changing view.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-12",
+      "type": "feature",
+      "sev": "P2",
+      "title": "Resolved: invalid Notion calls refuse before approval",
+      "detail": "Resolved in source by this package. Both Notion write tools reuse local approval-preview validation before pausing. Invalid calls return their existing refusal without a pending call or handler invocation; valid calls still need exact approval. Remote checks remain in the approved handler. No live Notion acceptance is claimed.",
+      "files": [
+        "app.py",
+        "docs/DAVEHARNESS_PREFLIGHT.md",
+        "tests/test_notion_adversarial.py",
+        "tests/test_tool_catalog_provenance.py"
+      ],
+      "evidence": "observed",
+      "phase": 3,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Notion write tools lack an approval preflight",
+          "detail": "notion.page.append/block.update can show an approval card for a call the adapter will refuse; only file.edit uses the preflight. Doc still says 'once #48 merges'.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "verified",
+      "evidenceNote": "206 simulated Notion tests and provenance/lifecycle regression checks passed on the implementation revision; live acceptance remains open"
+    },
+    {
+      "id": "DL-13",
+      "type": "infra",
+      "sev": "P2",
+      "title": "CI drift risk: unpinned deps, deprecations, timing flakes",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. 8 unpinned runtime deps (resolved fastapi 0.142.2, starlette 1.7.0); on_event and TestClient-httpx deprecations; 3.13/3.14 timing flakes (#36, #54) fixed.",
+      "files": [
+        "requirements.txt",
+        "app.py:5061",
+        ".github/workflows/ci.yml"
+      ],
+      "evidence": "doc",
+      "phase": 3,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "CI drift risk: unpinned deps, deprecations, timing flakes",
+          "detail": "8 unpinned runtime deps (resolved fastapi 0.142.2, starlette 1.7.0); on_event and TestClient-httpx deprecations; 3.13/3.14 timing flakes (#36, #54) fixed.",
+          "evidence": "observed"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    },
+    {
+      "id": "DL-14",
+      "type": "docs",
+      "sev": "P3",
+      "title": "Docs and release drift: manifest, check lists, no tags",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+      "files": [
+        "docs/design/DESIGN_OVERHAUL_MANIFEST.md",
+        "CLAUDE.md:108",
+        "docs/design/CONSOLE_IMPLEMENTATION.md"
+      ],
+      "evidence": "doc",
+      "phase": 1,
+      "history": [
+        {
+          "checkedOn": "2026-10-02",
+          "title": "Docs and release drift: manifest, check lists, no tags",
+          "detail": "Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "open",
+      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+    }
+  ],
+  "phases": [
+    {
+      "name": "Phase 0 - Prove the Notion adapter live",
+      "goal": "Run the merged adapter once against a real disposable page and record the result",
+      "items": [
+        "DL-01: verify access to the existing designated test page using the configured router connection; do not duplicate it",
+        "Under separate authorization, run read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback",
+        "Record sanitized outcomes and preservation evidence without credentials or private page IDs"
+      ],
+      "gate": "Each approved write shows outcome verified on the real page; rejected call writes nothing; no token in logs"
+    },
+    {
+      "name": "Phase 1 - Docs truth and decisions",
+      "goal": "Make docs match HEAD; record the H9, manifest and version decisions",
+      "items": [
+        "DL-03: relabel edit_outside_root case, fix table row, note baselines not comparable",
+        "DL-14: mark design manifest as-built, record §9 outcomes, fix CLAUDE.md check list",
+        "Decide VERSION bump/CHANGELOG/tags and prune old branches (Dave)"
+      ],
+      "gate": "pytest -q tests/test_documentation_contracts.py tests/test_capabilities_manifest.py; git diff --check"
+    },
+    {
+      "name": "Phase 2 - Console a11y, nav and dead UI",
+      "goal": "Fix landmarks, focus, live region, dialogs, dead controls, touch and ultrawide gaps",
+      "items": [
+        "DL-05/11: main per view, live skip link, focus heading, hash/Back, document.title",
+        "DL-06/08: aria-busy while streaming, name 5 dialogs, trim new-project fields",
+        "DL-07: remove routing inputs, Router Stats and hidden badge polling",
+        "DL-10/09: 44px context strip + summary, ultrawide columns, lists/tables"
+      ],
+      "gate": "node tests/browser_console.cjs passes; axe 0 violations x4 views light+dark; no page scroll at 390/1440/5120"
+    },
+    {
+      "name": "Phase 3 - Harden API and CI",
+      "goal": "Close the public-info leak and CI drift; spare doomed Notion approvals",
+      "items": [
+        "DL-04: /health returns status+version only; compare_digest; update INTEGRATION.md",
+        "DL-12 resolved: local write preflight verified against simulated Notion; exact approval and remote handler checks preserved",
+        "DL-13: pin or lock deps, migrate on_event to lifespan, keep 3.12-3.14 green"
+      ],
+      "gate": "pytest + mypy + node tests green on CI 3.12/3.13/3.14; a test asserts /health has no url"
+    },
+    {
+      "name": "Phase 4 - H9 live qualification (Dave-gated)",
+      "goal": "Qualify a target model under renewed authorization; keep rc.1 until human sign-off",
+      "items": [
+        "DL-02: D-002 already chose the fixed runner; preserve the stopped run, its nominal end time, the expired September 23 grant and historical usage",
+        "Resolve D-006 before transport changes, re-governance or any newly authorized live run",
+        "Qualification and subsequent candidate/human acceptance remain incomplete"
+      ],
+      "gate": "Full governing corpus and all existing assertions/thresholds pass, then actions 57-60; no unauthorized tag, version change or inference"
+    }
+  ],
+  "decisionsForDave": [
+    "D-006 [Open]: H9 next path. Options: A accept the unqualified record and stop; B diagnose structured write calls on /v1 before a separately authorized new run (recommended); C re-govern on the native adapter runner after resolving its missing equivalent token accounting. The stopped run grants no restart permission; the September 23 grant remains expired.",
+    "DL-03 [Open, carried from 2026-10-02]: ratify the zero-approval outside-root edit case. Options: A retain preflight and explicitly re-baseline the case (recommended); B leave the historical comparison unresolved. This package changes no corpus or qualification assertion.",
+    "DL-14 [Open, carried from 2026-10-02]: design-manifest and unused-control decisions. Options: A ratify the implemented console and scope removal of confirmed unused controls (recommended); B retain controls until product behavior is specified.",
+    "DL-14 [Open, carried from 2026-10-02]: version, changelog and release policy. Options: A define a release package with its own acceptance gates (recommended); B leave current versions unchanged. No release is authorized here.",
+    "DL-14 [Open, carried from 2026-10-02]: old branch cleanup and administrator protection. Options: A review branch ownership and protections separately (recommended); B retain existing policy. Historical branch counts require refresh; no branch deletion is authorized.",
+    "Notion setup [Open for future scope]: environment-only setup or Keychain-backed configuration. Recommendation: verify the existing environment-only path before adding credential persistence."
+  ],
+  "decisionHistory": [
+    {
+      "id": "D-002",
+      "status": "accepted",
+      "date": "2026-10-03",
+      "decision": "Fixed runner governs; a new one-million-token, six-hour window was authorized with historical usage seeded. The nominal window ends 2026-10-04 at 05:33:43 EDT. The run stopped and the governing record authorizes no restart.",
+      "source": "docs/DAVEHARNESS_H9_RESULTS.md"
+    },
+    {
+      "id": "DL-12",
+      "status": "accepted",
+      "date": "2026-10-04",
+      "decision": "Implement local Notion write preflight and planning reconciliation; no live Notion requests or inference."
+    },
+    {
+      "id": "Notion fixture",
+      "status": "prepared; access unverified",
+      "date": "2026-10-02",
+      "decision": "A designated adapter test page already exists; do not create another page based on the superseded board setup question."
+    }
+  ],
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "why": "Trust boundaries, tool/fingerprint rules, required checks"
+    },
+    {
+      "path": "davellm_notion.py",
+      "why": "Notion adapter: version pin"
+    },
+    {
+      "path": "docs/DAVELLM_TOOLS.md",
+      "why": "Notion setup steps, approval card, outcomes"
+    },
+    {
+      "path": "docs/DAVEHARNESS_H9_LIVE_EVALUATION.md",
+      "why": "H9 case table"
+    },
+    {
+      "path": "docs/DAVEHARNESS_H9_READINESS_REVIEW.md",
+      "why": "H9 blockers, runner differences, pending decisions"
+    },
+    {
+      "path": "static/console.js",
+      "why": "View switching, focus, shortcuts, markdown; a11y fixes land here"
+    },
+    {
+      "path": "static/index.html",
+      "why": "Landmarks, dialogs, dead controls, textarea whitespace"
+    },
+    {
+      "path": "app.py",
+      "why": "/health"
+    },
+    {
+      "path": "tests/browser_console.cjs",
+      "why": "Repo browser acceptance: seven widths, themes, approval flow"
+    },
+    {
+      "path": "docs/design/DESIGN_OVERHAUL_MANIFEST.md",
+      "why": "Component manifest"
+    },
+    {
+      "path": "docs/NEXT_STEPS.json",
+      "why": "Public-safe projection of existing records, including historical finding IDs and unresolved decisions"
+    }
+  ],
+  "context": [
+    "This is a public-safe projection of the owning records, not a second roadmap or blanket execution permission.",
+    "Historical DL-01 through DL-14 finding IDs and evidence are preserved. Untouched UI and infrastructure findings remain historical, not newly verified.",
+    "PR #48 merged the Notion adapter; #51 added generic preflight; #52 fixed overlapping file edits; #53 added static revalidation; #54 fixed a deadline-test GC flake; #55 records the unqualified H9 run and runner correction.",
+    "DaveLLM runtime uses native /api/chat; the governing H9 fixed runner uses /v1/chat/completions. Their evidence is not interchangeable.",
+    "Approval state and Notion ledgers remain per-process and per-run. No process-restart durability is claimed.",
+    "DaveHarness remains 1.0.0-rc.1 and DaveLLM remains 2.1.0. No tag, release, qualification or human acceptance is claimed.",
+    "Time reconciliation: reviewed at 2026-10-04 08:48:53 UTC, before the October 4 nominal window end at 09:33:43 UTC. The run was already stopped with no restart authorized; this projection does not infer authority from remaining wall time or tokens.",
+    "Implementation proof: 206 Notion tests pass with 97% branch coverage; 9 Node tests, strict types, compilation, syntax, capability freshness, offline qualification/load and npm audit pass. The full repository suite and protected CI checks gate merge; no live acceptance is implied."
+  ],
+  "verify": [
+    "python -m pytest -q",
+    "python -m mypy daveharness",
+    "python scripts/generate_capabilities_manifest.py --check",
+    "node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs tests/test_console.mjs",
+    "Use .github/workflows/ci.yml for full compilation, coverage, offline qualification, syntax and dependency gates."
+  ],
+  "links": [
+    {
+      "label": "Repository",
+      "url": "https://github.com/DaveHomeAssist/DaveLLM"
+    },
+    {
+      "label": "H9 record and correction: PR #55",
+      "url": "https://github.com/DaveHomeAssist/DaveLLM/pull/55"
+    },
+    {
+      "label": "Baseline CI",
+      "url": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37178075989"
+    },
+    {
+      "label": "Verified Notion preflight implementation",
+      "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
+    }
+  ],
+  "kickoffPrompt": "Read the current DaveLLM tool documentation and H9 results. Establish whether the router has its own Notion connection and access to the existing designated test page without exposing credentials. Provide one complete secure setup procedure if access is missing. Do not create a replacement page, make live Notion requests, write page content, run inference, or infer renewed or resumed H9 authorization from this projection. Record the exact remaining acceptance gate.",
+  "confidence": "high for source and cited automated evidence; live and physical acceptance unverified",
+  "unknowns": [
+    "DaveLLM access to the real Notion API and designated page; no live acceptance recorded.",
+    "H9 structured-write compatibility and the remaining fixed corpus; current inference health is not established by the past run.",
+    "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
+    "Historical console, dependency and release findings outside this package have not been re-audited."
+  ]
+}
