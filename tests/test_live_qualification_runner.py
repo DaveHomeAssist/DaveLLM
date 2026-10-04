@@ -6,6 +6,8 @@ import time
 import httpx
 import pytest
 
+import scripts.qualify_live_daveharness as runner
+from daveharness import ToolRegistry
 from scripts.qualify_live_daveharness import FAMILIES, Resources, cases, confined, evaluate, grade
 
 
@@ -75,6 +77,86 @@ async def test_runner_expected_effects_and_terminal_states_with_fake_transport(f
     assert row["unauthorized_effects"] == 0
     assert row["terminal_events"] == 1
     assert count >= 1
+
+
+@pytest.fixture
+def symlinked_root(tmp_path):
+    """A disposable root reached through a symlink, as /tmp is on macOS (/tmp -> private/tmp)."""
+    real = tmp_path.resolve() / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+    assert link != real and link.resolve() == real
+    return link, real
+
+
+async def run_write_case(case, directory, on_first_call=None):
+    """Run one write case against a fake model that proposes the one exact write, then answers."""
+    seen = 0
+    def respond(request):
+        nonlocal seen
+        seen += 1
+        if seen == 1 and on_first_call:
+            on_first_call()
+        payload = json.loads(request.content)
+        if any(message["role"] == "tool" for message in payload["messages"]):
+            message = {"role": "assistant", "content": case["expected"]}
+        else:
+            args = {"path": "out.txt", "content": case["marker"]}
+            message = {"role": "assistant", "tool_calls": [
+                {"id": "call_1", "type": "function", "function": {"name": "file.write", "arguments": json.dumps(args)}}]}
+        return httpx.Response(200, json={"choices": [{"message": message}], "usage": {"total_tokens": 100}})
+    async with httpx.AsyncClient(base_url="http://model.test", transport=httpx.MockTransport(respond)) as client:
+        return await evaluate(case, directory, client, Resources(time.monotonic()))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("family", ["write_approve", "write_unicode", "write_replay"])
+async def test_approved_write_under_a_symlinked_root_is_not_an_unauthorized_effect(family, symlinked_root):
+    link, real = symlinked_root
+    case = next(case for case in cases() if case["family"] == family)
+    row = await run_write_case(case, link / case["id"])
+    assert row["unauthorized_effects"] == 0, row
+    assert row["writes"] == 1 and row["semantic_pass"] and row["terminal_events"] == 1, row
+    assert (real / case["id"] / "out.txt").read_text() == case["marker"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effect", ["wrong_path", "wrong_content"])
+async def test_write_handler_flags_a_wrong_path_or_content_under_a_symlinked_root(effect, symlinked_root, monkeypatch):
+    link, real = symlinked_root
+    case = next(case for case in cases() if case["family"] == "write_approve")
+    probes = {"wrong_path": {"path": "other.txt", "content": case["marker"]},
+              "wrong_content": {"path": "out.txt", "content": "WRONG"}}
+    handlers = {}
+    class SpyRegistry(ToolRegistry):
+        def register(self, definition):
+            handlers[definition.name] = definition.handler
+            super().register(definition)
+    probed = []
+    decide = runner.exact_decision
+    def probe_then_decide(pending, run_id, choice):
+        # The runner has just recorded the exact approval; offer the real handler a different effect.
+        with pytest.raises(ValueError, match="effect_denied"):
+            handlers["file.write"](probes[effect])
+        probed.append([path.name for path in (real / case["id"]).iterdir() if path.name in {"out.txt", "other.txt"}])
+        return decide(pending, run_id, choice)
+    monkeypatch.setattr(runner, "ToolRegistry", SpyRegistry)
+    monkeypatch.setattr(runner, "exact_decision", probe_then_decide)
+    row = await run_write_case(case, link / case["id"])
+    assert probed == [[]], "the refused effect must not have written anything"
+    assert row["unauthorized_effects"] == 1, row  # the probe only; the exact approved write is still not flagged
+    assert row["writes"] == 1 and (real / case["id"] / "out.txt").read_text() == case["marker"]
+
+
+@pytest.mark.asyncio
+async def test_write_handler_flags_an_output_name_that_is_a_symlink_to_another_file(symlinked_root):
+    link, real = symlinked_root
+    case = next(case for case in cases() if case["family"] == "write_approve")
+    directory = real / case["id"]
+    row = await run_write_case(case, link / case["id"], lambda: (directory / "out.txt").symlink_to("second.txt"))
+    assert row["unauthorized_effects"] == 1 and row["writes"] == 0, row
+    assert (directory / "second.txt").read_text() == "SECOND_CODE"
 
 
 def test_grading_requires_schema_evidence_and_no_vacuous_completion():

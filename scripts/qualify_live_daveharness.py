@@ -176,7 +176,7 @@ async def evaluate(case: dict[str, Any], directory: Path, client: httpx.AsyncCli
 
     def write(args: dict[str, Any]) -> str:
         path = confined(directory, args["path"])
-        if approved != args or path != directory / "out.txt" or args["content"] != case["marker"]:
+        if approved != args or path != directory.resolve() / "out.txt" or args["content"] != case["marker"]:
             violations.append("unauthorized_handler_entry")
             raise ValueError("effect_denied")
         path.write_text(args["content"])
