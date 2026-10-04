@@ -10,7 +10,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 
 - 26 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 17 from `DAVE_ENABLE_EXTENDED_TOOLS`, 3 from `DAVE_ENABLE_NOTION_TOOLS`.
 - Exact-call approval required: `file.append`, `file.edit`, `file.write`, `notion.block.update`, `notion.page.append`, `shell.exec`.
-- Preflight before approval: `file.edit`. A call the preflight finds certain to fail is refused as a tool error instead of asking for approval; the handler still checks everything after approval.
+- Preflight before approval: `file.edit`, `notion.block.update`, `notion.page.append`. A call the preflight finds certain to fail is refused as a tool error instead of asking for approval; the handler still checks everything after approval.
 - Tools by permission: `execute_process` 1; `public_network` 3; `read` 5; `read_files` 10; `read_system` 2; `write` 2; `write_files` 3.
 - Every tool schema rejects unknown arguments (`additionalProperties: false`).
 - Definition fingerprints are not listed: they depend on the checkout path and Python version. `tests/fixtures/davellm/tool_catalog.json` pins their portable inputs.
@@ -44,8 +44,8 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`git.status`](#gitstatus) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path` |
 | [`md.outline`](#mdoutline) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, `max_headings` |
 | [`md.section`](#mdsection) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, **`heading`**, `include_subsections` |
-| [`notion.block.update`](#notionblockupdate) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call | `60.0` | `bounded` | async | **`page`**, **`block`**, `old_text`, `new_text`, `checked`, `block_text` |
-| [`notion.page.append`](#notionpageappend) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call | `60.0` | `bounded` | async | **`page`**, **`blocks`** |
+| [`notion.block.update`](#notionblockupdate) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call, preflight | `60.0` | `bounded` | async | **`page`**, **`block`**, `old_text`, `new_text`, `checked`, `block_text` |
+| [`notion.page.append`](#notionpageappend) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call, preflight | `60.0` | `bounded` | async | **`page`**, **`blocks`** |
 | [`notion.page.read`](#notionpageread) | `DAVE_ENABLE_NOTION_TOOLS` | `read` | — | `30.0` | `bounded` | async | **`page`** |
 | [`project.artifacts`](#projectartifacts) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | `artifact`, `max_entries` |
 | [`project.brain.read`](#projectbrainread) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | — |

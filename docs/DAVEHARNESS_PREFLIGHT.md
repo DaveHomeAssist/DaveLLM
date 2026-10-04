@@ -58,6 +58,28 @@ without one keeps its existing fingerprint. DaveLLM's
 `tests/fixtures/davellm/tool_catalog.json` pins each preflight's placement and
 source in `extended_preflight_code`.
 
+## Notion readiness scope (approved 2026-10-04)
+
+Problem: Notion approval previews already identify calls that cannot succeed,
+but those calls still pause for approval. Reuse the same local refusal checks
+as synchronous preflights for `notion.page.append` and `notion.block.update`.
+The smallest slice changes only whether a known-invalid call asks for approval;
+valid calls retain exact-call approval and every post-approval handler check.
+
+Acceptance: missing or invalid configuration, unconfigured pages, invalid or
+cross-page run references, invalid edits and blocked duplicate appends return
+their existing refusal without creating a pending call or invoking a handler.
+Valid calls pause, rejection writes nothing, and approved edits preserve
+formatting and still refuse changed remote content. Preflight performs no HTTP
+request or external effect and never changes an append outcome. Exceptions and
+timeouts retain the existing approval fallback. Tests use simulated transport.
+
+Dependencies: the existing preflight contract, run-local ledger, approval preview
+validation and provenance fixtures. The local snapshot can become stale while
+approval is pending, so handler validation remains authoritative. No new API,
+credential storage, persistence, dependency, live Notion access, inference,
+qualification change or restart-durability claim is included.
+
 ## DaveLLM
 
 `file.edit` uses `preflight_file_edit` in `app.py`, which calls
@@ -66,6 +88,13 @@ admission, file type, hard links, UTF-8, `old_text` count, size), returning the
 handler's own message. The approved edit still runs every check again, because
 the file can change after approval.
 
-The Notion tools on PR #48 can use the same hook once that branch merges: the
-run ledger is per run and reachable from the preflight through
-`HOST_RUN_CONTEXT`, which the worker thread inherits.
+`notion.page.append` and `notion.block.update` use `preflight_notion_page_append`
+and `preflight_notion_block_update` in `app.py`. Both reuse
+`davellm_notion.pending_context`, the approval preview's local validation, and
+return its existing refusal or `None`. The worker inherits `HOST_RUN_CONTEXT`
+and reads the same run ledger as the handler. These preflights make no Notion
+request and never change append outcomes. They do not claim remote freshness:
+after approval, the handler still checks page ownership, content and write
+outcomes. Approval fallback on exceptions or timeouts is unchanged. The Notion
+preflight provenance is pinned in `notion_preflight_code` in the catalog fixture;
+other tools' handlers and preflights are unchanged.

@@ -959,15 +959,15 @@ def test_r6_a_model_that_edits_before_reading_recovers_within_the_run(lifecycle)
         ("notion.block.update", {"page": "adapter-test", "block": "b1", "checked": True,
                                  "block_text": "Prove the adapter"}),
         (None, "checked"))
-    # DaveHarness asks for approval before any handler runs, so even the doomed first call pauses.
+    # The doomed call is refused locally; only the recovered call asks for approval.
     paused = lifecycle.settle(run_id)
-    assert paused["status"] == "approval_required" and lifecycle.tool_results(paused) == []
-    second = lifecycle.decide(run_id, paused["snapshot"]["pending_call"]).json()
-    assert second["status"] == "approval_required"
-    first = lifecycle.tool_results(second)[0]
-    assert first["status"] == "error" and first["error"].startswith("Unknown block ref b1")
+    assert paused["status"] == "approval_required"
+    first, read = lifecycle.tool_results(paused)
+    assert first["status"] == "error" and first["termination"] == "denied"
+    assert first["error"].startswith("Unknown block ref b1")
+    assert read["status"] == "success"
     assert lifecycle.fake.writes() == []
-    decided = lifecycle.decide(run_id, second["snapshot"]["pending_call"]).json()
+    decided = lifecycle.decide(run_id, paused["snapshot"]["pending_call"]).json()
     assert decided["status"] == "completed"
     assert lifecycle.fake.blocks[block]["to_do"]["checked"] is True
     assert len(lifecycle.fake.writes()) == 1
@@ -978,9 +978,9 @@ def test_r6_failed_and_unknown_outcomes_reach_the_model_as_errors_not_successes(
     run_id = lifecycle.start(APPEND_CALL, APPEND_CALL, (None, "stopped"))
     pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
     decided = lifecycle.decide(run_id, pending).json()
-    if decided["status"] == "approval_required":
-        decided = lifecycle.decide(run_id, decided["snapshot"]["pending_call"]).json()
     results = lifecycle.tool_results(decided)
+    assert decided["status"] == "error_budget" and results[1]["termination"] == "denied"
+    assert decided["snapshot"]["pending_call"] is None
     assert results[0]["status"] == "error" and results[0]["error"].startswith("Outcome unknown:")
     assert results[1]["status"] == "error" and "earlier append of these exact blocks" in results[1]["error"]
     assert len(lifecycle.fake.writes()) == 1
@@ -1082,8 +1082,8 @@ import pathlib  # noqa: E402
 @pytest.mark.parametrize("call, expected", [
     (APPEND_CALL, ["Append to Notion page adapter-test · 1 block at the end", "Paragraph: from the run"]),
     (("notion.block.update", {"page": "adapter-test", "block": "b1", "checked": True,
-                              "block_text": "Prove the adapter"}),
-     ["Edit Notion page adapter-test · block b1", "Mark this to-do as done:", "Prove the adapter"]),
+                              "block_text": "Prove the adapter draft"}),
+     ["Edit Notion page adapter-test · block b1", "Mark this to-do as done:", "Prove the adapter draft"]),
     (("notion.block.update", {"page": "adapter-test", "block": "b1", "old_text": "draft", "new_text": "final"}),
      ["Edit Notion page adapter-test · block b1", "Before", "draft", "After", "final"]),
 ])
@@ -1120,7 +1120,16 @@ def test_r7_the_card_gets_the_whole_block_before_and_after_from_the_run_ledger(l
                                "before": "Status: draft wording", "after": "Status: final wording"}
 
 
-def test_r7_the_card_is_told_in_advance_when_the_call_will_be_refused(lifecycle):
+def test_r7_the_card_still_warns_when_preflight_falls_back_to_approval(lifecycle, monkeypatch):
+    original = lifecycle.router.notion_pending_context
+    unavailable = {"next": True}
+
+    def preview(*args, **kwargs):
+        if unavailable.pop("next", False):
+            raise RuntimeError("preflight temporarily unavailable")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(lifecycle.router, "notion_pending_context", preview)
     lifecycle.fake.add_block(lifecycle.page, "paragraph", [rt("plain "), rt("bold", bold=True)])
     run_id = lifecycle.start(("notion.page.read", {"page": "adapter-test"}),
                              ("notion.block.update", {"page": "adapter-test", "block": "b1",
@@ -1128,6 +1137,7 @@ def test_r7_the_card_is_told_in_advance_when_the_call_will_be_refused(lifecycle)
     lifecycle.settle(run_id)
     body = context_of(lifecycle, run_id).json()
     assert body["refused"].startswith("old_text in block b1 crosses a formatting change")
+    unavailable["next"] = True
     other = lifecycle.start(("notion.block.update", {"page": "adapter-test", "block": "b7", "checked": True,
                                                     "block_text": "x"}), (None, "done"))
     lifecycle.settle(other)
@@ -1621,3 +1631,133 @@ def test_r10_listing_shapes_from_notion_s_own_types_are_handled():
         ("unsupported", None, 0, False), ("tab", None, 0, False), ("paragraph", "inside a tab", 1, False),
         ("transcription", None, 0, True)]
     assert not any(r.url.path.endswith(f"{legacy}/children") for r in world.fake.requests)
+
+
+# ---- Notion approval preflight ------------------------------------------------------------
+
+@pytest.mark.parametrize("tool", ["notion.page.append", "notion.block.update"])
+@pytest.mark.parametrize("problem", ["missing_token", "invalid_token", "missing_pages", "invalid_pages", "unknown_page"])
+def test_preflight_configuration_refuses_without_approval_or_handler(lifecycle, monkeypatch, tool, problem):
+    router = lifecycle.router
+    pages = _json.dumps({"adapter-test": lifecycle.page})
+    settings = {
+        "missing_token": (None, pages), "invalid_token": ("invalid secret", pages),
+        "missing_pages": (TOKEN, None), "invalid_pages": (TOKEN, "[broken"),
+        "unknown_page": (TOKEN, pages),
+    }
+    monkeypatch.setattr(router, "NOTION_SETTINGS", notion.NotionSettings.from_values(*settings[problem]))
+    arguments = {"page": "elsewhere" if problem == "unknown_page" else "adapter-test"}
+    arguments.update({"blocks": BLOCKS} if tool.endswith("append") else {"block": "b1", "checked": True, "block_text": "x"})
+    entered = []
+
+    async def forbidden(*_args, **_kwargs):
+        entered.append(tool)
+        raise AssertionError("invalid call entered handler")
+
+    monkeypatch.setattr(router, "notion_append_blocks" if tool.endswith("append") else "notion_update_block", forbidden)
+    expected = notion.pending_context(tool, arguments, settings=router.NOTION_SETTINGS, ledger=notion.RunLedger())["refused"]
+    run_id = lifecycle.start((tool, arguments), (None, "done"))
+    finished = lifecycle.settle(run_id)
+    assert finished["status"] == "completed"
+    assert finished["snapshot"]["pending_call"] is None
+    result, = lifecycle.tool_results(finished)
+    assert (result["status"], result["termination"], result["error"]) == ("error", "denied", expected)
+    assert entered == [] and lifecycle.fake.requests == []
+    assert context_of(lifecycle, run_id).status_code == 404
+
+
+@pytest.mark.parametrize("problem", ["unknown_ref", "cross_page", "missing_text", "same_text", "formatting", "not_todo", "block_text"])
+def test_preflight_invalid_edit_uses_run_snapshot_without_handler(lifecycle, monkeypatch, problem):
+    router, fake = lifecycle.router, lifecycle.fake
+    other = fake.add_page("Other")
+    fake.add_block(other, "paragraph", [rt("other")])
+    fake.add_block(lifecycle.page, "paragraph", [rt("plain "), rt("bold", bold=True)])
+    router.NOTION_SETTINGS = notion.NotionSettings.from_values(TOKEN, _json.dumps({"adapter-test": lifecycle.page, "other": other}))
+    arguments = {"page": "adapter-test", "block": "b1", "old_text": "plain", "new_text": "new"}
+    changes = {
+        "unknown_ref": {"block": "b999"}, "cross_page": {"page": "other"},
+        "missing_text": {"old_text": "missing"}, "same_text": {"new_text": "plain"},
+        "formatting": {"old_text": "plain bold"}, "not_todo": {"checked": True},
+        "block_text": {"block_text": "wrong snapshot"},
+    }
+    arguments.update(changes[problem])
+    entered = []
+
+    async def forbidden(*_args, **_kwargs):
+        entered.append(True)
+        raise AssertionError("invalid edit entered handler")
+
+    monkeypatch.setattr(router, "notion_update_block", forbidden)
+    requests_at_preflight = []
+    original = router.notion_pending_context
+
+    def preview(*args, **kwargs):
+        before = len(fake.requests)
+        result = original(*args, **kwargs)
+        requests_at_preflight.append((before, len(fake.requests), result["refused"]))
+        return result
+
+    monkeypatch.setattr(router, "notion_pending_context", preview)
+    run_id = lifecycle.start(("notion.page.read", {"page": "adapter-test"}),
+                             ("notion.block.update", arguments), (None, "done"))
+    finished = lifecycle.settle(run_id)
+    assert finished["status"] == "completed" and finished["snapshot"]["pending_call"] is None
+    result = lifecycle.tool_results(finished)[-1]
+    before, after, expected = requests_at_preflight[0]
+    assert before == after == len(fake.requests)
+    assert (result["termination"], result["error"]) == ("denied", expected)
+    assert entered == [] and fake.writes() == []
+
+
+@pytest.mark.parametrize("outcome", ["in_flight", "unknown", "verified"])
+def test_preflight_duplicate_append_preserves_outcome_without_handler(lifecycle, monkeypatch, outcome):
+    router = lifecycle.router
+    get_ledger = router.NOTION_LEDGERS.for_run
+    digest = notion._append_digest("adapter-test", notion._append_blocks_argument(APPEND_CALL[1]["blocks"]))
+    seeded = {}
+
+    def ledger_for_run(run_id):
+        ledger = get_ledger(run_id)
+        if run_id not in seeded:
+            ledger.set_append_outcome("adapter-test", digest, outcome)
+            seeded[run_id] = ledger
+        return ledger
+
+    entered = []
+
+    async def forbidden(*_args, **_kwargs):
+        entered.append(True)
+        raise AssertionError("duplicate append entered handler")
+
+    monkeypatch.setattr(router.NOTION_LEDGERS, "for_run", ledger_for_run)
+    monkeypatch.setattr(router, "notion_append_blocks", forbidden)
+    run_id = lifecycle.start(APPEND_CALL, (None, "done"))
+    finished = lifecycle.settle(run_id)
+    ledger = seeded[run_id]
+    assert finished["status"] == "completed" and finished["snapshot"]["pending_call"] is None
+    result, = lifecycle.tool_results(finished)
+    assert (result["termination"], result["error"]) == ("denied", ledger.append_refusal("adapter-test", digest))
+    assert ledger.append_outcome("adapter-test", digest) == outcome
+    assert not ledger._appends[("adapter-test", digest)].delivered
+    assert entered == [] and lifecycle.fake.requests == []
+
+
+@pytest.mark.parametrize("tool", ["notion.page.append", "notion.block.update"])
+def test_preflight_failure_still_requires_exact_approval_and_rejection_writes_nothing(lifecycle, monkeypatch, tool):
+    fake = lifecycle.fake
+    fake.add_block(lifecycle.page, "paragraph", [rt("draft", bold=True)])
+
+    def unavailable(*_args, **_kwargs):
+        raise RuntimeError("preview unavailable")
+
+    monkeypatch.setattr(lifecycle.router, "notion_pending_context", unavailable)
+    call = APPEND_CALL if tool.endswith("append") else (tool, {"page": "adapter-test", "block": "b1", "old_text": "draft", "new_text": "final"})
+    run_id = lifecycle.start(("notion.page.read", {"page": "adapter-test"}), call, (None, "done"))
+    paused = lifecycle.settle(run_id)
+    assert paused["status"] == "approval_required" and fake.writes() == []
+    pending = paused["snapshot"]["pending_call"]
+    assert pending["tool_name"] == tool
+    assert all(pending[key] for key in DECISION_KEYS)
+    rejected = lifecycle.decide(run_id, pending, decision="reject")
+    assert rejected.json()["status"] == "approval_rejected"
+    assert fake.writes() == []

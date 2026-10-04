@@ -1401,7 +1401,7 @@
         "type": "object"
       },
       "permission": "write",
-      "preflight": false,
+      "preflight": true,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_NOTION_TOOLS"
@@ -1471,7 +1471,7 @@
         "type": "object"
       },
       "permission": "write",
-      "preflight": false,
+      "preflight": true,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",
         "DAVE_ENABLE_NOTION_TOOLS"
