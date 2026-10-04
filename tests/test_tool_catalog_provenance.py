@@ -202,6 +202,9 @@ def test_notion_tool_boundaries_match_the_catalog(notion_router):
                 "handler": f"{definition.handler.__module__}.{definition.handler.__qualname__}",
                 "handler_version": definition.handler_version,
             }
+            if definition.preflight is not None:
+                actual[name]["preflight"] = f"{definition.preflight.__module__}.{definition.preflight.__qualname__}"
+                actual[name]["preflight_version"] = definition.preflight_version
         assert actual == expected
 
 
@@ -222,3 +225,12 @@ def test_notion_handlers_sit_below_the_web_handlers():
     notion = BASELINE["notion_handler_code"]
     assert min(code["first_line"] for code in notion.values()) > max(
         web[name]["last_line"] for name in ("web.search", "web.read"))
+
+
+def test_notion_preflights_are_pinned_below_every_handler(notion_router):
+    expected = BASELINE["notion_preflight_code"]
+    for registry in (notion_router.TOOL_REGISTRY, notion_router.HARNESS_REGISTRY):
+        assert preflight_code(registry) == expected
+    handlers = [code for key in ("handler_code", "extended_handler_code", "notion_handler_code")
+                for code in BASELINE[key].values()]
+    assert min(code["first_line"] for code in expected.values()) > max(code["last_line"] for code in handlers)

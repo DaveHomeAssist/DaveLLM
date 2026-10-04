@@ -1586,6 +1586,21 @@ def preflight_file_edit(params: Dict, _context: object) -> Optional[str]:
         return str(exc)
     return None
 
+
+def preflight_notion_page_append(params: Dict, _context: object) -> Optional[str]:
+    """Reuse the run-local approval preview's refusal without contacting Notion."""
+    preview = notion_pending_context(
+        "notion.page.append", params, settings=NOTION_SETTINGS, ledger=_notion_ledger())
+    return preview.get("refused") if preview else None
+
+
+def preflight_notion_block_update(params: Dict, _context: object) -> Optional[str]:
+    """The approved handler still rechecks the snapshot against live page content."""
+    preview = notion_pending_context(
+        "notion.block.update", params, settings=NOTION_SETTINGS, ledger=_notion_ledger())
+    return preview.get("refused") if preview else None
+
+
 from davellm_public_http import public_http_client, public_stream
 
 EXTENDED_PATH_SCHEMA = {
@@ -2047,6 +2062,7 @@ def notion_tool_definitions() -> List[ToolDefinition]:
                 "additionalProperties": False,
             },
             handler=tool_notion_page_append,
+            preflight=preflight_notion_page_append,
             permission="write",
             approval_required=True,
             timeout_seconds=NOTION_WRITE_TIMEOUT_SECONDS,
@@ -2090,6 +2106,7 @@ def notion_tool_definitions() -> List[ToolDefinition]:
                 "additionalProperties": False,
             },
             handler=tool_notion_block_update,
+            preflight=preflight_notion_block_update,
             permission="write",
             approval_required=True,
             timeout_seconds=NOTION_WRITE_TIMEOUT_SECONDS,

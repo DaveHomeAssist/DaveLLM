@@ -1148,7 +1148,9 @@
         "type": "object"
       },
       "permission": "write",
-      "timeout_seconds": 60.0
+      "timeout_seconds": 60.0,
+      "preflight": "app.preflight_notion_block_update",
+      "preflight_version": ""
     },
     "notion.page.append": {
       "approval_required": true,
@@ -1214,7 +1216,9 @@
         "type": "object"
       },
       "permission": "write",
-      "timeout_seconds": 60.0
+      "timeout_seconds": 60.0,
+      "preflight": "app.preflight_notion_page_append",
+      "preflight_version": ""
     },
     "notion.page.read": {
       "approval_required": false,
@@ -1248,6 +1252,18 @@
       "first_line": 1578,
       "last_line": 1587,
       "source_sha256": "79c5fb9b608d5168377bfe8e23e8928f0945c7feb5c73865c2551e52e1893ff9"
+    }
+  },
+  "notion_preflight_code": {
+    "notion.page.append": {
+      "first_line": 1590,
+      "last_line": 1594,
+      "source_sha256": "664e238c963156bb7f8fd6e634f806ea1e1bd7f0c7f56b5b3fc5fcf298ed0cb4"
+    },
+    "notion.block.update": {
+      "first_line": 1597,
+      "last_line": 1601,
+      "source_sha256": "015875b04998660c51cce85acbcfe97b2666f8ad2765e27e62d143687f658a67"
     }
   }
 }
