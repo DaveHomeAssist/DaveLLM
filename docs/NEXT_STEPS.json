@@ -8,7 +8,7 @@
   "head": "3ac59a4 Notion readiness CLI and lifecycle regression fix",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "Operator GET-only Notion read confirmed: 11 complete blocks. Native desktop and backend are healthy, all three nodes are online, and all three Notion tools are registered. Live write/reject/readback acceptance and H9 remain incomplete. Required CI passed on PR #58's prior evidence revision; refreshed tracking must pass its exact-head gates before merge.",
+  "statusReason": "Operator GET-only Notion read and authenticated app registration pass; native desktop/backend are healthy. Walter and Duncan remain online, but Dominic became unreachable during final checks after its initial successful inventory. Physical power/sleep or network state needs confirmation. Live write/reject/readback acceptance and H9 remain incomplete; PR #58 requires exact-head CI before merge.",
   "evidence": {
     "checkedOn": "2026-10-04",
     "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
@@ -58,12 +58,14 @@
           "notion.block.update"
         ],
         "notionWriteApprovalRequired": true,
-        "nodeStatus": "Authenticated HTTP 200; Dominic, Walter and Duncan online with no errors",
+        "nodeStatus": "Final authenticated HTTP 200: Walter and Duncan online with no errors; Dominic offline after a 10-second tags timeout. Direct Ollama GET and SSH also time out; Tailscale presence is offline. Cause unknown; operator asked to confirm power/awake state.",
+        "initialNodeStatus": "Earlier same-session authenticated check confirmed all three nodes online and error-free inventories. Superseded for Dominic availability by the final probe, not evidence of model removal.",
         "installedModelCounts": {
           "Dominic": 1,
           "Walter": 3,
           "Duncan": 5
         },
+        "inventoryScope": "Counts are the earlier successful live inventory snapshot. Dominic's current inventory is unavailable, not empty; no models were removed or pulled.",
         "inference": "not_run",
         "liveWrites": "not_run",
         "serviceMutation": "none; operator launched the existing script, Codex preserved healthy processes and configuration",
@@ -107,12 +109,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Authorize the bounded live Notion write and rejection acceptance sequence",
-    "why": "Real GET-only access, native/backend health and authenticated Notion registration now pass. Exact-call approval, preservation and write readback still need live evidence.",
+    "title": "Confirm Dominic is awake and restore its existing reachability",
+    "why": "Dominic answered the initial inventory but became unreachable during final checks. Preserve the healthy app, Walter and Duncan; confirm physical/network state before considering any service change. Notion write acceptance remains a separate next phase.",
     "doneWhen": "A separately authorized read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback are recorded; the preservation sentinel is unchanged.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Live writes require separate explicit approval. Preserve the healthy app and its configured operator shell; do not re-enter or persist credentials, restart services, invoke inference or run H9 without separate authority."
+    "blockedBy": "Dominic is unreachable through both Ollama and SSH; the operator must confirm power/awake state or restore its existing network connection. Cause unknown. Live Notion writes still require separate explicit approval; do not restart healthy services, persist credentials, invoke inference or run H9."
   },
   "findings": [
     {
@@ -636,9 +638,10 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read current DaveLLM instructions and preserve the canonical checkout's owner claim and healthy operator-launched app. Real GET-only Notion access already passed with 11 complete blocks; independent native/backend and authenticated catalog checks confirm all three Notion tools and three online nodes. Do not repeat setup, request the token, restart services or invoke inference/H9. Obtain separate explicit authority for the bounded write/reject/readback acceptance sequence on the existing designated test page; preserve its sentinel and require exact-call approvals. Inspect current PR #58 delivery evidence without bypassing protections and record the actual host/results in the board and comms log.",
+  "kickoffPrompt": "Read current DaveLLM and machine-access instructions; preserve the canonical owner checkout and healthy operator-launched app, Walter and Duncan. Real Notion read and all three authenticated Notion registrations passed. Dominic answered the first inventory, then became unreachable through tags and SSH and was marked offline by Tailscale. After the operator confirms power/awake or restores its existing network, recheck authenticated status and a fresh inventory; do not infer models were removed from an error response. Do not repeat credential setup, restart healthy services or invoke inference/H9. Live Notion write/reject/readback acceptance requires separate explicit authority and must preserve existing test-page content. Inspect PR #58 exact-head delivery gates without bypassing protections; record current evidence and blockers in the board and comms log.",
   "confidence": "high for source and automated evidence, operator-reported real read and independently confirmed running-app registration; live write/reject/readback acceptance unverified",
   "unknowns": [
+    "Dominic power/sleep/network state and current installed inventory: initial live read passed, final tags and SSH requests time out; no cause or service repair is established.",
     "Live Notion write/reject/readback acceptance; real read transport and authenticated running-app registration are confirmed, but registration does not establish write behavior.",
     "H9 structured-write compatibility and the remaining fixed corpus; current inference health is not established by the past run.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
