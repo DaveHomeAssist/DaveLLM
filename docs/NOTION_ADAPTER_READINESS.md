@@ -28,6 +28,11 @@ successful live read proves only bounded transport and page readability, not
 write acceptance, lifecycle integration, or model qualification. Existing
 read/append/edit/reject/readback acceptance remains a separate gate.
 
+That separate bounded gate was explicitly authorized and completed on
+2026-10-05; see [live acceptance](NOTION_ADAPTER_LIVE_ACCEPTANCE.md). The CLI's
+read-only defaults and exclusions are unchanged, and no H9 qualification is
+implied by the later acceptance checks.
+
 ## Dependencies, risks and acceptance
 
 Use existing Python dependencies only. Default and refused runs contact nothing;

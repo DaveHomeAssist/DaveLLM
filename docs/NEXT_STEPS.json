@@ -5,14 +5,14 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "3ac59a4 Notion readiness CLI and lifecycle regression fix",
+  "head": "2a2df35 readiness merged; live Notion acceptance 2026-10-05",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "Operator GET-only Notion read and authenticated app registration pass; native desktop/backend are healthy. Walter and Duncan remain online, but Dominic became unreachable during final checks after its initial successful inventory. Physical power/sleep or network state needs confirmation. Live write/reject/readback acceptance and H9 remain incomplete; PR #58 requires exact-head CI before merge.",
+  "statusReason": "Bounded live Notion read, approved append/edit, formatting preservation, rejection, refusal and final readback pass on Walter; all 11 original blocks and the sentinel are unchanged. Plain inference passes on Walter and Duncan. Dominic remains offline after the reported cable disconnect, and Duncan gpt-oss:20b fails GPU context allocation. Native desktop/backend remain healthy. H9 and native approval-card acceptance remain incomplete; PR #58 is merged.",
   "evidence": {
     "checkedOn": "2026-10-04",
     "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
-    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness records the scoped 2026-10-05 implementation; neither proves live acceptance.",
+    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness records the 2026-10-05 read-only implementation. boundedLiveAcceptance is the separately authorized current live evidence, not H9 qualification.",
     "adapterReadiness": {
       "checkedOn": "2026-10-05",
       "sourceRevision": "3ac59a497790c1c03786070e8a4da74dc8fe1eee",
@@ -30,8 +30,8 @@
       "capabilityManifest": "current",
       "nodeRegressionTestsPassed": 15,
       "localSmoke": "Historical pre-setup check: the default CLI failed closed with unset configuration, and the then-running catalog contained no Notion tools. Superseded for shell access by operatorLiveRead; see runtimeProbe for current app state.",
-      "deliveryGate": "Run 37374697571 passed all required Python 3.12/3.13/3.14 checks on 2fbbb4f4f9b2c94d88afcc1184d355afdda7d216. This supersedes run 37372762267's hosted-runner assignment cancellation. PR #58 is not yet merged at this evidence capture; refreshed tracking requires exact-head checks. No protection bypass.",
-      "liveAcceptance": "User-supplied evidence confirms DaveLLM's own real GET-only adapter read: 11 complete blocks. Independent bounded GET checks after the operator's canonical launcher start confirm the native app/backend and authenticated registration of all three Notion tools. Live writes, rejection and final readback remain untested.",
+      "deliveryGate": "PR #58 passed all required Python 3.12/3.13/3.14 checks on exact head 5644df68941d5857f142b2ff077736581fe0d263, run 37382405607; protected squash merge 2a2df35e8628a3688186087b3a9f1faac9002547 on 2026-10-05. Pages built that commit; documentation root HTTP 200. No protection bypass or installed-runtime update.",
+      "liveAcceptance": "The earlier operator GET-only read and app registration are superseded for live acceptance by boundedLiveAcceptance. The readiness CLI remains read-only and is not a write or qualification runner.",
       "operatorLiveRead": {
         "checkedOn": "2026-10-05",
         "source": "User-supplied command output; not independently rerun by Codex",
@@ -47,6 +47,7 @@
       },
       "runtimeProbe": {
         "checkedOn": "2026-10-05",
+        "scope": "Historical startup verification before the later bounded test grant; see boundedLiveAcceptance for current model and write evidence.",
         "executionHost": "Operator macOS workstation; Mac-only native inspection and small bounded GET checks",
         "runtimeSourceRevision": "6aad6d6702e3f5f30bf75610e1e9385691dfc455",
         "nativeWindow": "Confirmed by native accessibility tree and rendered screenshot, titled DaveLLM; no UI action or message sent",
@@ -72,7 +73,38 @@
         "historicalProbe": "Earlier same-day stopped-app probe is superseded by this independent running-app verification."
       }
     },
+    "boundedLiveAcceptance": {
+      "checkedOn": "2026-10-05",
+      "completedAt": "2026-10-05T22:47:25Z",
+      "runtimeSourceRevision": "6aad6d6702e3f5f30bf75610e1e9385691dfc455",
+      "source": "docs/NOTION_ADAPTER_LIVE_ACCEPTANCE.md",
+      "authority": "Dave explicitly authorized the three described bounded scopes: read-only Notion, plain inference and labelled new test-block acceptance. No H9, delegation, restart or persistent credential setup.",
+      "coordinator": "Operator Mac, lightweight HTTP coordination and assertions only",
+      "adapterRunner": "Walter, gpt-oss:20b, existing native Ollama /api/chat through the authenticated DaveLLM lifecycle API",
+      "plainInference": "Walter and Duncan, llama3:latest: exact ADAPTER_SMOKE_OK, HTTP 200, 7 output tokens each, no tools supplied",
+      "read": "completed; 11 blocks, no truncation or unread children",
+      "append": "verified; exactly 2 labelled new blocks; one exact pending approval",
+      "plainEdit": "verified; only the new paragraph edited after exact approval",
+      "formattingEdit": "verified; exact edit inside the new paragraph's bold run; independent markup comparison preserves bold, italic and link",
+      "fixturePreparation": "One targeted Notion connector update formatted only the newly appended paragraph; separate from adapter write evidence",
+      "rejection": "approval_rejected; no update handler result; the new checklist remains unchecked",
+      "unconfiguredPage": "adapter configured-page refusal; expected error_budget terminal, no approval",
+      "readback": "13 complete blocks; deterministic original-block projection and independent full original markup unchanged, including sentinel",
+      "approvedAdapterWrites": 3,
+      "lifecycleRuns": 7,
+      "bounds": "1-4 model steps per lifecycle run, at most 1536 output tokens per step, one error per run and a 180-second client deadline; not a reliability corpus",
+      "retainedFailures": [
+        "Initial legacy llama3 tool-loop smoke: HTTP 400, model does not support tools; plain smoke subsequently passed",
+        "Strict client rejection guard stopped on nullable optional text arguments and rejected the exact owned checklist edit; no retry or effect",
+        "Walter formatting attempt invented notion.block_update; registry returned tool_unknown without a write; final exact-name attempt passed",
+        "Duncan gpt-oss:20b fallback failed before any tool call; native diagnostic HTTP 500 reported Vulkan buffer and KV-cache allocation failure"
+      ],
+      "availability": "Walter and Duncan online with fresh inventories of 3 and 5 models. Dominic remains offline; Dave reported a disconnected cable but restoration is unverified.",
+      "preserved": "Existing backend/Electron PIDs, canonical checkout, services, configuration and all original page content; no model pulls",
+      "notProven": "Native Electron approval-card interaction, human acceptance, other installed-model inference and H9 qualification"
+    },
     "sources": [
+      "docs/NOTION_ADAPTER_LIVE_ACCEPTANCE.md",
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
       "docs/DAVEHARNESS_H9_RESULTS.md",
       "docs/DAVEHARNESS_H9_READINESS_REVIEW.md",
@@ -99,7 +131,8 @@
     }
   },
   "shipped": [
-    "Notion readiness CLI implemented and runner-tested (PR #58): local configuration by default, GET-only page access with --live; no write or model invocation",
+    "Bounded live Notion acceptance passed 2026-10-05 on Walter: read, approved append/edit, formatting preservation, rejected edit, unconfigured-page refusal and fresh readback; original content unchanged",
+    "Notion readiness CLI merged (PR #58): local configuration by default, GET-only page access with --live; no write or model invocation",
     "Notion adapter v1 (read, verified append, block edit) merged: PR #48, 10-02",
     "Approval preflight (#51), file.edit overlap fix (#52), GC-proof deadline test (#54) merged 10-02",
     "Console redesign (#45): side/bottom rail, light default, Cluster view; static no-cache (#53)",
@@ -109,28 +142,35 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Confirm Dominic is awake and restore its existing reachability",
-    "why": "Dominic answered the initial inventory but became unreachable during final checks. Preserve the healthy app, Walter and Duncan; confirm physical/network state before considering any service change. Notion write acceptance remains a separate next phase.",
-    "doneWhen": "A separately authorized read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback are recorded; the preservation sentinel is unchanged.",
+    "title": "Restore Dominic reachability and choose Notion setup durability",
+    "why": "The bounded Notion acceptance gate is complete. Preserve that evidence and the healthy app; verify Dominic after physical reconnection and decide whether the proven environment-only path needs a separately scoped persistent setup.",
+    "doneWhen": "Dominic has fresh authenticated status and installed inventory, and Dave chooses environment-only continuation or a scoped Keychain-backed setup brief. Model-load repair and new connectors remain separately scoped.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Dominic is unreachable through both Ollama and SSH; the operator must confirm power/awake state or restore its existing network connection. Cause unknown. Live Notion writes still require separate explicit approval; do not restart healthy services, persist credentials, invoke inference or run H9."
+    "blockedBy": "Dominic remains unreachable after the reported disconnected cable; physical restoration is not verified. Duncan gpt-oss:20b reports GPU context allocation failure despite a passing plain llama3 smoke. Do not change healthy services or settings, persist credentials, repeat acceptance writes, or treat the completed bounded grant as H9 authority."
   },
   "findings": [
     {
       "id": "DL-01",
       "type": "decision",
       "sev": "P1",
-      "title": "Live Notion read and app registration confirmed; write acceptance remains open",
-      "detail": "On 2026-10-05 the operator's own adapter CLI read 11 complete blocks with zero unread children. After the operator launched the canonical script, independent native inspection and authenticated GET checks confirmed a healthy app/backend, 25 tools and all three Notion registrations. This does not prove live write/reject/readback acceptance.",
+      "title": "Resolved: bounded live Notion acceptance passed",
+      "detail": "On 2026-10-05, explicitly authorized model-driven acceptance on Walter verified reads, labelled append, plain and formatting-preserving edits, rejected checklist edit, unconfigured-page refusal and final readback. Independent connector markup comparison confirmed all original content and the sentinel unchanged. This is backend acceptance, not native approval-card or H9 qualification.",
       "files": [
         "davellm_notion.py:59",
         "docs/DAVELLM_TOOLS.md:374",
-        "tests/fake_notion.py"
+        "tests/fake_notion.py",
+        "docs/NOTION_ADAPTER_LIVE_ACCEPTANCE.md"
       ],
       "evidence": "doc",
       "phase": 0,
       "history": [
+        {
+          "checkedOn": "2026-10-05",
+          "title": "Live read and registration passed; writes then untested",
+          "detail": "Earlier GET-only operator and independent startup checks preceded the later explicit three-scope acceptance grant.",
+          "evidence": "historical projection"
+        },
         {
           "checkedOn": "2026-10-04",
           "title": "Notion adapter never run against real Notion",
@@ -144,8 +184,8 @@
           "evidence": "session"
         }
       ],
-      "status": "open",
-      "evidenceNote": "User-provided live-read command output plus independent native window, backend, authenticated catalog/node-status and model-inventory checks on 2026-10-05. No live write, inference or H9 proof claimed."
+      "status": "resolved",
+      "evidenceNote": "Authenticated installed-runtime lifecycle tool results, exact decisions, deterministic preservation assertions and independent real Notion markup readback on 2026-10-05; failed model attempts are retained in the acceptance record."
     },
     {
       "id": "DL-02",
@@ -460,11 +500,11 @@
   "phases": [
     {
       "name": "Phase 0 - Prove the Notion adapter live",
-      "goal": "Run the merged adapter once against a real disposable page and record the result",
+      "goal": "Completed bounded acceptance against the designated real adapter-test page; preserve evidence and remaining qualification boundaries",
       "items": [
         "DL-01 real read transport, native/backend health and authenticated Notion registration passed; preserve the healthy operator-launched app and configuration",
-        "Under separate authorization, run read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback",
-        "Record sanitized outcomes and preservation evidence without credentials or private page IDs"
+        "Read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback passed under explicit 2026-10-05 authority",
+        "Sanitized outcomes recorded; all 11 original blocks and sentinel preserved; private receipts remain in the shared communications log"
       ],
       "gate": "Each approved write shows outcome verified on the real page; rejected call writes nothing; no token in logs"
     },
@@ -516,7 +556,7 @@
     "DL-14 [Open, carried from 2026-10-02]: design-manifest and unused-control decisions. Options: A ratify the implemented console and scope removal of confirmed unused controls (recommended); B retain controls until product behavior is specified.",
     "DL-14 [Open, carried from 2026-10-02]: version, changelog and release policy. Options: A define a release package with its own acceptance gates (recommended); B leave current versions unchanged. No release is authorized here.",
     "DL-14 [Open, carried from 2026-10-02]: old branch cleanup and administrator protection. Options: A review branch ownership and protections separately (recommended); B retain existing policy. Historical branch counts require refresh; no branch deletion is authorized.",
-    "Notion setup [Open for future scope]: environment-only setup or Keychain-backed configuration. Recommendation: verify the existing environment-only path before adding credential persistence.",
+    "Notion setup [Open for future scope]: A continue the now-proven environment-only launcher path (recommended for now); B scope a Keychain-backed configuration feature for restart durability. Live acceptance is complete; no credential persistence or service restart is authorized by this evidence.",
     "DL-UI-01 [Open, 2026-10-05]: unread scope. Options: A per-device marks in browser storage (built, recommended for now); B a router read_at per conversation so marks follow Dave across the app and browsers.",
     "DL-UI-02 [Open, 2026-10-05]: desktop notifications when a reply finishes. Options: A only while the window is hidden or unfocused, with a Settings toggle on by default (recommended); B always; C none.",
     "DL-UI-03 [Open, 2026-10-05]: sending during a reply. Options: A refuse and keep the draft (built, recommended); B stop the current reply and send; C queue until the reply ends.",
@@ -524,10 +564,17 @@
   ],
   "decisionHistory": [
     {
+      "id": "Bounded adapter acceptance 2026-10-05",
+      "status": "accepted and executed",
+      "date": "2026-10-05",
+      "decision": "Dave explicitly authorized all three described scopes: read-only model-driven Notion, plain inference and full labelled new-block append/edit/reject/refusal/readback acceptance. Executed on Walter and Duncan with exact write decisions; no H9, delegation, restart or persistent credential setup. This completed grant is not continuing inference authority.",
+      "source": "docs/NOTION_ADAPTER_LIVE_ACCEPTANCE.md"
+    },
+    {
       "id": "Adapter scope 2026-10-05",
       "status": "accepted",
       "date": "2026-10-05",
-      "decision": "Finish the existing Notion adapter first, before adding connectors for other services or model providers. This does not approve unreviewed page writes, inference or H9 qualification."
+      "decision": "Finish the existing Notion adapter first, before adding connectors for other services or model providers. That initial selection alone approved no live writes or inference; the later explicit bounded grant is recorded separately. H9 remains excluded."
     },
     {
       "id": "D-002",
@@ -596,6 +643,7 @@
     }
   ],
   "context": [
+    "2026-10-05 bounded live acceptance is complete on the unchanged installed runtime. The other installed models were inventoried, not all tested by inference. Preserve failed model attempts and native approval-card/H9 boundaries.",
     "2026-10-05 readiness slice uses the existing NotionSettings, read_page transport and a temporary ledger, without importing the router or initializing persistence. It follows existing validation/error handling conventions; no dependency or tool-definition changes.",
     "An existing Notion approval/reject regression was flaky because its TestClient closed the run event loop between requests. Reusing the adversarial tests' persistent-portal pattern fixes the test only; production behavior is unchanged.",
     "This is a public-safe projection of the owning records, not a second roadmap or blanket execution permission.",
@@ -638,12 +686,12 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read current DaveLLM and machine-access instructions; preserve the canonical owner checkout and healthy operator-launched app, Walter and Duncan. Real Notion read and all three authenticated Notion registrations passed. Dominic answered the first inventory, then became unreachable through tags and SSH and was marked offline by Tailscale. After the operator confirms power/awake or restores its existing network, recheck authenticated status and a fresh inventory; do not infer models were removed from an error response. Do not repeat credential setup, restart healthy services or invoke inference/H9. Live Notion write/reject/readback acceptance requires separate explicit authority and must preserve existing test-page content. Inspect PR #58 exact-head delivery gates without bypassing protections; record current evidence and blockers in the board and comms log.",
-  "confidence": "high for source and automated evidence, operator-reported real read and independently confirmed running-app registration; live write/reject/readback acceptance unverified",
+  "kickoffPrompt": "Read current DaveLLM and machine-access instructions; preserve the canonical owner checkout, existing app and healthy services. The bounded live Notion acceptance gate is complete: read, labelled append/edit, formatting preservation, rejection, refusal and final readback passed on Walter, with original content unchanged. Do not replay acceptance writes. PR #58 is merged. Dominic remains offline after Dave reported a disconnected cable; after physical reconnection, verify authenticated status and a fresh inventory with read-only checks. Duncan passed a plain llama3 smoke but gpt-oss:20b failed GPU context allocation; do not silently change model context, GPU or service settings. Keep the environment-only setup decision Open, and scope any persistent configuration or next connector before implementation. No inference, H9, delegation or healthy-service restart follows from this completed grant. Record new evidence and blockers in the board and shared communications log.",
+  "confidence": "high for bounded installed-runtime Notion backend acceptance, independent page preservation and Walter/Duncan plain inference; not model qualification or native approval-card acceptance",
   "unknowns": [
-    "Dominic power/sleep/network state and current installed inventory: initial live read passed, final tags and SSH requests time out; no cause or service repair is established.",
-    "Live Notion write/reject/readback acceptance; real read transport and authenticated running-app registration are confirmed, but registration does not establish write behavior.",
-    "H9 structured-write compatibility and the remaining fixed corpus; current inference health is not established by the past run.",
+    "Dominic restoration and current installed inventory remain unverified after the reported disconnected cable; the initial inventory is historical, not empty or removed models.",
+    "Model reliability beyond the bounded smoke; Duncan gpt-oss:20b GPU context allocation failed, and other inventoried models were not all exercised.",
+    "H9 structured-write compatibility and the remaining fixed corpus; passing native bounded acceptance is not governing qualification.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
     "Dave's acceptance of the 2026-10-05 chat UI fixes in the Electron app; the reply-link handler in desktop/main.js loads only after the app restarts."
