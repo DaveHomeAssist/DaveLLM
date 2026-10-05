@@ -91,6 +91,27 @@ The body is validated by Pydantic. Existing templates remain `general`, `code_re
 
 Plain chat sends no tools and runs none. When the node replies with blank content and at least one `message.tool_calls` entry (gpt-oss, for example, emits a hallucinated `browser.run` call), the router keeps no assistant message, cost, embedding, artifact, or title for that turn; the user message stays, as it does after a node error. `/chat` then answers `200` with the usual five fields, where `response` is a notice rather than model output, plus `notice` (the same text), `reason: "tool_call_only"`, and `tools` (the attempted tool names, plain identifiers only, at most four). The notice tells the user to use the Run tools button (`web.search`, `web.read`) for lookups. A reply with any visible content keeps the unchanged contract, even if it also carries a tool call.
 
+### `POST /chat/size-check`
+
+Pre-send size check (DL-ROUTE-05). The composer calls it about 600 ms after typing pauses, and again when the node, model, project, conversation, attached file or Support flag changes. It assembles the messages `/chat/stream` would send for the draft (instructions, project context, history and the draft), applies the stream's warm-cache rule, and compares the estimate with the node's limit for the model:
+
+```json
+{
+  "conversation_id": "conversation-id-or-null",
+  "prompt": "the effective draft, with attached text and the Support prefix",
+  "node_id": "duncan",
+  "model": "gpt-oss:120b",
+  "project_id": null,
+  "max_tokens": 2048
+}
+```
+
+```json
+{"prompt_tokens": 13520, "prompt_token_limit": 2500, "over_limit": true, "reads_new_message_only": false, "node_id": "duncan", "model": "gpt-oss:120b"}
+```
+
+`prompt_token_limit` is `null` when the node has no profile limit for the model, and `over_limit` is then `false`. `reads_new_message_only` is `true` when the node still holds the conversation's cached prefix (the same rule as the stream's waiting status below), and `prompt_tokens` then counts only the draft. The check is read-only: it creates or changes no conversation, calls no model, and does not count as in flight. Earlier turns past the 10-message history window count as the summary placeholder, which can be up to 150 tokens shorter than the model summary the stream writes. It probes `GET /api/ps` (2 s limit) only when the cached prefix could apply. Errors match the stream: an unloaded inventory returns `409`, an unavailable model `400`, an unknown node `404`, and a different project on an attached conversation `409`. The limit stays advisory: sending is never blocked or rerouted.
+
 ### `POST /chat/stream`
 
 Progress events (DL-UX-01). The stream opens with a status event, before the node has answered:

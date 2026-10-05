@@ -17,7 +17,7 @@ import threading
 import shutil
 import numpy as np
 from itertools import cycle
-from typing import Dict, List, Literal, Optional, Sequence
+from typing import Callable, Dict, List, Literal, Optional, Sequence
 from urllib.parse import urljoin, urlparse
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -2329,25 +2329,27 @@ HARNESS = Harness(
 # MEMORY STORAGE
 # ============================================================
 
+def new_conversation_record(user_id: str, project_id: Optional[str]) -> dict:
+    """The record a first message creates; the size check (DL-ROUTE-05) sizes against it unsaved."""
+    return {
+        "title": DEFAULT_CONVO_TITLE,
+        "messages": [],
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "user_id": user_id,
+        "project_id": project_id,
+        "system_prompt": None,
+        "session_override": "",
+        "instruction_mode": "layered",
+    }
+
+
 def get_history(conversation_id: str, user_id: str = "default", project_id: Optional[str] = None) -> List[dict]:
     """
     Retrieve conversation message history by ID.
     Auto-creates conversation with metadata if missing.
     """
-    convo = CONVERSATIONS.setdefault(
-        conversation_id,
-        {
-            "title": DEFAULT_CONVO_TITLE,
-            "messages": [],
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-            "user_id": user_id,
-            "project_id": project_id,
-            "system_prompt": None,
-            "session_override": "",
-            "instruction_mode": "layered",
-        }
-    )
+    convo = CONVERSATIONS.setdefault(conversation_id, new_conversation_record(user_id, project_id))
     if convo.get("user_id") not in (None, user_id, "default"):
         raise HTTPException(403, "Forbidden: conversation not owned by user")
     convo["user_id"] = user_id
@@ -2355,8 +2357,16 @@ def get_history(conversation_id: str, user_id: str = "default", project_id: Opti
         convo["project_id"] = project_id
     return convo["messages"]
 
-def prune_conversation_history(messages: List[dict], max_turns: int = 10) -> List[dict]:
-    """Keep system messages + last N turns; summarize earlier content."""
+def prune_conversation_history(
+    messages: List[dict],
+    max_turns: int = 10,
+    summarize: Optional[Callable[[List[dict]], str]] = None,
+) -> List[dict]:
+    """Keep system messages + last N turns; summarize earlier content.
+
+    ``summarize`` defaults to the model summary; the size check passes
+    ``history_summary_placeholder`` so it never calls a model.
+    """
     if len(messages) <= max_turns:
         return messages
 
@@ -2367,7 +2377,7 @@ def prune_conversation_history(messages: List[dict], max_turns: int = 10) -> Lis
     older = non_system[:-max_turns]
     summary = {}
     if older:
-        summary_text = generate_conversation_summary(older)
+        summary_text = (summarize or generate_conversation_summary)(older)
         summary = {"role": "system", "content": summary_text}
         return system_msgs + ([summary] if summary else []) + recent
 
@@ -2502,10 +2512,13 @@ def resolve_conversation_system_prompt(conversation: dict, project: dict) -> str
     return get_instruction_layers(conversation, project)["effective"]
 
 
-def prepare_history_for_prompt(messages: List[dict]) -> List[dict]:
+def prepare_history_for_prompt(
+    messages: List[dict],
+    summarize: Optional[Callable[[List[dict]], str]] = None,
+) -> List[dict]:
     """Remove persisted legacy instructions, then prune and summarize chat history."""
     legacy_count = len(get_leading_system_messages(messages))
-    return prune_conversation_history(messages[legacy_count:])
+    return prune_conversation_history(messages[legacy_count:], summarize=summarize)
 
 
 def build_messages_for_node(
@@ -2577,6 +2590,7 @@ from davellm_ollama import (  # native /api/chat transport, kept below the handl
 )
 from davellm_node_profiles import (
     NodeActivity, NodeProfile, estimate_prompt_tokens, parse_node_profiles, prompt_size_check,
+    prompt_size_estimate, reads_only_new_message,
 )
 
 NODE_PROFILES: Dict[str, NodeProfile] = parse_node_profiles(os.getenv("DAVE_NODES"))  # DL-ROUTE-01, advisory only
@@ -2588,6 +2602,28 @@ def node_listing(node: NodeConfig) -> dict:
     if profile is not None:
         listing["profile"] = profile.model_dump()
     return listing
+
+def chat_messages_for_node(
+    *,
+    project_id: Optional[str],
+    project: dict,
+    model_id: str,
+    max_tokens: Optional[int],
+    user_text: str,
+    system_prompt: str,
+    history: List[dict],
+) -> tuple[List[dict], dict]:
+    """The exact messages a streamed chat turn sends; ``/chat/size-check`` (DL-ROUTE-05) sizes the same ones."""
+    return build_project_messages_for_node(
+        project_id=project_id,
+        project=project,
+        model_id=model_id,
+        output_reserve=max_tokens or 2048,
+        query=user_text,
+        system_prompt=system_prompt,
+        history=history,
+        window=chat_num_ctx(model_id),
+    )
 
 def prompt_size_warning(node: NodeConfig, model_id: str, messages: List[Dict]) -> Optional[dict]:
     """DL-ROUTE-02: waiting-status fields when this prompt is over the node's limit for the model."""
@@ -2627,7 +2663,7 @@ async def waiting_status(
         status["model_loaded"] = model_is_loaded(model_id, loaded)
     if others_in_flight:
         status["others_in_flight"] = others_in_flight
-    warm = prefix_cached and status.get("model_loaded") is True and not others_in_flight
+    warm = reads_only_new_message(prefix_cached, status.get("model_loaded"), others_in_flight)
     status.update(prompt_size_warning(node, model_id, messages[-1:] if warm else messages) or {})
     return {**status, "done": False}
 
@@ -2758,7 +2794,7 @@ def generate_conversation_summary(older_messages: List[dict]) -> str:
         for model_id in sorted(MODEL_INVENTORY.get(node.id, set()))
     ]
     if not available:
-        return f"[Earlier conversation summary over {len(older_messages)} messages]"
+        return history_summary_placeholder(older_messages)
     node, summary_model = available[0]
 
     condensed = "\n".join([f"{m.get('role','')}: {m.get('content','')[:200]}" for m in older_messages[-6:]])
@@ -2778,7 +2814,12 @@ def generate_conversation_summary(older_messages: List[dict]) -> str:
         return result.content or ""
     except Exception as e:
         print(f"⚠️ Summary generation failed: {e}")
-        return f"[Earlier conversation summary over {len(older_messages)} messages]"
+        return history_summary_placeholder(older_messages)
+
+
+def history_summary_placeholder(older_messages: List[dict]) -> str:
+    """The summary used when no model writes one (the model summary is capped at 150 tokens)."""
+    return f"[Earlier conversation summary over {len(older_messages)} messages]"
 
 def clear_history(conversation_id: str):
     """Clear a specific conversation history."""
@@ -2964,6 +3005,16 @@ class ProjectContextPreviewRequest(BaseModel):
     conversation_id: Optional[str] = None
     model: Optional[str] = None
     max_tokens: int = Field(default=2_048, ge=1, le=262_144)
+
+
+class ChatSizeCheckRequest(BaseModel):
+    """A draft the composer is about to send (DL-ROUTE-05); the fields mirror ``ChatRequest``."""
+    conversation_id: Optional[str] = None
+    prompt: str = Field(default="", max_length=100_000)
+    node_id: str
+    model: str
+    project_id: Optional[str] = None
+    max_tokens: Optional[int] = Field(default=2048, ge=1, le=262_144)
 
 
 class AgentRunRequest(BaseModel):
@@ -4789,6 +4840,75 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
         model=preferred_model
     )
 
+@app.post("/chat/size-check")
+async def chat_size_check(req: ChatSizeCheckRequest, user_id: str = Depends(get_current_user)):
+    """DL-ROUTE-05: size the prompt ``/chat/stream`` would send for this draft, before it is sent.
+
+    It assembles the same messages (instructions, project context, history and the draft) and
+    applies the stream's warm-cache rule, then compares the estimate with the node's limit.
+    Read-only: no conversation is created or changed, no model is called, and nothing counts as
+    in flight. Earlier turns past the history window count as the summary placeholder, which can
+    be up to 150 tokens shorter than the model summary the stream writes. The limit stays advisory.
+    """
+    existing = CONVERSATIONS.get(req.conversation_id) if req.conversation_id else None
+    if existing is not None:
+        assert_convo_owner(req.conversation_id, user_id)
+        project_id = existing.get("project_id")
+        if req.project_id is not None and req.project_id != project_id:
+            raise HTTPException(409, "Project changes require the explicit conversation project endpoint")
+        conversation = dict(existing)
+        raw_history = [dict(message) for message in existing.get("messages", [])]
+    else:
+        project_id = req.project_id
+        conversation = new_conversation_record(user_id, project_id)
+        raw_history = []
+    project_cfg = get_project(project_id, user_id) if project_id else {}
+
+    node = get_node_by_id(req.node_id)
+    inventory = MODEL_INVENTORY.get(node.id)
+    if inventory is None:
+        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
+    if req.model not in inventory:
+        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+
+    raw_history.append({"role": "user", "content": req.prompt or "[image]"})
+    history = prepare_history_for_prompt(raw_history, summarize=history_summary_placeholder)
+    system_prompt = resolve_conversation_system_prompt(conversation, project_cfg)
+    try:
+        messages, _ = chat_messages_for_node(
+            project_id=project_id,
+            project=project_cfg,
+            model_id=req.model,
+            max_tokens=req.max_tokens,
+            user_text=req.prompt,
+            system_prompt=system_prompt,
+            history=history,
+        )
+    except ProjectContextError as exc:
+        raise context_http_error(exc)
+
+    prompt_key = (
+        chat_prompt_key(req.model, req.conversation_id, project_id, raw_history)
+        if existing is not None else None
+    )
+    prefix_cached = prompt_key is not None and NODE_ACTIVITY.last_prompt(node.url) == prompt_key
+    model_loaded: Optional[bool] = None
+    if prefix_cached:  # residency only matters when the node may still hold this chat's prefix
+        loaded = await ollama_loaded_models(node.url, timeout=NODE_PS_TIMEOUT)
+        if loaded is not None:
+            model_loaded = model_is_loaded(req.model, loaded)
+    warm = reads_only_new_message(prefix_cached, model_loaded, NODE_ACTIVITY.in_flight(node.url))
+    counted = messages[-1:] if warm else messages
+    return {
+        **prompt_size_estimate(
+            NODE_PROFILES.get(node.id), req.model, estimate_prompt_tokens(counted, estimate_tokens),
+        ),
+        "reads_new_message_only": warm,
+        "node_id": node.id,
+        "model": req.model,
+    }
+
+
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):
     """
@@ -4847,15 +4967,14 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     system_prompt = resolve_conversation_system_prompt(conversation, project_cfg)
     conversation["system_prompt"] = system_prompt
     try:
-        messages_for_node, context_budget = build_project_messages_for_node(
+        messages_for_node, context_budget = chat_messages_for_node(
             project_id=project_id,
             project=project_cfg,
             model_id=preferred_model,
-            output_reserve=req.max_tokens or 2048,
-            query=user_text,
+            max_tokens=req.max_tokens,
+            user_text=user_text,
             system_prompt=system_prompt,
             history=history,
-            window=chat_num_ctx(preferred_model),
         )
     except ProjectContextError as exc:
         raise context_http_error(exc)

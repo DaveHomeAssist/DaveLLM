@@ -210,6 +210,8 @@ button.message-action:hover { background: var(--surface-300); }
 .context-item strong { overflow-wrap: anywhere; font-weight: 500; }
 .context-status { font-size: 10px; color: var(--muted); width: 100%; }
 .context-marker { color: var(--muted); font-size: 10px; }
+.prompt-size-hint { font-size: 11px; color: var(--muted); font-family: var(--font-mono); padding: 3px 4px; min-width: 0; overflow-wrap: anywhere; grid-column: 1 / -1; }
+.prompt-size-hint.is-over { color: var(--warning); }
 .suggested-next { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .suggested-next-header { color: var(--muted); font-size: 10px; white-space: nowrap; text-transform: uppercase; letter-spacing: .06em; }
 .suggestion-chips, .suggestion-item { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -294,6 +296,7 @@ button.message-action:hover { background: var(--surface-300); }
 .run-ledger-heading h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .run-ledger-heading-actions { font-size: 11px; }
 .run-ledger-heading-actions button { font-size: 11px; }
+.run-ledger-heading-actions .run-ledger-close { font-size: 16px; line-height: 1; padding: 2px 8px; }
 .run-ledger-reason { color: var(--muted); font-size: 12px; margin: 8px 0; }
 .run-ledger-events { font: 11px/1.6 var(--font-mono); padding-left: 20px; }
 .run-ledger-transcript { font-size: 12px; white-space: pre-wrap; }

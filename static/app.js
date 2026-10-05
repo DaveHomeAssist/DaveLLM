@@ -229,7 +229,16 @@ const runLedgerEvents = document.getElementById("runLedgerEvents");
 const runLedgerTranscript = document.getElementById("runLedgerTranscript");
 const runLedgerRetry = document.getElementById("runLedgerRetry");
 const runLedgerStop = document.getElementById("runLedgerStop");
+const runLedgerClose = document.getElementById("runLedgerClose");
+const promptSizeHint = document.getElementById("promptSizeHint");
 let activeToolRunId = null;
+let toolRunClosable = true;  // the card closes only when no run is live (terminal, or a start that failed)
+// DL-ROUTE-05 pre-send size check state (declared early: updateContextStrip can run during startup).
+const PROMPT_SIZE_DEBOUNCE_MS = 600;
+let promptSizeContextKey = "";
+let promptSizeTimer = null;
+let promptSizeAbort = null;
+let promptSizeSeq = 0;
 let toolRunState = { runId: null, cursor: 0, events: [] };
 let toolRunWatcher = null;
 let toolRunStreamAbort = null;
@@ -530,6 +539,11 @@ function selectComposerText() {
 
 function updateContextStrip() {
     updateConsoleContext();
+    const sizeKey = [state.sessionId, state.selectedNode, modelSelect?.value, currentConversation()?.project_id].join("|");
+    if (sizeKey !== promptSizeContextKey) {
+        promptSizeContextKey = sizeKey;
+        schedulePromptSizeCheck();
+    }
     const project = projects.find((item) => item.project_id === (currentConversation() ? currentConversation().project_id : selectedProjectId));
     const node = state.nodes.find((item) => item.id === state.selectedNode);
     const rawNodeStatus = node ? (state.nodeStatus[node.id]?.status || "unknown") : "unknown";
@@ -3042,21 +3056,25 @@ async function showRelevantMemories(query) {
 // ---------------------------------------------
 // MESSAGE FLOW
 // ---------------------------------------------
+// The text an attached file adds to the prompt; shared by sending and the pre-send size check.
+async function attachedFilePromptText() {
+    const file = fileInput?.files?.[0];
+    if (!file) return { text: "" };
+    if (file.size > 1024 * 1024) return { text: "", tooLarge: true };
+    return { text: `\n\n[Attached file: ${file.name}]\n${await file.text()}` };
+}
+
 async function sendMessage() {
     if (approvalBusy) { notifyConsole("Finish or stop the active tool run before sending. Your draft is preserved."); return; }
     // One reply at a time: a second stream would interleave with the first and lose its Stop button.
     if (state.streaming) { notifyConsole("A reply is still being written. Press Stop to end it, or wait for it to finish. Your draft is kept."); return; }
     const prompt = promptInput.value.trim();
-    let attachedFileText = "";
-    if (fileInput && fileInput.files && fileInput.files.length) {
-        const file = fileInput.files[0];
-        if (file.size > 1024 * 1024) {
-            notifyConsole("Attached file is too large (max 1MB for inline include).");
-            return;
-        }
-        const text = await file.text();
-        attachedFileText = `\n\n[Attached file: ${file.name}]\n${text}`;
+    const attached = await attachedFilePromptText();
+    if (attached.tooLarge) {
+        notifyConsole("Attached file is too large (max 1MB for inline include).");
+        return;
     }
+    const attachedFileText = attached.text;
     const basePrompt = `${prompt}${attachedFileText}`;
     if (!basePrompt.trim() && state.pendingImages.length === 0) return;
     const effectivePrompt = window.DavePrompt.buildDisplayedPrompt(
@@ -3152,6 +3170,7 @@ async function sendMessage() {
 
     promptInput.value = "";
     promptInput.style.height = "auto";
+    schedulePromptSizeCheck();  // the draft is gone; clears the size line
     sessionStorage.removeItem(DRAFT_SESSION_KEY);
     state.lastPredictionUndo = null;
     undoPredictionBtn?.classList.add("hidden");
@@ -3321,6 +3340,7 @@ async function sendMessage() {
         setStreamingUi(false);
         renderConversationList();
         renderPredictions();
+        schedulePromptSizeCheck();  // a draft typed meanwhile now follows a longer history
     }
 }
 
@@ -3368,6 +3388,59 @@ function streamStatusText(data) {
             + `${size(data.prompt_token_limit)} in reasonable time, so the reply may take several minutes.`;
     }
     return text;
+}
+
+// DL-ROUTE-05: size the draft before it is sent, with the same assembly the stream uses.
+function renderPromptSize(report) {
+    if (!promptSizeHint) return;
+    const node = state.nodes.find((item) => item.id === report?.node_id);
+    const view = promptSizeText(report, node?.name);
+    promptSizeHint.classList.toggle("hidden", !view);
+    promptSizeHint.classList.toggle("is-over", Boolean(view?.over));
+    promptSizeHint.textContent = view ? view.text : "";
+    promptSizeHint.title = view ? view.title : "";
+}
+
+function schedulePromptSizeCheck() {
+    clearTimeout(promptSizeTimer);
+    promptSizeAbort?.abort();
+    promptSizeSeq += 1;
+    if (!promptInput.value.trim()) { renderPromptSize(null); return; }
+    promptSizeTimer = setTimeout(runPromptSizeCheck, PROMPT_SIZE_DEBOUNCE_MS);
+}
+
+async function runPromptSizeCheck() {
+    const seq = ++promptSizeSeq;
+    const prompt = promptInput.value.trim();
+    if (!prompt || !state.selectedNode || !modelSelect.value || !state.modelMeta[modelSelect.value]) {
+        renderPromptSize(null);
+        return;
+    }
+    const abort = new AbortController();
+    promptSizeAbort = abort;
+    try {
+        const attached = await attachedFilePromptText();
+        const draft = window.DavePrompt.buildDisplayedPrompt(prompt, attached.text, Boolean(supportFlag?.checked));
+        const response = await fetch(routerEndpoint("/chat/size-check"), {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            signal: abort.signal,
+            body: JSON.stringify({
+                conversation_id: state.sessionId || null,
+                prompt: draft,
+                node_id: state.selectedNode,
+                model: modelSelect.value,
+                project_id: currentConversation()?.project_id ?? null,
+                max_tokens: 2048,
+            }),
+        });
+        const report = response.ok ? await response.json() : null;
+        if (seq === promptSizeSeq) renderPromptSize(report);
+    } catch (error) {
+        if (error.name !== "AbortError" && seq === promptSizeSeq) renderPromptSize(null);
+    } finally {
+        if (promptSizeAbort === abort) promptSizeAbort = null;
+    }
 }
 
 function formatReplyStats(stats) {
@@ -3787,9 +3860,47 @@ function notionUpdatePreview(args) {
     return preview;
 }
 
+// The Tool Run card closes once nothing is live: a finished run, or a start that never became one.
+// A live run keeps the card (its approval card and Stop run live there); Stop run ends it first.
+function setToolRunClosable(closable) {
+    toolRunClosable = closable;
+    runLedgerClose?.classList.toggle("hidden", !closable);
+}
+
+function closeToolRun() {
+    if (!toolRunClosable || runLedger.classList.contains("hidden")) return;
+    toolRunStreamAbort?.abort();
+    activeToolRunId = null;
+    toolRunState = { runId: null, cursor: 0, events: [] };
+    runLedger.classList.add("hidden");
+    runLedgerRetry.classList.add("hidden");
+    runLedgerReason.textContent = "";
+    runLedgerEvents.replaceChildren();
+    runLedgerTranscript.replaceChildren();
+    runLedgerApproval.replaceChildren();
+    runLedgerApproval.classList.add("hidden");
+    delete runLedgerApproval.dataset.callId;
+    delete runLedgerApproval.dataset.runId;
+    runLedgerStatus.textContent = "Ready";
+    runLedgerStop.disabled = false;
+    if (!runToolsBtn.classList.contains("hidden")) runToolsBtn.focus();
+    else promptInput.focus();
+}
+
+function showToolRunNotice(message) {
+    if (activeToolRunId && !toolRunClosable) {  // never hide or orphan a live run behind a notice
+        runLedgerReason.textContent = message;
+        return;
+    }
+    runLedger.classList.remove("hidden");
+    runLedgerReason.textContent = message;
+    setToolRunClosable(true);
+}
+
 function renderToolRun(run) {
     if (run.run_id !== activeToolRunId) return;
     runLedger.classList.remove("hidden");
+    setToolRunClosable(TERMINAL_TOOL_RUNS.has(run.status));
     const snapshot = run.snapshot || {};
     runLedgerStatus.textContent = run.status.replaceAll("_", " ");
     runLedgerReason.textContent = TERMINAL_TOOL_RUNS.has(run.status)
@@ -3953,8 +4064,7 @@ async function startToolRun() {
     if (approvalBusy) return;
     const prompt = promptInput.value.trim();
     if (!prompt || !state.selectedNode || !modelSelect.value) {
-        runLedger.classList.remove("hidden");
-        runLedgerReason.textContent = "Enter a message and select a node and model first.";
+        showToolRunNotice("Enter a message and select a node and model first.");
         return;
     }
     runToolsBtn.disabled = true;
@@ -3979,14 +4089,20 @@ async function startToolRun() {
         runLedger.scrollIntoView({ block: "nearest", behavior: "instant" });
         toolRunWatcher = watchToolRun(run.run_id);
     } catch (error) {
-        runLedger.classList.remove("hidden");
-        runLedgerReason.textContent = error.message;
+        showToolRunNotice(error.message);
     } finally {
         runToolsBtn.disabled = approvalBusy;
     }
 }
 
 runToolsBtn.addEventListener("click", startToolRun);
+runLedgerClose?.addEventListener("click", closeToolRun);
+runLedger.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && toolRunClosable) {
+        event.preventDefault();
+        closeToolRun();
+    }
+});
 runLedgerRetry.addEventListener("click", () => {
     if (activeToolRunId) {
         toolRunStreamAbort?.abort();
@@ -4051,7 +4167,10 @@ promptInput.addEventListener("input", () => {
     resizeComposer();
     persistSessionDraft();
     renderPredictions();
+    schedulePromptSizeCheck();
 });
+fileInput?.addEventListener("change", schedulePromptSizeCheck);
+supportFlag?.addEventListener("change", schedulePromptSizeCheck);
 
 if (themeToggle) {
     themeToggle.addEventListener("click", () => {

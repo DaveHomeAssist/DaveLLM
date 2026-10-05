@@ -1695,3 +1695,115 @@ def test_a_long_conversation_is_never_treated_as_warm(router_factory):
     assert router.chat_prompt_key("m", "c", None, short) == "m\nc"
     assert router.chat_prompt_key("m", "c", None, short + [{"role": "user", "content": "q"}]) is None
     assert router.chat_prompt_key("m", "c", "project-1", short[:2]) is None
+
+
+# DL-ROUTE-05 ---------------------------------------------------------------------------------------
+
+def _size_check(client, conversation_id, prompt, **overrides):
+    body = {"conversation_id": conversation_id, "prompt": prompt, "node_id": "node-test", "model": MODEL_ID}
+    body.update(overrides)
+    return client.post("/chat/size-check", headers=AUTH, json=body)
+
+
+def test_size_check_sizes_the_draft_the_stream_would_send_and_changes_nothing(router_factory):
+    router, client, _ = router_factory(nodes=[PROFILED_NODE])
+    reply = {"message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "stop"}
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        chat = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_ndjson(reply))
+        big = _size_check(client, "fresh", "word " * 3000)
+        small = _size_check(client, "fresh", "hi")
+        assert big.status_code == small.status_code == 200
+        assert not chat.called and "fresh" not in router.CONVERSATIONS
+        assert router.NODE_ACTIVITY.in_flight(router.NODE_CONFIGS[0].url) == 0
+        streamed = client.post("/chat/stream", headers=AUTH, json=chat_body("fresh", prompt="word " * 3000)).text
+    waiting = json.loads(streamed.split("\n\n")[0].removeprefix("data: "))
+    assert big.json() == {
+        "prompt_tokens": waiting["prompt_tokens"], "prompt_token_limit": 2000, "over_limit": True,
+        "reads_new_message_only": False, "node_id": "node-test", "model": MODEL_ID,
+    }
+    assert small.json()["over_limit"] is False and small.json()["prompt_token_limit"] == 2000
+    assert 0 < small.json()["prompt_tokens"] < 2000  # the default system prompt plus "hi"
+
+
+def test_size_check_counts_project_context_like_the_stream(router_factory):
+    router, client, _ = router_factory(nodes=[PROFILED_NODE])
+    project = client.post("/projects", headers=AUTH, json={
+        "name": "Sized", "system_prompt": "Project rule. " * 400,
+    }).json()
+    reply = {"message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "stop"}
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_ndjson(reply))
+        checked = _size_check(client, "projected", "hello there", project_id=project["project_id"]).json()
+        bare = _size_check(client, "bare", "hello there").json()
+        streamed = client.post("/chat/stream", headers=AUTH, json=chat_body(
+            "projected", prompt="hello there", project_id=project["project_id"],
+        )).text
+    waiting = json.loads(streamed.split("\n\n")[0].removeprefix("data: "))
+    assert checked["over_limit"] is True and checked["prompt_tokens"] == waiting["prompt_tokens"]
+    assert checked["prompt_tokens"] > bare["prompt_tokens"] + 1000  # the project's instructions count
+    # Once attached, a different project is refused exactly as the stream refuses it.
+    other = client.post("/projects", headers=AUTH, json={"name": "Other"}).json()
+    assert _size_check(client, "projected", "hi", project_id=other["project_id"]).status_code == 409
+
+
+def test_size_check_reports_a_warm_follow_up_and_no_limit_without_a_profile(router_factory):
+    router, client, _ = router_factory(nodes=[PROFILED_NODE])
+    loaded = httpx.Response(200, json={"models": [{"name": MODEL_ID}]})
+    reply = {"message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "stop"}
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        ps = mock.get(f"{TEST_NODE_URL}/api/ps").mock(return_value=loaded)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_ndjson(reply))
+        assert _size_check(client, "warm", "word " * 3000).json()["reads_new_message_only"] is False
+        assert not ps.called  # nothing cached yet, so residency is not probed
+        client.post("/chat/stream", headers=AUTH, json=chat_body("warm", prompt="word " * 3000))
+        follow_up = _size_check(client, "warm", "hi").json()
+        assert follow_up["reads_new_message_only"] is True and follow_up["over_limit"] is False
+        assert follow_up["prompt_tokens"] == 1  # only "hi" is read
+        ps.mock(return_value=httpx.Response(200, json={"models": []}))
+        cold = _size_check(client, "warm", "hi").json()
+        assert cold["reads_new_message_only"] is False and cold["over_limit"] is True
+
+    _, client, _ = router_factory()
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        plain = _size_check(client, None, "word " * 3000).json()
+    assert plain["prompt_token_limit"] is None and plain["over_limit"] is False and plain["prompt_tokens"] > 3750
+
+
+def test_size_check_never_calls_a_model_for_a_long_conversation(router_factory, monkeypatch):
+    router, client, _ = router_factory(nodes=[PROFILED_NODE])
+    reply = {"message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "stop"}
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        chat = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_ndjson(reply))
+        client.post("/chat/stream", headers=AUTH, json=chat_body("long", prompt="start"))
+        stored = router.CONVERSATIONS["long"]["messages"]
+        stored.extend([{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}] * 8)
+        before = [dict(message) for message in stored]
+        calls = chat.call_count
+
+        def no_summary(_older):
+            raise AssertionError("the size check must not summarize with a model")
+
+        monkeypatch.setattr(router, "generate_conversation_summary", no_summary)
+        response = _size_check(client, "long", "next question")
+        assert response.status_code == 200 and response.json()["prompt_tokens"] > 0
+        assert chat.call_count == calls and router.CONVERSATIONS["long"]["messages"] == before
+
+
+def test_size_check_requires_a_loaded_inventory_and_a_known_model(router_factory):
+    _, client, _ = router_factory()
+    assert _size_check(client, None, "hi").status_code == 409
+    with respx.mock(assert_all_called=False) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        assert _size_check(client, None, "hi", model="missing:latest").status_code == 400
+    assert client.post("/chat/size-check", json={"prompt": "hi", "node_id": "node-test", "model": MODEL_ID}).status_code == 401
