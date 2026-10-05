@@ -380,9 +380,16 @@ All three are asynchronous handlers with bounded cancellation, and they work onl
 ```bash
 export DAVE_ENABLE_NOTION_TOOLS=true
 export DAVE_ENABLE_TOOLS=true
-export DAVE_NOTION_TOKEN='<internal connection secret>'
+printf 'Notion connection token (hidden): '
+read -rs DAVE_NOTION_TOKEN
+printf '\n'
+export DAVE_NOTION_TOKEN
 export DAVE_NOTION_PAGES='{"adapter-test": "<page id or page URL>"}'
 ```
+
+Enter the secret only at the hidden prompt, never in chat or a command-line
+argument. It is kept in this shell's environment, not in shell history or a
+configuration file. Do not stop a healthy router just to run the checks below.
 
 There are two scopes, and both must allow a page: what Notion lets the connection reach, and the pages named in `DAVE_NOTION_PAGES`. The model names a page only by its configured name. It never supplies a Notion page or block ID.
 

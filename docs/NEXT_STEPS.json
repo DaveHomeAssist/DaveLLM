@@ -5,14 +5,29 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "bdbf91e Notion preflight implementation",
+  "head": "3ac59a4 Notion readiness CLI and lifecycle regression fix",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "Notion preflight implemented and locally verified; live Notion acceptance and H9 qualification remain incomplete. CI and merge evidence belong to the source revision and its pull request.",
+  "statusReason": "Inference-free Notion readiness CLI implemented and runner-tested; existing approval/reject test now keeps its event loop alive. Required CI and merge gate PR #58; live Notion access, write acceptance and H9 qualification remain incomplete.",
   "evidence": {
     "checkedOn": "2026-10-04",
     "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
-    "scope": "Notion preflight implementation revision; the containing projection commit changes planning data only. No live services contacted.",
+    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness records the scoped 2026-10-05 implementation; neither proves live acceptance.",
+    "adapterReadiness": {
+      "checkedOn": "2026-10-05",
+      "sourceRevision": "3ac59a497790c1c03786070e8a4da74dc8fe1eee",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/58",
+      "scope": "Read-only environment readiness and explicitly requested bounded page reads; no inference, live writes, qualification, credential persistence or runtime restart.",
+      "runner": "Isolated Linux container, Python 3.12",
+      "readinessTestsPassed": 29,
+      "approvalRejectRegressionTestsPassed": 2,
+      "existingNotionTestsPassed": 203,
+      "existingNotionTestsSkipped": 3,
+      "notionBranchCoveragePercent": 97,
+      "localSmoke": "Default CLI fails closed with unset configuration and contacts nothing; authenticated running catalog contains no Notion tools.",
+      "deliveryGate": "Required Python 3.12/3.13/3.14 CI must pass before merge; inspect PR #58 for actual delivery state.",
+      "liveAcceptance": "Not checked; the CLI environment is not the running router environment."
+    },
     "sources": [
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
       "docs/DAVEHARNESS_H9_RESULTS.md",
@@ -40,6 +55,7 @@
     }
   },
   "shipped": [
+    "Notion readiness CLI implemented and runner-tested (PR #58): local configuration by default, GET-only page access with --live; no write or model invocation",
     "Notion adapter v1 (read, verified append, block edit) merged: PR #48, 10-02",
     "Approval preflight (#51), file.edit overlap fix (#52), GC-proof deadline test (#54) merged 10-02",
     "Console redesign (#45): side/bottom rail, light default, Cluster view; static no-cache (#53)",
@@ -49,12 +65,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Establish DaveLLM connection access for controlled live Notion acceptance",
-    "why": "Simulated tests cannot prove the real API or configured page access.",
+    "title": "Configure the existing Notion connection and verify access without inference",
+    "why": "Use the new readiness CLI to identify configuration gaps; simulated tests and another app's connector cannot prove this router's page access.",
     "doneWhen": "A separately authorized read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback are recorded; the preservation sentinel is unchanged.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Verified router credential and page sharing; this package authorizes neither live Notion writes nor inference."
+    "blockedBy": "The running router has no Notion tools enabled. Its own credential and designated page sharing must be configured; live writes and inference remain separately authorized."
   },
   "findings": [
     {
@@ -396,7 +412,7 @@
       "name": "Phase 0 - Prove the Notion adapter live",
       "goal": "Run the merged adapter once against a real disposable page and record the result",
       "items": [
-        "DL-01: verify access to the existing designated test page using the configured router connection; do not duplicate it",
+        "DL-01: configure the existing connection, run scripts/check_notion_adapter.py locally, then an explicitly authorized --live read of the designated page; do not duplicate it",
         "Under separate authorization, run read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback",
         "Record sanitized outcomes and preservation evidence without credentials or private page IDs"
       ],
@@ -524,6 +540,8 @@
     }
   ],
   "context": [
+    "2026-10-05 readiness slice uses the existing NotionSettings, read_page transport and a temporary ledger, without importing the router or initializing persistence. The Python skill guided existing validation/error handling conventions; no dependency or tool-definition changes.",
+    "An existing Notion approval/reject regression was flaky because its TestClient closed the run event loop between requests. Reusing the adversarial tests' persistent-portal pattern fixes the test only; production behavior is unchanged.",
     "This is a public-safe projection of the owning records, not a second roadmap or blanket execution permission.",
     "Historical DL-01 through DL-14 finding IDs and evidence are preserved. Untouched UI and infrastructure findings remain historical, not newly verified.",
     "PR #48 merged the Notion adapter; #51 added generic preflight; #52 fixed overlapping file edits; #53 added static revalidation; #54 fixed a deadline-test GC flake; #55 records the unqualified H9 run and runner correction.",
@@ -534,6 +552,8 @@
     "Implementation proof: 206 Notion tests pass with 97% branch coverage; 9 Node tests, strict types, compilation, syntax, capability freshness, offline qualification/load and npm audit pass. The full repository suite and protected CI checks gate merge; no live acceptance is implied."
   ],
   "verify": [
+    "python scripts/check_notion_adapter.py; --live --page adapter-test only when a real read is authorized",
+    "python -m pytest -q tests/test_notion_readiness.py tests/test_notion_tools.py tests/test_notion_adversarial.py tests/test_notion_independent_review.py",
     "python -m pytest -q",
     "python -m mypy daveharness",
     "python scripts/generate_capabilities_manifest.py --check",
@@ -541,6 +561,10 @@
     "Use .github/workflows/ci.yml for full compilation, coverage, offline qualification, syntax and dependency gates."
   ],
   "links": [
+    {
+      "label": "Notion adapter readiness: PR #58",
+      "url": "https://github.com/DaveHomeAssist/DaveLLM/pull/58"
+    },
     {
       "label": "Repository",
       "url": "https://github.com/DaveHomeAssist/DaveLLM"
@@ -558,7 +582,7 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read the current DaveLLM tool documentation and H9 results. Establish whether the router has its own Notion connection and access to the existing designated test page without exposing credentials. Provide one complete secure setup procedure if access is missing. Do not create a replacement page, make live Notion requests, write page content, run inference, or infer renewed or resumed H9 authorization from this projection. Record the exact remaining acceptance gate.",
+  "kickoffPrompt": "Read the current DaveLLM tool documentation, readiness brief and H9 results. Configure the existing environment-only Notion connection securely and run scripts/check_notion_adapter.py without --live first. Check the running router's authenticated catalog separately. A real --live page read requires explicit current authorization; live writes, inference and H9 are not authorized by this projection. Reuse the designated test page, preserve its sentinel, and record the exact remaining acceptance gate without secrets or private page IDs.",
   "confidence": "high for source and cited automated evidence; live and physical acceptance unverified",
   "unknowns": [
     "DaveLLM access to the real Notion API and designated page; no live acceptance recorded.",
