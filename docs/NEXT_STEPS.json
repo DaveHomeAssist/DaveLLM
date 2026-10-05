@@ -8,7 +8,7 @@
   "head": "3ac59a4 Notion readiness CLI and lifecycle regression fix",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "Operator-run GET-only Notion read confirmed: 11 blocks, complete. Desktop/backend is currently stopped; app registration and write acceptance remain open. Required hosted checks were cancelled before runner assignment; PR #58 remains unmerged. H9 remains incomplete.",
+  "statusReason": "Operator GET-only Notion read confirmed: 11 complete blocks. Native desktop and backend are healthy, all three nodes are online, and all three Notion tools are registered. Live write/reject/readback acceptance and H9 remain incomplete. Required CI passed on PR #58's prior evidence revision; refreshed tracking must pass its exact-head gates before merge.",
   "evidence": {
     "checkedOn": "2026-10-04",
     "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
@@ -30,8 +30,8 @@
       "capabilityManifest": "current",
       "nodeRegressionTestsPassed": 15,
       "localSmoke": "Historical pre-setup check: the default CLI failed closed with unset configuration, and the then-running catalog contained no Notion tools. Superseded for shell access by operatorLiveRead; see runtimeProbe for current app state.",
-      "deliveryGate": "Run 37372762267: required Python 3.12/3.13/3.14 checks cancelled before execution; provider annotation says the job was not acquired by a hosted runner after multiple attempts. PR #58 is open, not merged or deployed. Check the PR for the current revision's gates; do not bypass them.",
-      "liveAcceptance": "User-supplied terminal evidence confirms a real GET-only read through DaveLLM's adapter, not the Codex connector: 11 blocks, no truncation or unread children. Running-app registration and write acceptance are not checked.",
+      "deliveryGate": "Run 37374697571 passed all required Python 3.12/3.13/3.14 checks on 2fbbb4f4f9b2c94d88afcc1184d355afdda7d216. This supersedes run 37372762267's hosted-runner assignment cancellation. PR #58 is not yet merged at this evidence capture; refreshed tracking requires exact-head checks. No protection bypass.",
+      "liveAcceptance": "User-supplied evidence confirms DaveLLM's own real GET-only adapter read: 11 complete blocks. Independent bounded GET checks after the operator's canonical launcher start confirm the native app/backend and authenticated registration of all three Notion tools. Live writes, rejection and final readback remain untested.",
       "operatorLiveRead": {
         "checkedOn": "2026-10-05",
         "source": "User-supplied command output; not independently rerun by Codex",
@@ -45,7 +45,30 @@
         "routerRegistration": "not_checked",
         "writeAcceptance": "not_checked"
       },
-      "runtimeProbe": "Codex bounded local checks on 2026-10-05: no listener on loopback port 8000 and no DaveLLM/Electron desktop process; authenticated catalog unavailable. No process was started or stopped."
+      "runtimeProbe": {
+        "checkedOn": "2026-10-05",
+        "executionHost": "Operator macOS workstation; Mac-only native inspection and small bounded GET checks",
+        "runtimeSourceRevision": "6aad6d6702e3f5f30bf75610e1e9385691dfc455",
+        "nativeWindow": "Confirmed by native accessibility tree and rendered screenshot, titled DaveLLM; no UI action or message sent",
+        "backend": "HTTP 200, status ok, version 2.1.0; existing loopback listener preserved",
+        "authenticatedCatalog": "HTTP 200, 25 tools; unauthenticated tools request returns 401",
+        "notionTools": [
+          "notion.page.read",
+          "notion.page.append",
+          "notion.block.update"
+        ],
+        "notionWriteApprovalRequired": true,
+        "nodeStatus": "Authenticated HTTP 200; Dominic, Walter and Duncan online with no errors",
+        "installedModelCounts": {
+          "Dominic": 1,
+          "Walter": 3,
+          "Duncan": 5
+        },
+        "inference": "not_run",
+        "liveWrites": "not_run",
+        "serviceMutation": "none; operator launched the existing script, Codex preserved healthy processes and configuration",
+        "historicalProbe": "Earlier same-day stopped-app probe is superseded by this independent running-app verification."
+      }
     },
     "sources": [
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
@@ -84,20 +107,20 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Launch the stopped app from the configured shell and verify Notion registration",
-    "why": "The operator's real adapter read passes; the same shell's environment must reach the desktop backend. Preserve that shell and do not request or re-enter the token.",
+    "title": "Authorize the bounded live Notion write and rejection acceptance sequence",
+    "why": "Real GET-only access, native/backend health and authenticated Notion registration now pass. Exact-call approval, preservation and write readback still need live evidence.",
     "doneWhen": "A separately authorized read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback are recorded; the preservation sentinel is unchanged.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "The app/backend is stopped. Codex does not inherit the operator terminal's secret environment. Start the canonical launcher implementation from that configured shell; live writes and inference remain separately authorized."
+    "blockedBy": "Live writes require separate explicit approval. Preserve the healthy app and its configured operator shell; do not re-enter or persist credentials, restart services, invoke inference or run H9 without separate authority."
   },
   "findings": [
     {
       "id": "DL-01",
       "type": "decision",
       "sev": "P1",
-      "title": "Live Notion read confirmed; app registration and write acceptance remain open",
-      "detail": "On 2026-10-05 the operator ran the existing GET-only readiness CLI against the designated page: readable, 11 blocks, not truncated, zero unread children. This proves adapter transport/page access in the configured shell, not running-app registration or read/write/reject/readback acceptance.",
+      "title": "Live Notion read and app registration confirmed; write acceptance remains open",
+      "detail": "On 2026-10-05 the operator's own adapter CLI read 11 complete blocks with zero unread children. After the operator launched the canonical script, independent native inspection and authenticated GET checks confirmed a healthy app/backend, 25 tools and all three Notion registrations. This does not prove live write/reject/readback acceptance.",
       "files": [
         "davellm_notion.py:59",
         "docs/DAVELLM_TOOLS.md:374",
@@ -120,7 +143,7 @@
         }
       ],
       "status": "open",
-      "evidenceNote": "User-provided live-read command output, 2026-10-05; source CLI and current stopped runtime inspected. No independent live rerun or write proof claimed."
+      "evidenceNote": "User-provided live-read command output plus independent native window, backend, authenticated catalog/node-status and model-inventory checks on 2026-10-05. No live write, inference or H9 proof claimed."
     },
     {
       "id": "DL-02",
@@ -437,7 +460,7 @@
       "name": "Phase 0 - Prove the Notion adapter live",
       "goal": "Run the merged adapter once against a real disposable page and record the result",
       "items": [
-        "DL-01 read transport passed in the operator shell; launch the canonical app from that same configured environment and verify its authenticated Notion catalog",
+        "DL-01 real read transport, native/backend health and authenticated Notion registration passed; preserve the healthy operator-launched app and configuration",
         "Under separate authorization, run read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback",
         "Record sanitized outcomes and preservation evidence without credentials or private page IDs"
       ],
@@ -613,10 +636,10 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read current DaveLLM instructions and preserve the canonical checkout's owner claim. Operator-run GET-only Notion access already passed with 11 blocks and no truncation; do not repeat setup or ask for the token. The app/backend is stopped. Have the operator run the existing macOS launcher implementation from the same configured shell, then verify desktop/backend health and the authenticated Notion catalog. Keep write approval, inference and H9 as separate gates. Reuse the designated test page and preserve its sentinel. Check PR #58 required CI without bypassing protections; record actual evidence in the board and comms log.",
-  "confidence": "high for source and automated evidence; operator-reported real read confirmed, running-app integration and write acceptance unverified",
+  "kickoffPrompt": "Read current DaveLLM instructions and preserve the canonical checkout's owner claim and healthy operator-launched app. Real GET-only Notion access already passed with 11 complete blocks; independent native/backend and authenticated catalog checks confirm all three Notion tools and three online nodes. Do not repeat setup, request the token, restart services or invoke inference/H9. Obtain separate explicit authority for the bounded write/reject/readback acceptance sequence on the existing designated test page; preserve its sentinel and require exact-call approvals. Inspect current PR #58 delivery evidence without bypassing protections and record the actual host/results in the board and comms log.",
+  "confidence": "high for source and automated evidence, operator-reported real read and independently confirmed running-app registration; live write/reject/readback acceptance unverified",
   "unknowns": [
-    "Notion app registration and live write/reject/readback acceptance; operator-run read transport is confirmed but app/backend is currently stopped.",
+    "Live Notion write/reject/readback acceptance; real read transport and authenticated running-app registration are confirmed, but registration does not establish write behavior.",
     "H9 structured-write compatibility and the remaining fixed corpus; current inference health is not established by the past run.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
