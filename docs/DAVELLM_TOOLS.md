@@ -373,17 +373,43 @@ All three are asynchronous handlers with bounded cancellation, and they work onl
 
 ### Setup
 
-1. In Notion's Developer portal (`https://app.notion.com/developers/connections`), create an internal connection for DaveLLM; you must be a workspace owner. Copy its API token from the connection's Configuration tab. (Steps as described by Notion's [authorization guide](https://developers.notion.com/guides/get-started/authorization), checked 2026-10-01.)
+1. In Notion's [Developer portal](https://app.notion.com/developers/connections), open the existing DaveLLM internal connection; create one only if none exists (creation requires a workspace owner). Copy its API token from the Configuration tab without rotating it. Follow Notion's [authorization guide](https://developers.notion.com/guides/get-started/authorization), checked 2026-10-05.
 2. Share each page DaveLLM may use with that connection, and nothing else: on the page, open the ••• menu at the top right, choose Add connections, and pick the connection. Notion then refuses every other page.
 3. Name those pages in `DAVE_NOTION_PAGES` and start the router with the token in `DAVE_NOTION_TOKEN`, from a terminal (the Launcher app opened from Finder does not see shell exports):
 
 ```bash
 export DAVE_ENABLE_NOTION_TOOLS=true
-export DAVE_NOTION_TOKEN='<internal connection secret>'
+export DAVE_ENABLE_TOOLS=true
+printf 'Notion connection token (hidden): '
+read -rs DAVE_NOTION_TOKEN
+printf '\n'
+export DAVE_NOTION_TOKEN
 export DAVE_NOTION_PAGES='{"adapter-test": "<page id or page URL>"}'
 ```
 
+Enter the secret only at the hidden prompt, never in chat or a command-line
+argument. It is kept in this shell's environment, not in shell history or a
+configuration file. Do not stop a healthy router just to run the checks below.
+
 There are two scopes, and both must allow a page: what Notion lets the connection reach, and the pages named in `DAVE_NOTION_PAGES`. The model names a page only by its configured name. It never supplies a Notion page or block ID.
+
+Before starting or changing a running router, check those settings without a
+model call or page write (use the project's Python environment):
+
+```bash
+python scripts/check_notion_adapter.py
+python scripts/check_notion_adapter.py --live --page adapter-test
+```
+
+The first command contacts nothing. Only `--live` contacts Notion, using the
+existing bounded, GET-only page read. Output contains configuration problems,
+block counts and partial-read indicators, never tokens, page IDs, titles or
+content. Exit 0 means configuration is valid, or an explicitly requested read
+succeeded (possibly partially); exit 1 means configuration or the read failed.
+`live: not_checked` is not evidence of page access. These commands inspect
+**this process's environment**, not the running router's settings or tool
+catalog; a successful read does not prove write acceptance or lifecycle
+integration. See the [readiness brief](NOTION_ADAPTER_READINESS.md).
 
 ### `notion.page.read`
 

@@ -5,14 +5,73 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "bdbf91e Notion preflight implementation",
+  "head": "3ac59a4 Notion readiness CLI and lifecycle regression fix",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "Notion preflight implemented and locally verified; live Notion acceptance and H9 qualification remain incomplete. CI and merge evidence belong to the source revision and its pull request.",
+  "statusReason": "Operator GET-only Notion read and authenticated app registration pass; native desktop/backend are healthy. Walter and Duncan remain online, but Dominic became unreachable during final checks after its initial successful inventory. Physical power/sleep or network state needs confirmation. Live write/reject/readback acceptance and H9 remain incomplete; PR #58 requires exact-head CI before merge.",
   "evidence": {
     "checkedOn": "2026-10-04",
     "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
-    "scope": "Notion preflight implementation revision; the containing projection commit changes planning data only. No live services contacted.",
+    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness records the scoped 2026-10-05 implementation; neither proves live acceptance.",
+    "adapterReadiness": {
+      "checkedOn": "2026-10-05",
+      "sourceRevision": "3ac59a497790c1c03786070e8a4da74dc8fe1eee",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/58",
+      "scope": "Read-only environment readiness and explicitly requested bounded page reads; no inference, live writes, qualification, credential persistence or runtime restart.",
+      "runner": "Isolated Linux container, Python 3.12",
+      "readinessTestsPassed": 29,
+      "approvalRejectRegressionTestsPassed": 2,
+      "existingNotionTestsPassed": 203,
+      "existingNotionTestsSkipped": 3,
+      "notionBranchCoveragePercent": 97,
+      "fullPythonRun": "1050 passed, 1 skipped; 4 tests failed because Node was absent at execution time, not because of source assertions.",
+      "runnerRepairRerun": "With Node available, all 9 anticipation/documentation tests passed, including the 4 failed cases. A single clean full-suite run is not claimed.",
+      "strictTypes": "17 source files passed",
+      "capabilityManifest": "current",
+      "nodeRegressionTestsPassed": 15,
+      "localSmoke": "Historical pre-setup check: the default CLI failed closed with unset configuration, and the then-running catalog contained no Notion tools. Superseded for shell access by operatorLiveRead; see runtimeProbe for current app state.",
+      "deliveryGate": "Run 37374697571 passed all required Python 3.12/3.13/3.14 checks on 2fbbb4f4f9b2c94d88afcc1184d355afdda7d216. This supersedes run 37372762267's hosted-runner assignment cancellation. PR #58 is not yet merged at this evidence capture; refreshed tracking requires exact-head checks. No protection bypass.",
+      "liveAcceptance": "User-supplied evidence confirms DaveLLM's own real GET-only adapter read: 11 complete blocks. Independent bounded GET checks after the operator's canonical launcher start confirm the native app/backend and authenticated registration of all three Notion tools. Live writes, rejection and final readback remain untested.",
+      "operatorLiveRead": {
+        "checkedOn": "2026-10-05",
+        "source": "User-supplied command output; not independently rerun by Codex",
+        "executionHost": "Operator macOS workstation",
+        "configurationReady": true,
+        "configuredPageCount": 1,
+        "live": "readable",
+        "blocksRead": 11,
+        "childrenNotRead": 0,
+        "truncated": false,
+        "routerRegistration": "not_checked",
+        "writeAcceptance": "not_checked"
+      },
+      "runtimeProbe": {
+        "checkedOn": "2026-10-05",
+        "executionHost": "Operator macOS workstation; Mac-only native inspection and small bounded GET checks",
+        "runtimeSourceRevision": "6aad6d6702e3f5f30bf75610e1e9385691dfc455",
+        "nativeWindow": "Confirmed by native accessibility tree and rendered screenshot, titled DaveLLM; no UI action or message sent",
+        "backend": "HTTP 200, status ok, version 2.1.0; existing loopback listener preserved",
+        "authenticatedCatalog": "HTTP 200, 25 tools; unauthenticated tools request returns 401",
+        "notionTools": [
+          "notion.page.read",
+          "notion.page.append",
+          "notion.block.update"
+        ],
+        "notionWriteApprovalRequired": true,
+        "nodeStatus": "Final authenticated HTTP 200: Walter and Duncan online with no errors; Dominic offline after a 10-second tags timeout. Direct Ollama GET and SSH also time out; Tailscale presence is offline. Cause unknown; operator asked to confirm power/awake state.",
+        "initialNodeStatus": "Earlier same-session authenticated check confirmed all three nodes online and error-free inventories. Superseded for Dominic availability by the final probe, not evidence of model removal.",
+        "installedModelCounts": {
+          "Dominic": 1,
+          "Walter": 3,
+          "Duncan": 5
+        },
+        "inventoryScope": "Counts are the earlier successful live inventory snapshot. Dominic's current inventory is unavailable, not empty; no models were removed or pulled.",
+        "inference": "not_run",
+        "liveWrites": "not_run",
+        "serviceMutation": "none; operator launched the existing script, Codex preserved healthy processes and configuration",
+        "historicalProbe": "Earlier same-day stopped-app probe is superseded by this independent running-app verification."
+      }
+    },
     "sources": [
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
       "docs/DAVEHARNESS_H9_RESULTS.md",
@@ -40,6 +99,7 @@
     }
   },
   "shipped": [
+    "Notion readiness CLI implemented and runner-tested (PR #58): local configuration by default, GET-only page access with --live; no write or model invocation",
     "Notion adapter v1 (read, verified append, block edit) merged: PR #48, 10-02",
     "Approval preflight (#51), file.edit overlap fix (#52), GC-proof deadline test (#54) merged 10-02",
     "Console redesign (#45): side/bottom rail, light default, Cluster view; static no-cache (#53)",
@@ -49,20 +109,20 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Establish DaveLLM connection access for controlled live Notion acceptance",
-    "why": "Simulated tests cannot prove the real API or configured page access.",
+    "title": "Confirm Dominic is awake and restore its existing reachability",
+    "why": "Dominic answered the initial inventory but became unreachable during final checks. Preserve the healthy app, Walter and Duncan; confirm physical/network state before considering any service change. Notion write acceptance remains a separate next phase.",
     "doneWhen": "A separately authorized read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback are recorded; the preservation sentinel is unchanged.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Verified router credential and page sharing; this package authorizes neither live Notion writes nor inference."
+    "blockedBy": "Dominic is unreachable through both Ollama and SSH; the operator must confirm power/awake state or restore its existing network connection. Cause unknown. Live Notion writes still require separate explicit approval; do not restart healthy services, persist credentials, invoke inference or run H9."
   },
   "findings": [
     {
       "id": "DL-01",
       "type": "decision",
       "sev": "P1",
-      "title": "Notion adapter never run against real Notion",
-      "detail": "The simulated acceptance suite passes, but no live DaveLLM-to-Notion acceptance is recorded. Verify router connection access and explicit page sharing before a separately authorized live sequence. Existing test-page preparation does not prove adapter access.",
+      "title": "Live Notion read and app registration confirmed; write acceptance remains open",
+      "detail": "On 2026-10-05 the operator's own adapter CLI read 11 complete blocks with zero unread children. After the operator launched the canonical script, independent native inspection and authenticated GET checks confirmed a healthy app/backend, 25 tools and all three Notion registrations. This does not prove live write/reject/readback acceptance.",
       "files": [
         "davellm_notion.py:59",
         "docs/DAVELLM_TOOLS.md:374",
@@ -72,6 +132,12 @@
       "phase": 0,
       "history": [
         {
+          "checkedOn": "2026-10-04",
+          "title": "Notion adapter never run against real Notion",
+          "detail": "Previous no-live-access finding superseded for read transport by the 2026-10-05 operator-run check; full live acceptance remains open.",
+          "evidence": "historical projection"
+        },
+        {
           "checkedOn": "2026-10-02",
           "title": "Notion adapter never run against real Notion",
           "detail": "Notion tests use tests/fake_notion.py only; no live run is recorded. Pinned Notion-Version 2026-03-11 and response shapes are unverified. Child pages/DBs wait on this.",
@@ -79,7 +145,7 @@
         }
       ],
       "status": "open",
-      "evidenceNote": "docs/DAVELLM_TOOLS.md; simulated tests; reviewed 2026-10-04"
+      "evidenceNote": "User-provided live-read command output plus independent native window, backend, authenticated catalog/node-status and model-inventory checks on 2026-10-05. No live write, inference or H9 proof claimed."
     },
     {
       "id": "DL-02",
@@ -396,7 +462,7 @@
       "name": "Phase 0 - Prove the Notion adapter live",
       "goal": "Run the merged adapter once against a real disposable page and record the result",
       "items": [
-        "DL-01: verify access to the existing designated test page using the configured router connection; do not duplicate it",
+        "DL-01 real read transport, native/backend health and authenticated Notion registration passed; preserve the healthy operator-launched app and configuration",
         "Under separate authorization, run read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback",
         "Record sanitized outcomes and preservation evidence without credentials or private page IDs"
       ],
@@ -457,6 +523,12 @@
     "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today."
   ],
   "decisionHistory": [
+    {
+      "id": "Adapter scope 2026-10-05",
+      "status": "accepted",
+      "date": "2026-10-05",
+      "decision": "Finish the existing Notion adapter first, before adding connectors for other services or model providers. This does not approve unreviewed page writes, inference or H9 qualification."
+    },
     {
       "id": "D-002",
       "status": "accepted",
@@ -524,6 +596,8 @@
     }
   ],
   "context": [
+    "2026-10-05 readiness slice uses the existing NotionSettings, read_page transport and a temporary ledger, without importing the router or initializing persistence. It follows existing validation/error handling conventions; no dependency or tool-definition changes.",
+    "An existing Notion approval/reject regression was flaky because its TestClient closed the run event loop between requests. Reusing the adversarial tests' persistent-portal pattern fixes the test only; production behavior is unchanged.",
     "This is a public-safe projection of the owning records, not a second roadmap or blanket execution permission.",
     "Historical DL-01 through DL-14 finding IDs and evidence are preserved. Untouched UI and infrastructure findings remain historical, not newly verified.",
     "PR #48 merged the Notion adapter; #51 added generic preflight; #52 fixed overlapping file edits; #53 added static revalidation; #54 fixed a deadline-test GC flake; #55 records the unqualified H9 run and runner correction.",
@@ -534,6 +608,8 @@
     "Implementation proof: 206 Notion tests pass with 97% branch coverage; 9 Node tests, strict types, compilation, syntax, capability freshness, offline qualification/load and npm audit pass. The full repository suite and protected CI checks gate merge; no live acceptance is implied."
   ],
   "verify": [
+    "python scripts/check_notion_adapter.py; --live --page adapter-test only when a real read is authorized",
+    "python -m pytest -q tests/test_notion_readiness.py tests/test_notion_tools.py tests/test_notion_adversarial.py tests/test_notion_independent_review.py",
     "python -m pytest -q",
     "python -m mypy daveharness",
     "python scripts/generate_capabilities_manifest.py --check",
@@ -541,6 +617,10 @@
     "Use .github/workflows/ci.yml for full compilation, coverage, offline qualification, syntax and dependency gates."
   ],
   "links": [
+    {
+      "label": "Notion adapter readiness: PR #58",
+      "url": "https://github.com/DaveHomeAssist/DaveLLM/pull/58"
+    },
     {
       "label": "Repository",
       "url": "https://github.com/DaveHomeAssist/DaveLLM"
@@ -558,10 +638,11 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read the current DaveLLM tool documentation and H9 results. Establish whether the router has its own Notion connection and access to the existing designated test page without exposing credentials. Provide one complete secure setup procedure if access is missing. Do not create a replacement page, make live Notion requests, write page content, run inference, or infer renewed or resumed H9 authorization from this projection. Record the exact remaining acceptance gate.",
-  "confidence": "high for source and cited automated evidence; live and physical acceptance unverified",
+  "kickoffPrompt": "Read current DaveLLM and machine-access instructions; preserve the canonical owner checkout and healthy operator-launched app, Walter and Duncan. Real Notion read and all three authenticated Notion registrations passed. Dominic answered the first inventory, then became unreachable through tags and SSH and was marked offline by Tailscale. After the operator confirms power/awake or restores its existing network, recheck authenticated status and a fresh inventory; do not infer models were removed from an error response. Do not repeat credential setup, restart healthy services or invoke inference/H9. Live Notion write/reject/readback acceptance requires separate explicit authority and must preserve existing test-page content. Inspect PR #58 exact-head delivery gates without bypassing protections; record current evidence and blockers in the board and comms log.",
+  "confidence": "high for source and automated evidence, operator-reported real read and independently confirmed running-app registration; live write/reject/readback acceptance unverified",
   "unknowns": [
-    "DaveLLM access to the real Notion API and designated page; no live acceptance recorded.",
+    "Dominic power/sleep/network state and current installed inventory: initial live read passed, final tags and SSH requests time out; no cause or service repair is established.",
+    "Live Notion write/reject/readback acceptance; real read transport and authenticated running-app registration are confirmed, but registration does not establish write behavior.",
     "H9 structured-write compatibility and the remaining fixed corpus; current inference health is not established by the past run.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
