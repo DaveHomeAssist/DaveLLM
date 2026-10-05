@@ -47,6 +47,8 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - `POST /tools/agent/resume` must execute only stored canonical arguments for the matching run, call, digest, transcript revision, unexpired nonce, and current registry definition. It must not replay the paused model step or reuse a consumed decision.
 - Global, project, and session instruction layers are visible in the UI and resolve into one exact primary system message.
 - Project notepads are plain text in project persistence. Do not add rich text, history, collaboration, or browser note storage.
+- Replies render through `appendMarkdown` in `static/console.js`, which builds DOM nodes and text only (headings, lists, tables, quotes, rules, code, emphasis, links). Only `http(s)` and `mailto` links become anchors, and `desktop/main.js` opens them in the default browser and denies other windows and navigation. `tests/test_markdown_render.mjs` pins the output.
+- The sidebar's sort, compact view and unread marks live in this browser's `localStorage` (`dave_convo_sort`, `dave_convo_density`, `dave_unread_conversations`). Unread holds conversation IDs only, never message content.
 - Existing-chat project changes must use the explicit attachment endpoint and apply only to future messages.
 - DaveLLM and DaveHarness are separate product concepts with one dependency direction: DaveLLM consumes DaveHarness through the in-process `daveharness` package. DaveHarness owns generic registry, validation, permission, approval, budget, terminal-state, and transcript contracts; it must not directly own DaveLLM HTTP, Ollama inventory, persistence, project context, UI, environment, or product-specific tool implementations. Preserve `tool_executor.py` only as the legacy compatibility import.
 - Do not create a DaveHarness network service or separate repository without a second production consumer, independent deployment cadence, incompatible dependency requirement, or required remote execution boundary.
@@ -105,7 +107,7 @@ python -m compileall -q daveharness
 python -m mypy daveharness
 python -m pytest -q
 node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
-node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs
+node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs tests/test_console.mjs tests/test_markdown_render.mjs
 bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh
 npm ci
 npm ls --depth=0

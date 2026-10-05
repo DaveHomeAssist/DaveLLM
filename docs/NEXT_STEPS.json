@@ -6,7 +6,7 @@
     "DaveHomeAssist/DaveLLM"
   ],
   "head": "bdbf91e Notion preflight implementation",
-  "lastActivity": "2026-10-04",
+  "lastActivity": "2026-10-05",
   "status": "amber",
   "statusReason": "Notion preflight implemented and locally verified; live Notion acceptance and H9 qualification remain incomplete. CI and merge evidence belong to the source revision and its pull request.",
   "evidence": {
@@ -45,7 +45,8 @@
     "Console redesign (#45): side/bottom rail, light default, Cluster view; static no-cache (#53)",
     "Native Ollama chat + tool loop, node deadlines/profiles/stats (#32-#44); Git/web/native tools",
     "Branch protection on main requires checks 3.12/3.13/3.14 (10-01)",
-    "PR #55: H9 evidence and macOS symlink runner correction merged 2026-10-04; qualification remains incomplete"
+    "PR #55: H9 evidence and macOS symlink runner correction merged 2026-10-04; qualification remains incomplete",
+    "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
     "title": "Establish DaveLLM connection access for controlled live Notion acceptance",
@@ -449,7 +450,11 @@
     "DL-14 [Open, carried from 2026-10-02]: design-manifest and unused-control decisions. Options: A ratify the implemented console and scope removal of confirmed unused controls (recommended); B retain controls until product behavior is specified.",
     "DL-14 [Open, carried from 2026-10-02]: version, changelog and release policy. Options: A define a release package with its own acceptance gates (recommended); B leave current versions unchanged. No release is authorized here.",
     "DL-14 [Open, carried from 2026-10-02]: old branch cleanup and administrator protection. Options: A review branch ownership and protections separately (recommended); B retain existing policy. Historical branch counts require refresh; no branch deletion is authorized.",
-    "Notion setup [Open for future scope]: environment-only setup or Keychain-backed configuration. Recommendation: verify the existing environment-only path before adding credential persistence."
+    "Notion setup [Open for future scope]: environment-only setup or Keychain-backed configuration. Recommendation: verify the existing environment-only path before adding credential persistence.",
+    "DL-UI-01 [Open, 2026-10-05]: unread scope. Options: A per-device marks in browser storage (built, recommended for now); B a router read_at per conversation so marks follow Dave across the app and browsers.",
+    "DL-UI-02 [Open, 2026-10-05]: desktop notifications when a reply finishes. Options: A only while the window is hidden or unfocused, with a Settings toggle on by default (recommended); B always; C none.",
+    "DL-UI-03 [Open, 2026-10-05]: sending during a reply. Options: A refuse and keep the draft (built, recommended); B stop the current reply and send; C queue until the reply ends.",
+    "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today."
   ],
   "decisionHistory": [
     {
@@ -559,6 +564,7 @@
     "DaveLLM access to the real Notion API and designated page; no live acceptance recorded.",
     "H9 structured-write compatibility and the remaining fixed corpus; current inference health is not established by the past run.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
-    "Historical console, dependency and release findings outside this package have not been re-audited."
+    "Historical console, dependency and release findings outside this package have not been re-audited.",
+    "Dave's acceptance of the 2026-10-05 chat UI fixes in the Electron app; the reply-link handler in desktop/main.js loads only after the app restarts."
   ]
 }

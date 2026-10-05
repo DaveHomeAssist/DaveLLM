@@ -323,38 +323,212 @@ function tickApprovalClock() {
     if (remaining === 0) runLedgerApproval.querySelectorAll("button").forEach((button) => { button.disabled = true; });
 }
 
-function appendMarkdown(container, source) {
-    // Safe, deliberately small Markdown subset. Model HTML never becomes markup.
-    const inline = (target, text) => {
-        for (const part of text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)) {
-            if (part.startsWith("`") && part.endsWith("`")) target.append(uiElement("code", "", part.slice(1, -1)));
-            else if (part.startsWith("**") && part.endsWith("**")) target.append(uiElement("strong", "", part.slice(2, -2)));
-            else target.append(document.createTextNode(part));
-        }
-    };
-    const parts = String(source || "").split("```");
-    parts.forEach((part, index) => {
-        if (index % 2) {
-            const match = part.match(/^([\w+-]*)\n/);
-            const text = match ? part.slice(match[0].length).replace(/\n$/, "") : part;
-            const block = uiElement("div", "code-block");
-            const bar = uiElement("div", "code-toolbar");
-            const copy = uiElement("button", "text-btn", "Copy");
-            copy.addEventListener("click", async () => {
-                try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 2000); }
-                catch (_) { notifyConsole("Copy failed. Select the code to copy it manually."); }
-            });
-            bar.append(uiElement("span", "", match?.[1] || "code"), copy);
-            const pre = uiElement("pre"); pre.append(uiElement("code", "", text));
-            block.append(bar, pre); container.append(block);
-        } else {
-            for (const paragraph of part.split(/\n\s*\n/).filter((value) => value.trim())) {
-                const heading = paragraph.match(/^(#{1,3})\s+(.+)$/);
-                const p = uiElement(heading ? `h${heading[1].length + 1}` : "p");
-                inline(p, heading ? heading[2] : paragraph); container.append(p);
-            }
-        }
+// Inline Markdown: escapes, code, bold, strikethrough, italics, links and bare URLs, tried in that order.
+const MARKDOWN_INLINE = /\\([\\`*_~[\]()#>|!-])|`([^`\n]+)`|\*\*(?=\S)(.+?)(?<=\S)\*\*|(?<![\w])__(?=\S)(.+?)(?<=\S)__(?![\w])|~~(?=\S)(.+?)(?<=\S)~~|\*(?=[^\s*])(.+?)(?<=[^\s*])\*|(?<![\w])_(?=[^\s_])(.+?)(?<=[^\s_])_(?![\w])|\[([^\]\n]+)\]\(\s*([^()\s]+(?:\([^()\s]*\)[^()\s]*)*)(?:\s+"[^"\n]*")?\s*\)|(https?:\/\/[^\s<>]*[^\s<>.,;:!?"'()[\]])/g;
+const MARKDOWN_SAFE_HREF = /^(https?:\/\/|mailto:)/i;
+const MARKDOWN_FENCE = /^\s{0,3}(`{3,}|~{3,})\s*([^`\s]*)[^`]*$/;
+const MARKDOWN_HEADING = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
+const MARKDOWN_RULE = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
+const MARKDOWN_QUOTE = /^\s{0,3}>\s?/;
+const MARKDOWN_LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
+const MARKDOWN_TABLE_DIVIDER = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
+
+function appendMarkdownInline(target, text, allowLinks = true) {
+    let last = 0;
+    for (const match of text.matchAll(MARKDOWN_INLINE)) {
+        if (match.index > last) target.append(document.createTextNode(text.slice(last, match.index)));
+        last = match.index + match[0].length;
+        const [, escaped, code, bold, boldAlt, struck, italic, italicAlt, label, href, bareUrl] = match;
+        if (escaped !== undefined) target.append(document.createTextNode(escaped));
+        else if (code !== undefined) target.append(uiElement("code", "", code));
+        else if (bold !== undefined || boldAlt !== undefined) {
+            const strong = uiElement("strong"); appendMarkdownInline(strong, bold ?? boldAlt, allowLinks); target.append(strong);
+        } else if (struck !== undefined) {
+            const del = uiElement("del"); appendMarkdownInline(del, struck, allowLinks); target.append(del);
+        } else if (italic !== undefined || italicAlt !== undefined) {
+            const em = uiElement("em"); appendMarkdownInline(em, italic ?? italicAlt, allowLinks); target.append(em);
+        } else if (label !== undefined) {
+            if (allowLinks && MARKDOWN_SAFE_HREF.test(href)) {
+                const link = markdownLink(href); appendMarkdownInline(link, label, false); target.append(link);
+            } else appendMarkdownInline(target, label, allowLinks);
+        } else target.append(allowLinks ? markdownLink(bareUrl, bareUrl) : document.createTextNode(bareUrl));
+    }
+    if (last < text.length) target.append(document.createTextNode(text.slice(last)));
+}
+
+function markdownLink(href, text = "") {
+    // Only http(s) and mailto become links; Electron hands them to the default browser.
+    const link = uiElement("a", "", text);
+    link.setAttribute("href", href);
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noopener noreferrer");
+    return link;
+}
+
+function splitMarkdownRow(row) {
+    let cells = row.trim();
+    if (cells.startsWith("|")) cells = cells.slice(1);
+    if (cells.endsWith("|") && !cells.endsWith("\\|")) cells = cells.slice(0, -1);
+    return cells.split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, "|"));
+}
+
+function isMarkdownTableStart(lines, index) {
+    const header = lines[index];
+    const divider = lines[index + 1];
+    if (!header?.includes("|") || divider === undefined || !divider.includes("-") || !MARKDOWN_TABLE_DIVIDER.test(divider)) return false;
+    return splitMarkdownRow(header).length === splitMarkdownRow(divider).length;
+}
+
+function startsMarkdownBlock(lines, index) {
+    const line = lines[index];
+    return MARKDOWN_FENCE.test(line) || MARKDOWN_HEADING.test(line) || MARKDOWN_RULE.test(line)
+        || MARKDOWN_QUOTE.test(line) || MARKDOWN_LIST_ITEM.test(line) || isMarkdownTableStart(lines, index);
+}
+
+function appendMarkdownCode(container, language, text) {
+    const block = uiElement("div", "code-block");
+    const bar = uiElement("div", "code-toolbar");
+    const copy = uiElement("button", "text-btn", "Copy");
+    copy.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 2000); }
+        catch (_) { notifyConsole("Copy failed. Select the code to copy it manually."); }
     });
+    bar.append(uiElement("span", "", language || "code"), copy);
+    const pre = uiElement("pre"); pre.append(uiElement("code", "", text));
+    block.append(bar, pre); container.append(block);
+}
+
+function appendMarkdownTable(container, lines, index) {
+    const alignments = splitMarkdownRow(lines[index + 1]).map((cell) => (
+        cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : cell.startsWith(":") ? "left" : ""
+    ));
+    const row = (cells, tag) => {
+        const tr = uiElement("tr");
+        alignments.forEach((align, column) => {
+            const cell = uiElement(tag);
+            if (align) cell.style.textAlign = align;
+            appendMarkdownInline(cell, cells[column] || "");
+            tr.append(cell);
+        });
+        return tr;
+    };
+    const thead = uiElement("thead"); thead.append(row(splitMarkdownRow(lines[index]), "th"));
+    const tbody = uiElement("tbody");
+    let next = index + 2;
+    while (next < lines.length && lines[next].includes("|") && lines[next].trim()) {
+        tbody.append(row(splitMarkdownRow(lines[next]), "td"));
+        next += 1;
+    }
+    const table = uiElement("table"); table.append(thead, tbody);
+    const wrap = uiElement("div", "table-wrap"); wrap.append(table);
+    container.append(wrap);
+    return next;
+}
+
+function buildMarkdownList(items, from) {
+    // Items deeper than the first one nest inside the previous item; a shallower item or a
+    // different list type at the same depth ends this list.
+    const first = items[from];
+    const list = uiElement(first.ordered ? "ol" : "ul");
+    if (first.ordered && first.number !== 1) list.setAttribute("start", String(first.number));
+    let index = from;
+    while (index < items.length && items[index].indent >= first.indent) {
+        const item = items[index];
+        if (item.indent > first.indent) {
+            let parent = list.lastElementChild;
+            if (!parent) { parent = uiElement("li"); list.append(parent); }
+            const [nested, next] = buildMarkdownList(items, index);
+            parent.append(nested);
+            index = next;
+            continue;
+        }
+        if (item.ordered !== first.ordered) break;
+        const li = uiElement("li");
+        appendMarkdownInline(li, item.text);
+        list.append(li);
+        index += 1;
+    }
+    return [list, index];
+}
+
+function appendMarkdownList(container, lines, index) {
+    const items = [];
+    let next = index;
+    while (next < lines.length) {
+        const line = lines[next].replace(/\t/g, "    ");
+        const marker = line.match(MARKDOWN_LIST_ITEM);
+        if (marker) {
+            const ordered = /\d/.test(marker[2]);
+            items.push({ indent: marker[1].length, ordered, number: ordered ? parseInt(marker[2], 10) : 0, text: marker[3] });
+            next += 1;
+        } else if (line.trim() && items.length && !startsMarkdownBlock(lines, next)) {
+            items[items.length - 1].text += `\n${line.trim()}`;
+            next += 1;
+        } else if (!line.trim() && items.length && /^(?:\s*([-*+]|\d{1,9}[.)])\s|\s{2,}\S)/.test(lines[next + 1] || "")) {
+            next += 1;
+        } else break;
+    }
+    let item = 0;
+    while (item < items.length) {
+        const [list, after] = buildMarkdownList(items, item);
+        container.append(list);
+        item = after;
+    }
+    return next;
+}
+
+function appendMarkdown(container, source) {
+    // Safe Markdown subset built only from DOM nodes and text. Model HTML never becomes markup.
+    const lines = String(source || "").replace(/\r\n?/g, "\n").split("\n");
+    let index = 0;
+    while (index < lines.length) {
+        const line = lines[index];
+        if (!line.trim()) { index += 1; continue; }
+        const fence = line.match(MARKDOWN_FENCE);
+        if (fence) {
+            // An unclosed fence (a reply still streaming) runs to the end of the text.
+            const body = [];
+            index += 1;
+            while (index < lines.length && !(lines[index].trim().startsWith(fence[1][0].repeat(fence[1].length)) && !lines[index].trim().replace(/[`~]/g, ""))) {
+                body.push(lines[index]);
+                index += 1;
+            }
+            index += 1;
+            appendMarkdownCode(container, fence[2], body.join("\n"));
+            continue;
+        }
+        const heading = line.match(MARKDOWN_HEADING);
+        if (heading) {
+            const title = uiElement(`h${Math.min(heading[1].length + 1, 6)}`);
+            appendMarkdownInline(title, heading[2]);
+            container.append(title);
+            index += 1;
+            continue;
+        }
+        if (MARKDOWN_RULE.test(line)) { container.append(uiElement("hr")); index += 1; continue; }
+        if (MARKDOWN_QUOTE.test(line)) {
+            const quoted = [];
+            while (index < lines.length && MARKDOWN_QUOTE.test(lines[index])) {
+                quoted.push(lines[index].replace(MARKDOWN_QUOTE, ""));
+                index += 1;
+            }
+            const quote = uiElement("blockquote");
+            appendMarkdown(quote, quoted.join("\n"));
+            container.append(quote);
+            continue;
+        }
+        if (isMarkdownTableStart(lines, index)) { index = appendMarkdownTable(container, lines, index); continue; }
+        if (MARKDOWN_LIST_ITEM.test(line)) { index = appendMarkdownList(container, lines, index); continue; }
+        const paragraph = [line];
+        index += 1;
+        while (index < lines.length && lines[index].trim() && !startsMarkdownBlock(lines, index)) {
+            paragraph.push(lines[index]);
+            index += 1;
+        }
+        const p = uiElement("p");
+        appendMarkdownInline(p, paragraph.map((value) => value.trimStart()).join("\n"));
+        container.append(p);
+    }
 }
 
 function initConsoleShell() {

@@ -13,6 +13,7 @@ const state = {
     renaming: false,
     streaming: false,       // Track if currently streaming
     abortController: null,  // For stopping streams
+    streamingConversationId: null, // Conversation whose reply is streaming
     pendingImages: [],      // Images attached to next message
     modelMeta: {},          // Map of modelId -> { vision: bool }
     nodeStatus: {},         // Map of nodeId -> online/offline/unknown
@@ -172,15 +173,24 @@ function updateStatsDisplay() {
     persistStats();
 }
 
+// Within this many pixels of the bottom the reader counts as caught up.
+const FOLLOW_THRESHOLD_PX = 40;
+
+function distanceFromBottom() {
+    return responseBox.scrollHeight - responseBox.scrollTop - responseBox.clientHeight;
+}
+
+// Shows the jump button only; whether a streaming reply is followed is state.autoScroll,
+// which only the reader's own scrolling, sending, switching chats or the button changes.
 function updateScrollBottomButton() {
     if (!scrollBottomBtn || !responseBox) return;
-    const atBottom = (responseBox.scrollHeight - responseBox.scrollTop - responseBox.clientHeight) < 40;
-    state.autoScroll = atBottom;
-    if (atBottom) {
-        scrollBottomBtn.classList.remove("visible");
-    } else {
-        scrollBottomBtn.classList.add("visible");
-    }
+    scrollBottomBtn.classList.toggle("visible", distanceFromBottom() > FOLLOW_THRESHOLD_PX);
+}
+
+// Keep the newest text in view while the reader is following the reply.
+function followLatest() {
+    if (state.autoScroll) responseBox.scrollTop = responseBox.scrollHeight;
+    updateScrollBottomButton();
 }
 
 function sendFeedback(score, content, modelId) {
@@ -238,6 +248,7 @@ const statTokensPerMsg = document.getElementById("statTokensPerMsg");
 const statConfidence = document.getElementById("statConfidence");
 const statLastRoute = document.getElementById("statLastRoute");
 const scrollBottomBtn = document.getElementById("scrollBottomBtn");
+const convoSortSelect = document.getElementById("convoSort");
 const monitorBadge = document.getElementById("monitorBadge");
 const templateSelect = document.getElementById("templateSelect");
 const createFromTemplateBtn = document.getElementById("createFromTemplate");
@@ -1260,13 +1271,82 @@ async function exportConversation(cid, title) {
 // ---------------------------------------------
 // CONVERSATION LIST UI
 // ---------------------------------------------
+// Sort, density and unread marks are per-viewer conveniences in this browser. Unread holds
+// conversation IDs only, never message content.
+const CONVO_SORT_KEY = "dave_convo_sort";
+const CONVO_DENSITY_KEY = "dave_convo_density";
+const UNREAD_CONVOS_KEY = "dave_unread_conversations";
+const CONVO_SORTS = {
+    recent: { grouped: true },
+    oldest: { grouped: true },
+    created: { grouped: false },
+    title: { grouped: false },
+    unread: { grouped: false },
+};
+
+function readStoredSetting(key, fallback) {
+    try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; }
+}
+
+function storeSetting(key, value) {
+    try { localStorage.setItem(key, value); } catch (_) { /* storage blocked: keep the in-memory choice */ }
+}
+
+let convoSort = CONVO_SORTS[readStoredSetting(CONVO_SORT_KEY, "recent")] ? readStoredSetting(CONVO_SORT_KEY, "recent") : "recent";
+let convoDensity = readStoredSetting(CONVO_DENSITY_KEY, "detailed") === "compact" ? "compact" : "detailed";
+const unreadConversations = new Set((() => {
+    try {
+        const saved = JSON.parse(localStorage.getItem(UNREAD_CONVOS_KEY) || "[]");
+        return Array.isArray(saved) ? saved.filter((id) => typeof id === "string") : [];
+    } catch (_) { return []; }
+})());
+
+function saveUnreadConversations() {
+    storeSetting(UNREAD_CONVOS_KEY, JSON.stringify([...unreadConversations]));
+}
+
+function markConversationUnread(cid) {
+    if (!cid || unreadConversations.has(cid)) return;
+    unreadConversations.add(cid);
+    saveUnreadConversations();
+}
+
+function markConversationRead(cid) {
+    if (unreadConversations.delete(cid)) saveUnreadConversations();
+}
+
+// A reply counts as seen once its conversation is open in a focused, visible window.
+function readerCanSee(cid) {
+    return cid === state.sessionId && consoleView === "chat" && !document.hidden && document.hasFocus();
+}
+
+function conversationTime(convo, field = "updated_at") {
+    const value = Date.parse(convo[field] || convo.created_at || "");
+    return Number.isFinite(value) ? value : 0;
+}
+
+// One-line preview without the Markdown punctuation the reply renders as formatting.
+function plainPreview(text) {
+    return String(text)
+        .replace(/```[^\s`]*/g, " ")
+        .replace(/\*\*|__|~~|`/g, "")
+        .replace(/^\s{0,3}(#{1,6}|>)\s?/gm, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 100);
+}
+
 function getSortedConversations() {
     const items = Object.entries(state.conversations);
-    return items.sort((a, b) => {
-        const timeA = a[1].updated_at || a[1].created_at || 0;
-        const timeB = b[1].updated_at || b[1].created_at || 0;
-        return new Date(timeB) - new Date(timeA);
-    });
+    const byRecent = (a, b) => conversationTime(b[1]) - conversationTime(a[1]);
+    const compare = {
+        recent: byRecent,
+        oldest: (a, b) => conversationTime(a[1]) - conversationTime(b[1]),
+        created: (a, b) => conversationTime(b[1], "created_at") - conversationTime(a[1], "created_at") || byRecent(a, b),
+        title: (a, b) => (a[1].title || "").localeCompare(b[1].title || "", undefined, { sensitivity: "base", numeric: true }) || byRecent(a, b),
+        unread: (a, b) => Number(unreadConversations.has(b[0])) - Number(unreadConversations.has(a[0])) || byRecent(a, b),
+    }[convoSort] || byRecent;
+    return items.sort(compare);
 }
 
 function renderConversationList() {
@@ -1276,13 +1356,17 @@ function renderConversationList() {
     }
 
     convoList.replaceChildren();
+    convoList.classList.toggle("compact", convoDensity === "compact");
 
     const sorted = getSortedConversations();
+    const grouped = CONVO_SORTS[convoSort]?.grouped;
 
     let previousBand = null;
     sorted.forEach(([cid, convo]) => {
         const age = conversationAge(convo);
-        if (age.band !== previousBand) {
+        const unread = unreadConversations.has(cid);
+        const writing = state.streaming && state.streamingConversationId === cid;
+        if (grouped && age.band !== previousBand) {
             const heading = uiElement("h3", `age-heading age-${age.band}`, age.label);
             convoList.appendChild(heading);
             previousBand = age.band;
@@ -1291,8 +1375,9 @@ function renderConversationList() {
         div.className = `convo-item age-${age.band}`;
         div.setAttribute("role", "button");
         div.tabIndex = 0;
-        div.setAttribute("aria-label", `Open conversation ${convo.title}`);
+        div.setAttribute("aria-label", `Open conversation ${convo.title}${unread ? " (unread reply)" : ""}${writing ? " (reply in progress)" : ""}`);
         if (cid === state.sessionId) div.classList.add("active-convo");
+        if (unread) div.classList.add("unread");
 
         const titleContainer = document.createElement("div");
         titleContainer.className = "convo-title-container";
@@ -1309,7 +1394,13 @@ function renderConversationList() {
         titleSpan.style.textOverflow = "ellipsis";
         titleSpan.style.whiteSpace = "nowrap";
 
+        if (unread) {
+            const dot = uiElement("span", "unread-dot");
+            dot.setAttribute("aria-hidden", "true");
+            titleContainer.appendChild(dot);
+        }
         titleContainer.appendChild(titleSpan);
+        if (writing) titleContainer.appendChild(uiElement("span", "convo-writing", "Writing…"));
         const time = uiElement("span", "convo-age", age.text);
         time.title = convo.updated_at || convo.created_at || "Date unavailable";
         titleContainer.appendChild(time);
@@ -1319,7 +1410,6 @@ function renderConversationList() {
         actionsDiv.style.gap = "4px";
         actionsDiv.style.alignItems = "center";
         actionsDiv.style.flexShrink = "0";
-        actionsDiv.style.marginLeft = "8px";
 
         const renameBtn = document.createElement("button");
         renameBtn.className = "action-icon";
@@ -1368,7 +1458,8 @@ function renderConversationList() {
 
         div.appendChild(titleContainer);
         const preview = (convo.messages || []).filter((message) => ["user", "assistant"].includes(message.role)).at(-1);
-        div.appendChild(uiElement("p", "convo-preview", typeof preview?.content === "string" ? preview.content.slice(0, 100) : (convo.last_message || "No messages yet")));
+        const previewText = typeof preview?.content === "string" ? preview.content : convo.last_message;
+        div.appendChild(uiElement("p", "convo-preview", previewText ? plainPreview(previewText) : "No messages yet"));
         div.appendChild(actionsDiv);
 
         div.addEventListener("click", async (e) => {
@@ -1396,6 +1487,8 @@ function renderConversationList() {
     });
 }
 
+let switchSequence = 0;
+
 async function switchConversation(cid) {
     if (state.renaming) return;
     clearUndoState();
@@ -1406,9 +1499,14 @@ async function switchConversation(cid) {
         return;
     }
 
+    // Rapid clicks: only the most recent one may finish switching.
+    const sequence = ++switchSequence;
     await flushProjectNotepadSave();
+    if (sequence !== switchSequence) return;
 
     state.sessionId = cid;
+    state.autoScroll = true;
+    markConversationRead(cid);
     state.lastSessionId = cid;
     localStorage.setItem(LAST_SESSION_KEY, cid);
 
@@ -1416,6 +1514,7 @@ async function switchConversation(cid) {
     if (!convo.messages || convo.messages.length === 0) {
         console.log(`📥 Loading full history from backend for ${cid}`);
         await loadConversationHistory(cid);
+        if (sequence !== switchSequence) return;
     } else {
         console.log(`✨ Using cached history for ${cid}`);
     }
@@ -2554,12 +2653,13 @@ async function copyRawMessage(message, button, statusElement) {
             fallback.remove();
             if (!copied) throw new Error("Clipboard unavailable");
         }
-        const original = button.textContent;
-        button.textContent = "Copied";
+        const label = button.querySelector(".message-action-label") || button;
+        const original = label.textContent;
+        label.textContent = "Copied";
         button.setAttribute("aria-label", `${message.role} message copied`);
         statusElement.textContent = `${message.role} message copied`;
         setTimeout(() => {
-            button.textContent = original;
+            label.textContent = original;
             button.setAttribute("aria-label", `Copy ${message.role} message raw markdown`);
             statusElement.textContent = "";
         }, 2000);
@@ -2639,7 +2739,12 @@ async function renameConversation(cid, element) {
         try { input.select(); } catch (e) {}
     });
 
+    // Enter and the blur that follows it (or Escape then blur) must settle the rename once.
+    let settled = false;
+
     const finalize = async () => {
+        if (settled) return;
+        settled = true;
         try {
             const newTitle = (input.value || "").trim() || oldTitle;
             
@@ -2651,13 +2756,13 @@ async function renameConversation(cid, element) {
             console.log(`💾 Saving title: "${newTitle}"`);
             convo.title = newTitle;
             
-            if (convo.messages && convo.messages.length > 0) {
-                const syncSuccess = await syncRenameToBackend(cid, newTitle);
-                if (!syncSuccess) {
-                    console.warn("⚠️ Backend sync failed, keeping local change");
-                }
-            } else {
-                console.log("ℹ️ New conversation, skipping backend sync (will sync on first message)");
+            // The router creates every conversation up front, including ones whose messages
+            // have not been loaded yet, so the title is always saved there. Opening the chat
+            // reloads it from the router, so an unsaved title would quietly revert.
+            const syncSuccess = await syncRenameToBackend(cid, newTitle);
+            if (!syncSuccess) {
+                convo.title = oldTitle;
+                notifyConsole("Rename failed: the router did not save the new name.");
             }
         } catch (err) {
             console.error("❌ Error during finalize:", err);
@@ -2669,6 +2774,8 @@ async function renameConversation(cid, element) {
     };
 
     const cancel = () => {
+        if (settled) return;
+        settled = true;
         console.log("❌ Rename cancelled");
         state.renaming = false;
         renderConversationList();
@@ -2937,6 +3044,8 @@ async function showRelevantMemories(query) {
 // ---------------------------------------------
 async function sendMessage() {
     if (approvalBusy) { notifyConsole("Finish or stop the active tool run before sending. Your draft is preserved."); return; }
+    // One reply at a time: a second stream would interleave with the first and lose its Stop button.
+    if (state.streaming) { notifyConsole("A reply is still being written. Press Stop to end it, or wait for it to finish. Your draft is kept."); return; }
     const prompt = promptInput.value.trim();
     let attachedFileText = "";
     if (fileInput && fileInput.files && fileInput.files.length) {
@@ -2980,7 +3089,8 @@ async function sendMessage() {
         await createNewConversation();
     }
 
-    const convo = state.conversations[state.sessionId];
+    const cid = state.sessionId;
+    const convo = state.conversations[cid];
     if (!convo) {
         console.error("Failed to get conversation, aborting send");
         return;
@@ -3067,15 +3177,21 @@ async function sendMessage() {
         });
     });
 
+    state.autoScroll = true;
     renderMessages();
     
     if (effectivePrompt) showRelevantMemories(effectivePrompt);
 
-    const streamingMsg = { role: "assistant", content: "", isStreaming: true };
+    const streamingMsg = { role: "assistant", content: "", isStreaming: true, startedAt: Date.now() };
     convo.messages.push(streamingMsg);
 
     state.streaming = true;
+    state.streamingConversationId = cid;
     state.abortController = new AbortController();
+    setStreamingUi(true);
+    renderConversationList();
+    renderMessages();
+    const workingTimer = setInterval(() => renderLiveMessage(streamingMsg, false), 1000);
 
     try {
         const res = await fetch(routerEndpoint("/chat/stream"), {
@@ -3083,7 +3199,7 @@ async function sendMessage() {
             headers: authHeaders({ "Content-Type": "application/json" }),
             signal: state.abortController.signal,
             body: JSON.stringify({
-                conversation_id: state.sessionId,
+                conversation_id: cid,
                 prompt: effectivePrompt,
                 max_tokens: 2048,
                 temperature: 0.7,
@@ -3140,7 +3256,7 @@ async function sendMessage() {
 
                 if (data.status) {
                     streamingMsg.statusText = streamStatusText(data);
-                    renderMessages();
+                    renderLiveMessage(streamingMsg);
                     continue;
                 }
 
@@ -3162,22 +3278,23 @@ async function sendMessage() {
 
                 if (data.token && !data.done) {
                     streamingMsg.content += data.token;
-                    renderMessages();
+                    renderLiveMessage(streamingMsg);
                 }
 
                 if (data.done) {
                     streamingMsg.isStreaming = false;
                     // A reload would replace the local notice with server history, which has no reply to show.
                     if (!sawNotice && convo.title === "New Conversation") {
-                        await loadConversationHistory(state.sessionId);
+                        // The reader may have opened another chat meanwhile: reload the one that replied.
+                        await loadConversationHistory(cid);
                         // Server history has no client-only stats: carry them over to the reloaded reply.
-                        const reloaded = state.conversations[state.sessionId]?.messages || [];
+                        const reloaded = state.conversations[cid]?.messages || [];
                         const reply = reloaded[reloaded.length - 1];
                         if (streamingMsg.stats && reply && reply.role === "assistant") {
                             reply.stats = streamingMsg.stats;
                         }
-                        renderConversationList();
                     }
+                    if (!readerCanSee(cid)) markConversationUnread(cid);
                     renderMessages();
                     break streamLoop;
                 }
@@ -3197,10 +3314,22 @@ async function sendMessage() {
         streamingMsg.isStreaming = false;
         renderMessages();
     } finally {
+        clearInterval(workingTimer);
         state.streaming = false;
+        state.streamingConversationId = null;
         state.abortController = null;
+        setStreamingUi(false);
+        renderConversationList();
         renderPredictions();
     }
+}
+
+// The composer's Send button stops the reply while one streams; say so.
+function setStreamingUi(streaming) {
+    sendBtn.textContent = streaming ? "Stop" : "Send";
+    sendBtn.classList.toggle("is-stop", streaming);
+    sendBtn.setAttribute("aria-label", streaming ? "Stop the reply" : "Send message");
+    responseBox.setAttribute("aria-busy", String(streaming));
 }
 
 function renderEmptyChatState() {
@@ -3250,9 +3379,90 @@ function formatReplyStats(stats) {
     return parts.join(" · ");
 }
 
+// A streaming reply redraws only its own bubble (renderLiveMessage), so the rest of the chat keeps
+// its text selection and the reader's scroll position between tokens.
+const liveMessageViews = new WeakMap();
+
+function fillMessageContent(contentSpan, m) {
+    contentSpan.replaceChildren();
+
+    const renderImage = (src) => {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = "uploaded image";
+        img.style.maxWidth = "220px";
+        img.style.maxHeight = "220px";
+        img.style.display = "block";
+        img.style.marginTop = "6px";
+        img.style.borderRadius = "6px";
+        contentSpan.appendChild(img);
+    };
+
+    if (m.type === "image") {
+        renderImage(m.content);
+    } else if (Array.isArray(m.content)) {
+        m.content.forEach((part) => {
+            if (part.type === "text") {
+                contentSpan.appendChild(document.createTextNode(part.text || ""));
+            } else if (part.type === "image_url" && part.image_url && part.image_url.url) {
+                renderImage(part.image_url.url);
+            }
+        });
+    } else if (typeof m.content === "string" && m.content.startsWith("data:image")) {
+        renderImage(m.content);
+    } else {
+        appendMarkdown(contentSpan, m.content);
+    }
+
+    if (m.isStreaming && !m.content && m.statusText) {
+        // DL-UX-01: say what the node is doing until the first token arrives.
+        const status = document.createElement("span");
+        status.className = "message-status";
+        status.setAttribute("role", "status");
+        status.textContent = m.statusText;
+        contentSpan.appendChild(status);
+    }
+
+    if (m.isStreaming) {
+        // The cursor sits at the end of the last line of text, not on a line of its own.
+        let tail = contentSpan.lastElementChild;
+        while (tail && ["UL", "OL", "LI", "BLOCKQUOTE"].includes(tail.tagName) && tail.lastElementChild) tail = tail.lastElementChild;
+        const target = tail && ["P", "LI", "H2", "H3", "H4", "H5", "H6"].includes(tail.tagName) ? tail : contentSpan;
+        const indicator = uiElement("span", "stream-cursor", "▌");
+        indicator.setAttribute("aria-hidden", "true");
+        target.appendChild(indicator);
+    }
+}
+
+function updateWorkingLabel(label, m) {
+    const seconds = Math.max(0, Math.floor((Date.now() - (m.startedAt || Date.now())) / 1000));
+    label.textContent = `${m.content ? "Writing" : "Working"} · ${seconds} s`;
+}
+
+// Animated dots and elapsed time under a reply that is still streaming.
+function workingLine(m) {
+    const line = uiElement("div", "message-working");
+    line.setAttribute("aria-hidden", "true");
+    const dots = uiElement("span", "working-dots");
+    dots.append(uiElement("span"), uiElement("span"), uiElement("span"));
+    const label = uiElement("span", "working-label");
+    updateWorkingLabel(label, m);
+    line.append(dots, label);
+    return line;
+}
+
+function renderLiveMessage(message, redrawContent = true) {
+    const view = liveMessageViews.get(message);
+    if (!view || !view.content.isConnected) return; // its conversation is not on screen
+    if (redrawContent) fillMessageContent(view.content, message);
+    updateWorkingLabel(view.label, message);
+    if (redrawContent) followLatest();
+}
+
 function renderMessages() {
     const convo = state.conversations[state.sessionId];
 
+    const keptScrollTop = responseBox.scrollTop;
     responseBox.replaceChildren();
 
     if (!convo || !Array.isArray(convo.messages) || convo.messages.length === 0) {
@@ -3295,7 +3505,8 @@ function renderMessages() {
             const copyButton = document.createElement("button");
             copyButton.type = "button";
             copyButton.className = "message-action";
-            copyButton.textContent = "Copy";
+            setLucideIcon(copyButton, "copy");
+            copyButton.append(uiElement("span", "message-action-label", "Copy"));
             copyButton.setAttribute("aria-label", `Copy ${m.role} message raw markdown`);
             copyButton.addEventListener("click", () => copyRawMessage(m, copyButton, actionStatus));
             messageActions.appendChild(copyButton);
@@ -3337,49 +3548,12 @@ function renderMessages() {
         const contentSpan = document.createElement("div");
         contentSpan.className = "message-content";
         msgDiv.appendChild(contentSpan);
-
-        const renderImage = (src) => {
-            const img = document.createElement("img");
-            img.src = src;
-            img.alt = "uploaded image";
-            img.style.maxWidth = "220px";
-            img.style.maxHeight = "220px";
-            img.style.display = "block";
-            img.style.marginTop = "6px";
-            img.style.borderRadius = "6px";
-            contentSpan.appendChild(img);
-        };
-
-        if (m.type === "image") {
-            renderImage(m.content);
-        } else if (Array.isArray(m.content)) {
-            m.content.forEach((part) => {
-                if (part.type === "text") {
-                    contentSpan.appendChild(document.createTextNode(part.text || ""));
-                } else if (part.type === "image_url" && part.image_url && part.image_url.url) {
-                    renderImage(part.image_url.url);
-                }
-            });
-        } else if (typeof m.content === "string" && m.content.startsWith("data:image")) {
-            renderImage(m.content);
-        } else {
-            appendMarkdown(contentSpan, m.content);
-        }
-        
-        if (m.isStreaming && !m.content && m.statusText) {
-            // DL-UX-01: say what the node is doing until the first token arrives.
-            const status = document.createElement("span");
-            status.className = "message-status";
-            status.setAttribute("role", "status");
-            status.textContent = m.statusText;
-            contentSpan.appendChild(status);
-        }
+        fillMessageContent(contentSpan, m);
 
         if (m.isStreaming) {
-            const indicator = document.createElement("span");
-            indicator.textContent = "▌";
-            indicator.style.animation = "blink 1s infinite";
-            contentSpan.appendChild(indicator);
+            const working = workingLine(m);
+            msgDiv.appendChild(working);
+            liveMessageViews.set(m, { content: contentSpan, label: working.querySelector(".working-label") });
         }
 
         if (!m.isStreaming && m.stats) {
@@ -3393,9 +3567,8 @@ function renderMessages() {
         responseBox.appendChild(msgDiv);
     });
 
-    if (state.autoScroll) {
-        responseBox.scrollTop = responseBox.scrollHeight;
-    }
+    // Rebuilding the list must not move a reader who has scrolled up.
+    responseBox.scrollTop = state.autoScroll ? responseBox.scrollHeight : keptScrollTop;
     updateScrollBottomButton();
     updateContextStrip();
     if (!state.streaming) renderPredictions();
@@ -3890,16 +4063,72 @@ if (themeToggle) {
 }
 
 if (scrollBottomBtn && responseBox) {
+    // Follow a streaming reply only while the reader stays at the bottom. Any upward scroll (wheel,
+    // trackpad, touch, keys or scrollbar) stops following at once, before the next token can pull
+    // the view back down; scrolling back to the bottom or the jump button resumes it.
+    let lastResponseScrollTop = responseBox.scrollTop;
+    let touchStartY = null;
+    const stopFollowing = () => {
+        state.autoScroll = false;
+        updateScrollBottomButton();
+    };
     scrollBottomBtn.addEventListener("click", () => {
         state.autoScroll = true;
         responseBox.scrollTo({ top: responseBox.scrollHeight, behavior: "smooth" });
     });
+    responseBox.addEventListener("wheel", (event) => {
+        if (event.deltaY < 0) stopFollowing();
+    }, { passive: true });
+    responseBox.addEventListener("touchstart", (event) => {
+        touchStartY = event.touches[0]?.clientY ?? null;
+    }, { passive: true });
+    responseBox.addEventListener("touchmove", (event) => {
+        const y = event.touches[0]?.clientY;
+        if (touchStartY !== null && y > touchStartY) stopFollowing();
+    }, { passive: true });
+    responseBox.addEventListener("keydown", (event) => {
+        if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stopFollowing();
+    });
     responseBox.addEventListener("scroll", () => {
+        const top = responseBox.scrollTop;
+        const distance = distanceFromBottom();
+        if (top < lastResponseScrollTop && distance > FOLLOW_THRESHOLD_PX) state.autoScroll = false;
+        else if (top > lastResponseScrollTop && distance <= FOLLOW_THRESHOLD_PX) state.autoScroll = true;
+        lastResponseScrollTop = top;
         updateScrollBottomButton();
-        const atBottom = (responseBox.scrollHeight - responseBox.scrollTop - responseBox.clientHeight) < 40;
-        state.autoScroll = atBottom;
     });
 }
+
+// Opening the window on a chat whose reply finished unseen counts as reading it.
+function markVisibleConversationRead() {
+    if (!state.sessionId || !unreadConversations.has(state.sessionId) || !readerCanSee(state.sessionId)) return;
+    markConversationRead(state.sessionId);
+    renderConversationList();
+}
+window.addEventListener("focus", markVisibleConversationRead);
+document.addEventListener("visibilitychange", markVisibleConversationRead);
+
+if (convoSortSelect) {
+    convoSortSelect.value = convoSort;
+    convoSortSelect.addEventListener("change", () => {
+        convoSort = CONVO_SORTS[convoSortSelect.value] ? convoSortSelect.value : "recent";
+        storeSetting(CONVO_SORT_KEY, convoSort);
+        renderConversationList();
+    });
+}
+
+function applyConvoDensity(density) {
+    convoDensity = density === "compact" ? "compact" : "detailed";
+    storeSetting(CONVO_DENSITY_KEY, convoDensity);
+    document.querySelectorAll("[data-convo-density]").forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.convoDensity === convoDensity));
+    });
+    renderConversationList();
+}
+document.querySelectorAll("[data-convo-density]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.convoDensity === convoDensity));
+    button.addEventListener("click", () => applyConvoDensity(button.dataset.convoDensity));
+});
 
 if (createFromTemplateBtn) {
     createFromTemplateBtn.addEventListener("click", () => {
