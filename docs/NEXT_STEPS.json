@@ -8,7 +8,7 @@
   "head": "3ac59a4 Notion readiness CLI and lifecycle regression fix",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "Inference-free Notion readiness CLI implemented and runner-tested; existing approval/reject test now keeps its event loop alive. Required CI and merge gate PR #58; live Notion access, write acceptance and H9 qualification remain incomplete.",
+  "statusReason": "Operator-run GET-only Notion read confirmed: 11 blocks, complete. Desktop/backend is currently stopped; app registration and write acceptance remain open. Required hosted checks were cancelled before runner assignment; PR #58 remains unmerged. H9 remains incomplete.",
   "evidence": {
     "checkedOn": "2026-10-04",
     "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
@@ -29,9 +29,23 @@
       "strictTypes": "17 source files passed",
       "capabilityManifest": "current",
       "nodeRegressionTestsPassed": 15,
-      "localSmoke": "Default CLI fails closed with unset configuration and contacts nothing; authenticated running catalog contains no Notion tools.",
-      "deliveryGate": "Required Python 3.12/3.13/3.14 CI remains queued without assigned hosted runners during the 2026-10-05 GitHub Actions incident. PR #58 is open, not merged or deployed; do not bypass required checks.",
-      "liveAcceptance": "Not checked; DAVE_NOTION_TOKEN and DAVE_NOTION_PAGES are unset in the operator shell, and the running router catalog has no Notion tools. The CLI environment is not the running router environment."
+      "localSmoke": "Historical pre-setup check: the default CLI failed closed with unset configuration, and the then-running catalog contained no Notion tools. Superseded for shell access by operatorLiveRead; see runtimeProbe for current app state.",
+      "deliveryGate": "Run 37372762267: required Python 3.12/3.13/3.14 checks cancelled before execution; provider annotation says the job was not acquired by a hosted runner after multiple attempts. PR #58 is open, not merged or deployed. Check the PR for the current revision's gates; do not bypass them.",
+      "liveAcceptance": "User-supplied terminal evidence confirms a real GET-only read through DaveLLM's adapter, not the Codex connector: 11 blocks, no truncation or unread children. Running-app registration and write acceptance are not checked.",
+      "operatorLiveRead": {
+        "checkedOn": "2026-10-05",
+        "source": "User-supplied command output; not independently rerun by Codex",
+        "executionHost": "Operator macOS workstation",
+        "configurationReady": true,
+        "configuredPageCount": 1,
+        "live": "readable",
+        "blocksRead": 11,
+        "childrenNotRead": 0,
+        "truncated": false,
+        "routerRegistration": "not_checked",
+        "writeAcceptance": "not_checked"
+      },
+      "runtimeProbe": "Codex bounded local checks on 2026-10-05: no listener on loopback port 8000 and no DaveLLM/Electron desktop process; authenticated catalog unavailable. No process was started or stopped."
     },
     "sources": [
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
@@ -70,20 +84,20 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Configure the existing Notion connection and verify access without inference",
-    "why": "Use the new readiness CLI to identify configuration gaps; simulated tests and another app's connector cannot prove this router's page access.",
+    "title": "Launch the stopped app from the configured shell and verify Notion registration",
+    "why": "The operator's real adapter read passes; the same shell's environment must reach the desktop backend. Preserve that shell and do not request or re-enter the token.",
     "doneWhen": "A separately authorized read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback are recorded; the preservation sentinel is unchanged.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "The running router has no Notion tools enabled. Its own credential and designated page sharing must be configured; live writes and inference remain separately authorized."
+    "blockedBy": "The app/backend is stopped. Codex does not inherit the operator terminal's secret environment. Start the canonical launcher implementation from that configured shell; live writes and inference remain separately authorized."
   },
   "findings": [
     {
       "id": "DL-01",
       "type": "decision",
       "sev": "P1",
-      "title": "Notion adapter never run against real Notion",
-      "detail": "The simulated acceptance suite passes, but no live DaveLLM-to-Notion acceptance is recorded. Verify router connection access and explicit page sharing before a separately authorized live sequence. Existing test-page preparation does not prove adapter access.",
+      "title": "Live Notion read confirmed; app registration and write acceptance remain open",
+      "detail": "On 2026-10-05 the operator ran the existing GET-only readiness CLI against the designated page: readable, 11 blocks, not truncated, zero unread children. This proves adapter transport/page access in the configured shell, not running-app registration or read/write/reject/readback acceptance.",
       "files": [
         "davellm_notion.py:59",
         "docs/DAVELLM_TOOLS.md:374",
@@ -93,6 +107,12 @@
       "phase": 0,
       "history": [
         {
+          "checkedOn": "2026-10-04",
+          "title": "Notion adapter never run against real Notion",
+          "detail": "Previous no-live-access finding superseded for read transport by the 2026-10-05 operator-run check; full live acceptance remains open.",
+          "evidence": "historical projection"
+        },
+        {
           "checkedOn": "2026-10-02",
           "title": "Notion adapter never run against real Notion",
           "detail": "Notion tests use tests/fake_notion.py only; no live run is recorded. Pinned Notion-Version 2026-03-11 and response shapes are unverified. Child pages/DBs wait on this.",
@@ -100,7 +120,7 @@
         }
       ],
       "status": "open",
-      "evidenceNote": "docs/DAVELLM_TOOLS.md; simulated tests; reviewed 2026-10-04"
+      "evidenceNote": "User-provided live-read command output, 2026-10-05; source CLI and current stopped runtime inspected. No independent live rerun or write proof claimed."
     },
     {
       "id": "DL-02",
@@ -417,7 +437,7 @@
       "name": "Phase 0 - Prove the Notion adapter live",
       "goal": "Run the merged adapter once against a real disposable page and record the result",
       "items": [
-        "DL-01: configure the existing connection, run scripts/check_notion_adapter.py locally, then an explicitly authorized --live read of the designated page; do not duplicate it",
+        "DL-01 read transport passed in the operator shell; launch the canonical app from that same configured environment and verify its authenticated Notion catalog",
         "Under separate authorization, run read, approved append, formatting-preserving edit, rejected edit, unconfigured-page refusal and final readback",
         "Record sanitized outcomes and preservation evidence without credentials or private page IDs"
       ],
@@ -593,10 +613,10 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read the current DaveLLM tool documentation, readiness brief and H9 results. Configure the existing environment-only Notion connection securely and run scripts/check_notion_adapter.py without --live first. Check the running router's authenticated catalog separately. A real --live page read requires explicit current authorization; live writes, inference and H9 are not authorized by this projection. Reuse the designated test page, preserve its sentinel, and record the exact remaining acceptance gate without secrets or private page IDs.",
-  "confidence": "high for source and cited automated evidence; live and physical acceptance unverified",
+  "kickoffPrompt": "Read current DaveLLM instructions and preserve the canonical checkout's owner claim. Operator-run GET-only Notion access already passed with 11 blocks and no truncation; do not repeat setup or ask for the token. The app/backend is stopped. Have the operator run the existing macOS launcher implementation from the same configured shell, then verify desktop/backend health and the authenticated Notion catalog. Keep write approval, inference and H9 as separate gates. Reuse the designated test page and preserve its sentinel. Check PR #58 required CI without bypassing protections; record actual evidence in the board and comms log.",
+  "confidence": "high for source and automated evidence; operator-reported real read confirmed, running-app integration and write acceptance unverified",
   "unknowns": [
-    "DaveLLM access to the real Notion API and designated page; no live acceptance recorded.",
+    "Notion app registration and live write/reject/readback acceptance; operator-run read transport is confirmed but app/backend is currently stopped.",
     "H9 structured-write compatibility and the remaining fixed corpus; current inference health is not established by the past run.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
