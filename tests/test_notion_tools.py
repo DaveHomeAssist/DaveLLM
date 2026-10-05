@@ -6,8 +6,10 @@ Every test runs against tests/fake_notion.py through respx; no request reaches N
 import asyncio
 import json
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
+import anyio.from_thread
 import httpx
 import pytest
 import respx
@@ -491,6 +493,17 @@ def _settled(client, run_id):
     raise AssertionError("Run did not settle")
 
 
+@contextmanager
+def _persistent_loop(client):
+    """Keep run tasks alive across requests without starting the background summarizer."""
+    with anyio.from_thread.start_blocking_portal(backend="asyncio") as portal:
+        client.portal = portal
+        try:
+            yield
+        finally:
+            client.portal = None
+
+
 @pytest.mark.parametrize("decision", ["approve", "reject"])
 def test_lifecycle_run_reads_then_edits_only_after_approval(notion_router, decision):
     fake = FakeNotion()
@@ -498,7 +511,7 @@ def test_lifecycle_run_reads_then_edits_only_after_approval(notion_router, decis
     keep = fake.add_block(page, "paragraph", [rt("Do not touch", bold=True)])
     todo = fake.add_block(page, "to_do", [rt("Prove the adapter")], checked=False)
     router, client = notion_router(pages={"adapter-test": page})
-    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock:
+    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock, _persistent_loop(client):
         fake.mount(mock)
         mock.get(f"{TEST_NODE_URL}/api/tags").mock(return_value=httpx.Response(
             200, json={"models": [{"name": MODEL, "model": MODEL}]}))
