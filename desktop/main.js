@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, session } = require("electron");
+const { app, BrowserWindow, dialog, session, shell } = require("electron");
 const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
@@ -104,6 +104,22 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+  // Reply links open in the default browser. The app window never opens a second window or
+  // navigates away from the local backend, which is the only origin that receives the API key.
+  const openOutside = (url) => {
+    if (/^(https?:|mailto:)/i.test(url)) shell.openExternal(url);
+  };
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openOutside(url);
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    let origin = "";
+    try { origin = new URL(url).origin; } catch (_) { /* unparsable: treat as outside */ }
+    if (origin === API_BASE) return;
+    event.preventDefault();
+    openOutside(url);
   });
   win.loadURL(API_BASE);
 }

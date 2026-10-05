@@ -300,9 +300,11 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert 'aria-controls="notepadPanel"' in index_source
     assert "navigator.clipboard?.writeText" in app_source
     assert "rawMessageText(message)" in app_source
-    assert 'button.textContent = "Copied"' in app_source
+    assert 'label.textContent = "Copied"' in app_source
     assert "}, 2000);" in app_source
-    assert 'copyButton.textContent = "Copy"' in app_source
+    assert 'copyButton.append(uiElement("span", "message-action-label", "Copy"));' in app_source
+    assert 'setLucideIcon(copyButton, "copy");' in app_source
+    assert '<symbol id="copy"' in (repo / "static" / "vendor" / "lucide" / "lucide.svg").read_text()
     assert 'noteButton.textContent = "Add to notepad"' in app_source
     assert "/instructions/session" in app_source
     assert "/notepad`" in app_source
@@ -362,3 +364,51 @@ def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_h
     assert "height: var(--visual-height)" in portrait_mobile_source
     assert "overflow: auto;" in landscape_mobile_source
     assert "overflow: visible;" in landscape_mobile_source
+
+
+def test_chat_ui_rename_streaming_scroll_and_sidebar_contracts():
+    """Rename saves every time, one reply streams at a time and redraws only its bubble,
+    upward scrolling stops following, and the sidebar never reflows on hover."""
+    repo = Path(__file__).resolve().parents[1]
+    app_source = (repo / "static" / "app.js").read_text()
+    style_source = (repo / "static" / "style.css").read_text()
+    index_source = (repo / "static" / "index.html").read_text()
+    main_source = (repo / "desktop" / "main.js").read_text()
+
+    rename = app_source.split("async function renameConversation(cid, element) {", 1)[1].split("// NODE HANDLING", 1)[0]
+    # Every listed conversation exists on the router, so a rename is always saved there.
+    assert "convo.messages.length > 0" not in rename
+    assert "const syncSuccess = await syncRenameToBackend(cid, newTitle);" in rename
+    assert "convo.title = oldTitle;" in rename
+    assert rename.count("if (settled) return;") == 2
+
+    send = app_source.split("async function sendMessage() {", 1)[1].split("function renderEmptyChatState()", 1)[0]
+    assert "if (state.streaming) { notifyConsole(" in send
+    assert "conversation_id: cid," in send
+    assert "await loadConversationHistory(cid);" in send
+    assert "renderLiveMessage(streamingMsg);" in send
+    tokens = send.split("if (data.token && !data.done) {", 1)[1].split("}", 1)[0]
+    assert "renderMessages()" not in tokens
+    assert "if (!readerCanSee(cid)) markConversationUnread(cid);" in send
+    assert "setStreamingUi(false);" in send.split("} finally {", 1)[1]
+    assert 'sendBtn.textContent = streaming ? "Stop" : "Send";' in app_source
+
+    scroll_button = app_source.split("function updateScrollBottomButton() {", 1)[1].split("}", 1)[0]
+    assert "state.autoScroll" not in scroll_button
+    assert 'responseBox.addEventListener("wheel", (event) => {' in app_source
+    assert "responseBox.scrollTop = state.autoScroll ? responseBox.scrollHeight : keptScrollTop;" in app_source
+    assert "@keyframes stream-cursor-blink" in style_source
+    assert 'indicator.style.animation = "blink 1s infinite"' not in app_source
+
+    # Hover shows the row actions without changing the row's height.
+    actions = style_source.split(".convo-actions {", 1)[1].split("}", 1)[0]
+    assert "position: absolute;" in actions and "display: none" not in actions
+    assert 'id="convoSort"' in index_source and 'data-convo-density="compact"' in index_source
+    assert 'const UNREAD_CONVOS_KEY = "dave_unread_conversations";' in app_source
+    assert "if (sequence !== switchSequence) return;" in app_source
+
+    # Reply links leave the app window; it never opens other origins itself.
+    assert "win.webContents.setWindowOpenHandler(" in main_source
+    assert 'return { action: "deny" };' in main_source
+    assert "shell.openExternal(url)" in main_source
+    assert 'win.webContents.on("will-navigate"' in main_source

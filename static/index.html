@@ -94,6 +94,19 @@
                 </select>
                 <button id="createFromTemplate" class="icon-btn" title="Start from template" aria-label="Start from selected template"><svg aria-hidden="true"><use href="vendor/lucide/lucide.svg#plus"></use></svg></button>
             </div>
+            <div class="convo-toolbar">
+                <select id="convoSort" aria-label="Sort conversations">
+                    <option value="recent">Recent</option>
+                    <option value="oldest">Oldest</option>
+                    <option value="created">Created</option>
+                    <option value="title">Title A–Z</option>
+                    <option value="unread">Unread first</option>
+                </select>
+                <div class="segmented" role="group" aria-label="Conversation list view">
+                    <button type="button" class="text-btn" data-convo-density="detailed" aria-pressed="true" title="Title, preview and age">Detailed</button>
+                    <button type="button" class="text-btn" data-convo-density="compact" aria-pressed="false" title="Titles only">Compact</button>
+                </div>
+            </div>
             <div id="convoList"></div>
             <div hidden class="panel-subheader">Router Stats</div>
             <div id="statsContainer" class="stats-box" hidden>
