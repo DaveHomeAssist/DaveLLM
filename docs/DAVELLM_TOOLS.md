@@ -379,11 +379,30 @@ All three are asynchronous handlers with bounded cancellation, and they work onl
 
 ```bash
 export DAVE_ENABLE_NOTION_TOOLS=true
+export DAVE_ENABLE_TOOLS=true
 export DAVE_NOTION_TOKEN='<internal connection secret>'
 export DAVE_NOTION_PAGES='{"adapter-test": "<page id or page URL>"}'
 ```
 
 There are two scopes, and both must allow a page: what Notion lets the connection reach, and the pages named in `DAVE_NOTION_PAGES`. The model names a page only by its configured name. It never supplies a Notion page or block ID.
+
+Before starting or changing a running router, check those settings without a
+model call or page write (use the project's Python environment):
+
+```bash
+python scripts/check_notion_adapter.py
+python scripts/check_notion_adapter.py --live --page adapter-test
+```
+
+The first command contacts nothing. Only `--live` contacts Notion, using the
+existing bounded, GET-only page read. Output contains configuration problems,
+block counts and partial-read indicators, never tokens, page IDs, titles or
+content. Exit 0 means configuration is valid, or an explicitly requested read
+succeeded (possibly partially); exit 1 means configuration or the read failed.
+`live: not_checked` is not evidence of page access. These commands inspect
+**this process's environment**, not the running router's settings or tool
+catalog; a successful read does not prove write acceptance or lifecycle
+integration. See the [readiness brief](NOTION_ADAPTER_READINESS.md).
 
 ### `notion.page.read`
 
