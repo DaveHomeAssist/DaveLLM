@@ -153,27 +153,20 @@
       "docs/NOTION_ADAPTER_LIVE_ACCEPTANCE.md",
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
       "docs/DAVEHARNESS_H9_RESULTS.md",
-      "docs/DAVEHARNESS_H9_READINESS_REVIEW.md",
-      "docs/DAVEHARNESS_PREFLIGHT.md",
       "docs/DAVELLM_TOOLS.md"
     ],
     "baselineCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37178075989",
     "baselineRevision": "7f4fb396c746b0f95ff14b5891f7f2febc13e4d4",
     "validation": {
-      "python": "3.14.3",
-      "notionTestsPassed": 206,
-      "notionBranchCoveragePercent": 97,
-      "nodeTestsPassed": 9,
-      "offlineQualificationPassed": true,
-      "offlineEvaluations": 24,
-      "offlineLiveModels": false,
-      "loadPassed": true,
+      "python": "3.13.16 (session runner; CI covers 3.12, 3.13 and 3.14)",
+      "pytest": "1031 passed, 1 skipped",
+      "nodeTestsPassed": 15,
+      "browserCheck": "headless Chromium against a local fake Ollama node: size line neutral and amber, Stop during a stream, Enter blocked mid-stream, tool run card closes by button and Esc, no page scroll at 1440x900, no horizontal scroll at 375x812",
       "strictTypes": "17 source files passed",
       "compilation": "passed",
       "syntax": "JavaScript and shell passed",
       "npmAudit": "zero vulnerabilities",
-      "capabilityManifest": "current",
-      "deliveryGate": "Full local suite and all required Python 3.12/3.13/3.14 CI checks must pass before merge. Source delivery is established by GitHub main containing this implementation revision."
+      "deliveryGate": "Required Python 3.12/3.13/3.14 CI checks must pass on main. Source delivery is established by GitHub main containing this revision."
     }
   },
   "shipped": [
@@ -566,6 +559,32 @@
         }
       ],
       "evidenceNote": "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md; scratch spike against a fake router, nothing committed"
+    },
+    {
+      "id": "DL-15",
+      "type": "bug",
+      "sev": "P2",
+      "title": "Resolved: Send never showed Stop; oversized prompts surfaced only after sending; tool run card could not close",
+      "detail": "Send aborted a streaming reply while still labeled Send, and Enter could start a second reply mid-stream. A project conversation could send a prompt several times the node limit with no warning until the reply bubble. A finished or cancelled tool run card had no way to close. Now: Send reads Stop while streaming and Enter keeps the draft; POST /chat/size-check (DL-ROUTE-05) drives an advisory composer line using the stream's own assembly; the card closes by button or Esc once nothing is live.",
+      "files": [
+        "static/app.js",
+        "static/console.js",
+        "app.py",
+        "davellm_node_profiles.py",
+        "docs/briefs/DL-ROUTE-05-pre-send-size-check.md"
+      ],
+      "evidence": "test",
+      "phase": 1,
+      "history": [
+        {
+          "checkedOn": "2026-10-05",
+          "title": "Send never showed Stop; oversized prompts surfaced only after sending; tool run card could not close",
+          "detail": "Observed in the desktop app: a 13,520 token prompt on Duncan gpt-oss:120b (limit 2,500) with the Dave LLM project attached, a cancelled tool run card with no close control.",
+          "evidence": "observed"
+        }
+      ],
+      "status": "implemented",
+      "evidenceNote": "Automated and headless browser tests on this revision; desktop app acceptance by Dave pending."
     }
   ],
   "phases": [
@@ -690,6 +709,12 @@
       "status": "accepted",
       "date": "2026-10-05",
       "decision": "Finish the existing Notion adapter first, before adding connectors for other services or model providers. That initial selection alone approved no live writes or inference; the later explicit bounded grant is recorded separately. H9 remains excluded."
+    },
+    {
+      "id": "DL-15",
+      "status": "accepted",
+      "date": "2026-10-05",
+      "decision": "Build the Stop button state and the advisory pre-send size check, plus a closable tool run card. Not chosen: trimming project context to the node limit, and refreshing the sidebar preview on send."
     },
     {
       "id": "D-002",
