@@ -474,6 +474,12 @@
   ],
   "decisionHistory": [
     {
+      "id": "Adapter scope 2026-10-05",
+      "status": "accepted",
+      "date": "2026-10-05",
+      "decision": "Finish the existing Notion adapter first, before adding connectors for other services or model providers. This does not approve unreviewed page writes, inference or H9 qualification."
+    },
+    {
       "id": "D-002",
       "status": "accepted",
       "date": "2026-10-03",
@@ -540,7 +546,7 @@
     }
   ],
   "context": [
-    "2026-10-05 readiness slice uses the existing NotionSettings, read_page transport and a temporary ledger, without importing the router or initializing persistence. The Python skill guided existing validation/error handling conventions; no dependency or tool-definition changes.",
+    "2026-10-05 readiness slice uses the existing NotionSettings, read_page transport and a temporary ledger, without importing the router or initializing persistence. It follows existing validation/error handling conventions; no dependency or tool-definition changes.",
     "An existing Notion approval/reject regression was flaky because its TestClient closed the run event loop between requests. Reusing the adversarial tests' persistent-portal pattern fixes the test only; production behavior is unchanged.",
     "This is a public-safe projection of the owning records, not a second roadmap or blanket execution permission.",
     "Historical DL-01 through DL-14 finding IDs and evidence are preserved. Untouched UI and infrastructure findings remain historical, not newly verified.",
