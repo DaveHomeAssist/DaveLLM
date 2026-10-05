@@ -520,7 +520,8 @@
     "DL-UI-01 [Open, 2026-10-05]: unread scope. Options: A per-device marks in browser storage (built, recommended for now); B a router read_at per conversation so marks follow Dave across the app and browsers.",
     "DL-UI-02 [Open, 2026-10-05]: desktop notifications when a reply finishes. Options: A only while the window is hidden or unfocused, with a Settings toggle on by default (recommended); B always; C none.",
     "DL-UI-03 [Open, 2026-10-05]: sending during a reply. Options: A refuse and keep the draft (built, recommended); B stop the current reply and send; C queue until the reply ends.",
-    "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today."
+    "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today.",
+    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector."
   ],
   "decisionHistory": [
     {
@@ -593,6 +594,10 @@
     {
       "path": "docs/NEXT_STEPS.json",
       "why": "Public-safe projection of existing records, including historical finding IDs and unresolved decisions"
+    },
+    {
+      "path": "docs/DAVELLM_TOOL_ROADMAP.md",
+      "why": "Candidate tool roadmap: 100 ideas, 21 refined families, phases and open decision DL-TOOLS-01"
     }
   ],
   "context": [
