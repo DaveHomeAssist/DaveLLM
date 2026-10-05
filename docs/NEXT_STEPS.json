@@ -24,9 +24,14 @@
       "existingNotionTestsPassed": 203,
       "existingNotionTestsSkipped": 3,
       "notionBranchCoveragePercent": 97,
+      "fullPythonRun": "1050 passed, 1 skipped; 4 tests failed because Node was absent at execution time, not because of source assertions.",
+      "runnerRepairRerun": "With Node available, all 9 anticipation/documentation tests passed, including the 4 failed cases. A single clean full-suite run is not claimed.",
+      "strictTypes": "17 source files passed",
+      "capabilityManifest": "current",
+      "nodeRegressionTestsPassed": 15,
       "localSmoke": "Default CLI fails closed with unset configuration and contacts nothing; authenticated running catalog contains no Notion tools.",
-      "deliveryGate": "Required Python 3.12/3.13/3.14 CI must pass before merge; inspect PR #58 for actual delivery state.",
-      "liveAcceptance": "Not checked; the CLI environment is not the running router environment."
+      "deliveryGate": "Required Python 3.12/3.13/3.14 CI remains queued without assigned hosted runners during the 2026-10-05 GitHub Actions incident. PR #58 is open, not merged or deployed; do not bypass required checks.",
+      "liveAcceptance": "Not checked; DAVE_NOTION_TOKEN and DAVE_NOTION_PAGES are unset in the operator shell, and the running router catalog has no Notion tools. The CLI environment is not the running router environment."
     },
     "sources": [
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",

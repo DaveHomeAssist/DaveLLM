@@ -373,7 +373,7 @@ All three are asynchronous handlers with bounded cancellation, and they work onl
 
 ### Setup
 
-1. In Notion's Developer portal (`https://app.notion.com/developers/connections`), create an internal connection for DaveLLM; you must be a workspace owner. Copy its API token from the connection's Configuration tab. (Steps as described by Notion's [authorization guide](https://developers.notion.com/guides/get-started/authorization), checked 2026-10-01.)
+1. In Notion's [Developer portal](https://app.notion.com/developers/connections), open the existing DaveLLM internal connection; create one only if none exists (creation requires a workspace owner). Copy its API token from the Configuration tab without rotating it. Follow Notion's [authorization guide](https://developers.notion.com/guides/get-started/authorization), checked 2026-10-05.
 2. Share each page DaveLLM may use with that connection, and nothing else: on the page, open the ••• menu at the top right, choose Add connections, and pick the connection. Notion then refuses every other page.
 3. Name those pages in `DAVE_NOTION_PAGES` and start the router with the token in `DAVE_NOTION_TOKEN`, from a terminal (the Launcher app opened from Finder does not see shell exports):
 
