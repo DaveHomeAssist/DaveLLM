@@ -230,6 +230,10 @@ app.whenReady().then(async () => {
 }).finally(async () => {
     clearTimeout(deadline);
     if (window && !window.isDestroyed()) window.destroy();
-    if (server) await new Promise((resolve) => server.close(resolve));
+    if (server) {
+        const closed = new Promise((resolve) => server.close(resolve));
+        server.closeAllConnections();
+        await closed;
+    }
     app.exit(failed ? 1 : 0);
 });
