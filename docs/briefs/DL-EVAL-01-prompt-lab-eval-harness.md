@@ -67,6 +67,9 @@ Loaded model inventory on the router; `DAVE_API_KEY` in the caller's environment
 
 - Local models often ignore "return only JSON". Without `format: "json"` the invalid-JSON column will dominate; with it, Ollama constrains output but some models produce empty or truncated objects. The script reports both so the choice is measurable.
 - A 4,096-token JSON reply at 7 tok/s is about ten minutes per case on duncan. The first live run must stay small (see D-EVAL-04).
+- Reasoning models spend `max_tokens` on reasoning first. `/eval/chat` sends no `think` and returns no reasoning text, so a gpt-oss reply can stop at `done_reason: "length"` with cut-off JSON, which would look like a JSON-compliance failure when the budget ran out. Ollama applies the `format` constraint only after the reasoning ends, and that behavior varies by version (ollama/ollama#14645); walter's recorded version (0.33.3 on 2026-10-04) has not been checked with `format`.
+- Plain `format: "json"` guarantees JSON, not an `enhanced` field. A valid object without one reaches the raw-text fallback (F1), where expected phrases can match keys or values inside the object.
+- `/eval/chat` sends no `keep_alive`, so Ollama's default applies to eval calls; a model Dave is chatting with drops from the 30-minute plain-chat residency to that default.
 - `/eval/chat` lets any key holder send an arbitrary system prompt to a node. That is the same trust `/chat` already grants through the session override; the route adds no new capability beyond skipping persistence.
 - Prompt Lab local Node is 25.x; `npm run` scripts refuse anything but 22.x. Run the script with a Node 22 binary or let `require-node.mjs` report the mismatch.
 
@@ -84,9 +87,14 @@ The blocked column is the PII gate catching the case with an email address and p
 
 ## Milestones
 
-1. `/eval/chat` in DaveLLM with contract tests (mocked node: happy path, format passthrough, tool-call-only, each error code, no file in `DAVE_DATA_DIR` changes, `NODE_ACTIVITY` counted), `INTEGRATION.md` entry. Effort S.
-2. `scripts/eval-davellm.mjs` in Prompt Lab with a `node --test` suite against a fixture router, plus an `eval:davellm` npm script. Effort S.
-3. First live run per D-EVAL-04, results recorded in both projects' next-steps records. Effort S, Dave-gated.
+1. `/eval/chat` in DaveLLM with contract tests (mocked node: happy path, format passthrough, tool-call-only, each error code, no file in `DAVE_DATA_DIR` changes, `NODE_ACTIVITY` counted), `INTEGRATION.md` entry. Effort S. Done: merged in PR #69 (`4dc477c`), CI green on Python 3.12, 3.13 and 3.14.
+2. `scripts/eval-davellm.mjs` in Prompt Lab with a `node --test` suite against a fixture router, plus an `eval:davellm` npm script. Effort S. Requirements from the 2026-10-06 readiness review of D-EVAL-04 A and D-EVAL-05 A, each covered by the suite:
+   - Send `format: "json"` on every call unless a flag turns it off. The router's own default is unconstrained, so a runner that omits the field silently turns D-EVAL-05 A into B.
+   - Split invalid JSON by the router's `done_reason`: `length` (the reply ran out of `max_tokens`) and `stop` (the reply finished but does not parse).
+   - Score exactly as the app does, and also flag replies that are valid JSON without a non-empty `enhanced` string in their own column, so a verdict reached through the raw-text fallback is visible.
+   - Record `done_reason` and `stats.gen_tokens` per case in `report.json`.
+   - Head `report.md` with a note that replies were JSON-constrained, which the app's own Ollama adapter does not send (F4), so pass rates are not what the app's Ollama provider would get.
+3. First live run per D-EVAL-04, results recorded in both projects' next-steps records. Effort S, Dave-gated: accepting D-EVAL-04 A fixed the run's shape and does not by itself authorize live inference. The models on record for walter are `llama3:latest` (8B) and `gpt-oss:20b`; re-read the inventory before dispatch. Worst case is about 40 minutes: llama3 at about 81 tok/s takes at most about 51 s per 4,096-token reply; gpt-oss:20b has no recorded walter speed, and qwen3-coder:30b's 21.56 tok/s on the same GPU (H9 readiness review) gives at most about 190 s. If a model's first case ends with `done_reason: "length"` or empty content, stop that model and report rather than finishing its pass.
 4. Doc truth: correct F13 in Prompt Lab and the Notion architecture page. Effort XS.
 
 ## Decisions
@@ -99,8 +107,8 @@ Accepted 2026-10-06 (Dave, "Go with your picks"):
 
 Accepted 2026-10-06 (Dave, "complete all of these NOW", recommended options):
 
-- D-EVAL-04: A. First live run on walter only, two models from its inventory (one 8B-class, one 20B-class), 10 cases, one pass, `max_tokens` 4,096.
-- D-EVAL-05: A. Send `format: "json"` by default and report invalid-JSON counts.
+- D-EVAL-04: A. First live run on walter only, two models from its inventory (one 8B-class, one 20B-class), 10 cases, one pass, `max_tokens` 4,096. This sets the run's shape; the run itself stays Dave-gated (milestone 3).
+- D-EVAL-05: A. Send `format: "json"` by default and report invalid-JSON counts. The runner sends it; `/eval/chat` leaves `format` out unless asked.
 
 Options as originally presented (kept for the record):
 
