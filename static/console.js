@@ -31,8 +31,19 @@ function chooseDialog(dialog) {
     });
 }
 
+function focusConsoleView() {
+    document.getElementById(`${consoleView}View`).focus({ preventScroll: true });
+}
+
+function skipToConsoleContent(event) {
+    event.preventDefault();
+    focusConsoleView();
+}
+
 function setConsoleView(view) {
-    consoleView = ["chat", "projects", "cluster", "settings"].includes(view) ? view : "chat";
+    const nextView = ["chat", "projects", "cluster", "settings"].includes(view) ? view : "chat";
+    const changed = nextView !== consoleView;
+    consoleView = nextView;
     document.body.dataset.view = consoleView;
     for (const name of ["chat", "projects", "cluster", "settings"]) {
         document.getElementById(`${name}View`).hidden = name !== consoleView;
@@ -42,9 +53,11 @@ function setConsoleView(view) {
         if (button.dataset.view === consoleView) button.setAttribute("aria-current", "page");
         else button.removeAttribute("aria-current");
     });
+    document.querySelector(".skip-link").setAttribute("href", `#${consoleView}View`);
     if (consoleView === "projects") renderProjectCards();
     if (consoleView === "cluster") refreshCluster();
     updateConsoleContext();
+    if (changed) focusConsoleView();
 }
 
 function showHistory(show = !historyVisible, activate = true) {
@@ -534,6 +547,7 @@ function appendMarkdown(container, source) {
 function initConsoleShell() {
     const narrow = window.matchMedia("(max-width: 1024px)");
     historyVisible = !narrow.matches;
+    document.querySelector(".skip-link").addEventListener("click", skipToConsoleContent);
     document.querySelectorAll(".app-nav [data-view]").forEach((button) => button.addEventListener("click", () => setConsoleView(button.dataset.view)));
     document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => document.getElementById(button.dataset.closeDialog).close()));
     document.getElementById("historyToggle").addEventListener("click", () => showHistory());

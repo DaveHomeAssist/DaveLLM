@@ -256,7 +256,13 @@ def test_displayed_prompt_contract_and_renderer_security():
         )
     )
     assert 'class="topbar-status-dot status-unknown"' in index_source
-    assert 'class="skip-link" href="#chatPanel"' in index_source
+    assert 'class="skip-link" href="#chatView">Skip to main content' in index_source
+    assert index_source.count("<main ") == 4
+    for view, heading in (("chat", "chatHeading"), ("projects", "projectsHeading"),
+                          ("cluster", "runtimeHeading"), ("settings", "settingsHeading")):
+        assert f'<main id="{view}View"' in index_source
+        assert f'aria-labelledby="{heading}" tabindex="-1"' in index_source
+    assert '<section id="chatPanel"' in index_source
     assert 'id="chatPanel"' in index_source and 'tabindex="-1"' in index_source
     assert 'const nodeStatus = ["online", "offline"].includes(rawNodeStatus)' in app_source
     assert "@media (prefers-reduced-motion: reduce)" in style_source
