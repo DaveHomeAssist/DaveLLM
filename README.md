@@ -12,6 +12,7 @@ DaveLLM is an Electron desktop client backed by a FastAPI router. The router dis
 | [CLAUDE.md](CLAUDE.md) | Maintainer architecture, trust boundaries, and repository constraints. |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Placeholder-only launch, health, inventory, persistence, and troubleshooting runbook. |
 | [docs/DAVELLM_TOOLS.md](docs/DAVELLM_TOOLS.md) | Tool settings, the qualified tools, and the extended tools' arguments, limits, path rules, and approved edits. |
+| [docs/TOOLS100.md](docs/TOOLS100.md) | Opt-in 100-tool expansion, named configuration, runner contract, approvals and acceptance boundaries. |
 | [docs/DAVELLM_GIT_SECURITY_REVIEW.md](docs/DAVELLM_GIT_SECURITY_REVIEW.md) | Independent security review of the read-only Git tools, its findings, and their fixes. |
 | [docs/DAVEHARNESS_CAPABILITIES.md](docs/DAVEHARNESS_CAPABILITIES.md) | Generated capabilities manifest: every tool, flag, run budget, host limit, `/tools` route, and tool-module constant, with a JSON twin for tooling. |
 | [DaveHarness boundary and versioning decision](docs/decisions/0001-daveharness-boundary-and-versioning.md) | Implemented product ownership, package seam, SemVer authority, and revisit triggers. |

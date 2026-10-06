@@ -8,10 +8,10 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 
 ## Summary
 
-- 26 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 17 from `DAVE_ENABLE_EXTENDED_TOOLS`, 3 from `DAVE_ENABLE_NOTION_TOOLS`.
-- Exact-call approval required: `file.append`, `file.edit`, `file.write`, `notion.block.update`, `notion.page.append`, `shell.exec`.
-- Preflight before approval: `file.edit`, `notion.block.update`, `notion.page.append`. A call the preflight finds certain to fail is refused as a tool error instead of asking for approval; the handler still checks everything after approval.
-- Tools by permission: `execute_process` 1; `public_network` 3; `read` 5; `read_files` 10; `read_system` 2; `write` 2; `write_files` 3.
+- 128 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 17 from `DAVE_ENABLE_EXTENDED_TOOLS`, 3 from `DAVE_ENABLE_NOTION_TOOLS`, 102 from `DAVE_ENABLE_TOOLPACK`.
+- Exact-call approval required: `artnet.discover`, `audio.transcribe`, `chat.summarize`, `cluster.benchmark`, `code.grep_regex`, `comms.log.append`, `data.query`, `dep.audit`, `diagram.render`, `docker.logs`, `docker.ps`, `docs.ask`, `eval.run`, `file.append`, `file.edit`, `file.write`, `gh.issue.create`, `git.commit`, `git.push`, `gmail.draft`, `ha.config.check`, `ha.service.call`, `image.describe`, `lint.run`, `mac.disk.report`, `mac.pressure`, `memory.propose`, `model.ask`, `model.consensus`, `model.delete`, `model.pull`, `model.unload`, `model.warm`, `nextsteps.update`, `node.disk`, `node.wake`, `notify.push`, `notion.block.update`, `notion.comment.add`, `notion.db.create_row`, `notion.db.update_props`, `notion.log_session`, `notion.page.append`, `notion.page.create`, `ocr.image`, `osc.send`, `pdf.read`, `project.brain.pin`, `project.notepad.write`, `shell.exec`, `tailscale.status`, `test.run`, `vector.index`, `video.probe`.
+- Preflight before approval: `artnet.discover`, `audio.transcribe`, `chat.summarize`, `cluster.benchmark`, `code.grep_regex`, `comms.log.append`, `data.query`, `dep.audit`, `diagram.render`, `docker.logs`, `docker.ps`, `docs.ask`, `eval.run`, `file.edit`, `gh.issue.create`, `git.commit`, `git.push`, `gmail.draft`, `ha.config.check`, `ha.service.call`, `image.describe`, `lint.run`, `mac.disk.report`, `mac.pressure`, `memory.propose`, `model.ask`, `model.consensus`, `model.delete`, `model.pull`, `model.unload`, `model.warm`, `nextsteps.update`, `node.disk`, `node.wake`, `notify.push`, `notion.block.update`, `notion.comment.add`, `notion.db.create_row`, `notion.db.update_props`, `notion.log_session`, `notion.page.append`, `notion.page.create`, `ocr.image`, `osc.send`, `pdf.read`, `project.brain.pin`, `project.notepad.write`, `tailscale.status`, `test.run`, `vector.index`, `video.probe`. A call the preflight finds certain to fail is refused as a tool error instead of asking for approval; the handler still checks everything after approval.
+- Tools by permission: `execute_process` 30; `public_network` 29; `read` 23; `read_files` 20; `read_system` 2; `write` 21; `write_files` 3.
 - Every tool schema rejects unknown arguments (`additionalProperties: false`).
 - Definition fingerprints are not listed: they depend on the checkout path and Python version. `tests/fixtures/davellm/tool_catalog.json` pins their portable inputs.
 
@@ -24,13 +24,43 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | `DAVE_ENABLE_EXTENDED_TOOLS` | `false` | `chat.search`, `cluster.status`, `file.edit`, `file.list`, `file.read_lines`, `file.search`, `git.diff`, `git.log`, `git.show`, `git.status`, `md.outline`, `md.section`, `project.artifacts`, `project.brain.read`, `project.notepad.read`, `web.read`, `web.search` | Registers the extended tools: bounded reads, web.search and web.read, plus file.edit, which needs approval for every call. Honored only with DAVE_ENABLE_TOOLS. |
 | `DAVE_ENABLE_NOTION_TOOLS` | `false` | `notion.block.update`, `notion.page.append`, `notion.page.read` | Registers notion.page.read, plus notion.page.append and notion.block.update, which need approval for every call and verify each write. Needs DAVE_NOTION_TOKEN and DAVE_NOTION_PAGES at call time. Honored only with DAVE_ENABLE_TOOLS. |
 | `DAVE_TOOL_ROOTS` | `[]` | — | JSON array of absolute folders that file and Git tools may use. |
+| `DAVE_ENABLE_TOOLPACK` | `false` | `agent.claim.check`, `artnet.discover`, `audio.transcribe`, `av.inventory.lookup`, `calc.eval`, `calendar.list`, `calendar.suggest_time`, `chat.export`, `chat.read`, `chat.summarize`, `claude.memory.read`, `cluster.benchmark`, `code.grep_regex`, `code.symbols`, `comms.log.append`, `comms.log.read`, `contacts.lookup`, `data.query`, `dep.audit`, `diagram.render`, `dmx.patch_check`, `docker.logs`, `docker.ps`, `docs.ask`, `drive.read`, `drive.search`, `eval.run`, `gh.ci.logs`, `gh.issue.create`, `gh.pr.comments`, `gh.pr.status`, `git.commit`, `git.push`, `git.worktrees`, `git.write_preview`, `glossary.lookup`, `gmail.draft`, `gmail.search`, `ha.config.check`, `ha.history`, `ha.service.call`, `ha.state.get`, `image.describe`, `json.validate`, `lint.run`, `mac.disk.report`, `mac.pressure`, `machine.access.lookup`, `memory.propose`, `memory.recall`, `midi.map.lookup`, `model.ask`, `model.consensus`, `model.delete`, `model.inventory_drift`, `model.pull`, `model.unload`, `model.warm`, `nextsteps.read`, `nextsteps.update`, `node.ctx_check`, `node.diagnose`, `node.disk`, `node.wake`, `notify.push`, `notion.comment.add`, `notion.db.create_row`, `notion.db.query`, `notion.db.update_props`, `notion.inbox.triage`, `notion.log_session`, `notion.page.create`, `notion.page.diff`, `notion.routines.read`, `notion.search`, `ocr.image`, `ollama.ps`, `ollama.version_check`, `osc.send`, `pages.deploy_status`, `pdf.read`, `perf.read`, `project.brain.pin`, `project.notepad.snapshot`, `project.notepad.write`, `prompt.lint`, `resolume.status`, `route.suggest`, `rules.lookup`, `runner.select`, `secret.scan`, `service.health`, `setlist.parse`, `tailscale.status`, `test.run`, `time.convert`, `token.count`, `vector.index`, `vector.search`, `vercel.deploy_status`, `video.gap_find`, `video.probe` | Registers the 100 separately bounded expansion tools. Honored only with DAVE_ENABLE_TOOLS; external targets still require named operator configuration. |
+| `DAVE_ENABLE_TOOL_INFERENCE` | `false` | — | Separate call-time opt-in for approved tool inference. Does not register additional tools or authorize H9. |
+| `DAVE_ENABLE_TOOL_JOBS` | `false` | — | Separate call-time opt-in for configured SSH runner jobs. Does not register additional tools or authorize agents. |
 
 ## Tools
 
 | Tool | Enabled by | Permission | Approval | Timeout (s) | Cancellation | Handler | Arguments |
 |---|---|---|---|---|---|---|---|
+| [`agent.claim.check`](#agentclaimcheck) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`repository`** |
+| [`artnet.discover`](#artnetdiscover) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`interface`** |
+| [`audio.transcribe`](#audiotranscribe) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`path`**, **`language`** |
+| [`av.inventory.lookup`](#avinventorylookup) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`query`**, **`limit`** |
+| [`calc.eval`](#calceval) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`expression`**, **`from_unit`**, **`to_unit`** |
+| [`calendar.list`](#calendarlist) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`calendar`**, **`start`**, **`end`**, **`limit`** |
+| [`calendar.suggest_time`](#calendarsuggest_time) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`calendar`**, **`start`**, **`end`**, **`minutes`** |
+| [`chat.export`](#chatexport) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`conversation`** |
+| [`chat.read`](#chatread) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`conversation`**, **`offset`**, **`limit`** |
 | [`chat.search`](#chatsearch) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | **`query`**, `max_results` |
+| [`chat.summarize`](#chatsummarize) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`conversation`**, **`node`**, **`model`**, **`max_tokens`** |
+| [`claude.memory.read`](#claudememoryread) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`source`**, **`path`** |
+| [`cluster.benchmark`](#clusterbenchmark) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`node`**, **`model`**, **`text`**, **`max_tokens`** |
 | [`cluster.status`](#clusterstatus) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_system` | — | `10.0` | `bounded` | sync | — |
+| [`code.grep_regex`](#codegrep_regex) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`source`**, **`pattern`** |
+| [`code.symbols`](#codesymbols) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`path`** |
+| [`comms.log.append`](#commslogappend) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`source`**, **`text`**, **`expected_digest`** |
+| [`comms.log.read`](#commslogread) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`source`**, **`limit`** |
+| [`contacts.lookup`](#contactslookup) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`query`**, **`limit`** |
+| [`data.query`](#dataquery) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`path`**, **`sql`** |
+| [`dep.audit`](#depaudit) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`recipe`** |
+| [`diagram.render`](#diagramrender) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`source`**, **`output`** |
+| [`dmx.patch_check`](#dmxpatch_check) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`fixtures`** |
+| [`docker.logs`](#dockerlogs) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`container`**, **`lines`** |
+| [`docker.ps`](#dockerps) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`** |
+| [`docs.ask`](#docsask) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`source`**, **`query`**, **`node`**, **`model`**, **`max_tokens`** |
+| [`drive.read`](#driveread) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`file`** |
+| [`drive.search`](#drivesearch) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`folder`**, **`query`**, **`limit`** |
+| [`eval.run`](#evalrun) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`node`**, **`model`**, **`text`**, **`expected`**, **`max_tokens`** |
 | [`file.append`](#fileappend) | `DAVE_ENABLE_TOOLS` | `write_files` | exact call | `10.0` | `bounded` | sync | **`path`**, **`content`** |
 | [`file.edit`](#fileedit) | `DAVE_ENABLE_EXTENDED_TOOLS` | `write_files` | exact call, preflight | `10.0` | `bounded` | sync | **`path`**, **`old_text`**, **`new_text`**, `expected_count` |
 | [`file.list`](#filelist) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path`, `depth`, `max_entries`, `cursor` |
@@ -38,25 +68,186 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`file.read_lines`](#fileread_lines) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, `start_line`, `max_lines` |
 | [`file.search`](#filesearch) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`query`**, `path`, `case_sensitive`, `max_matches` |
 | [`file.write`](#filewrite) | `DAVE_ENABLE_TOOLS` | `write_files` | exact call | `10.0` | `bounded` | sync | **`path`**, **`content`** |
+| [`gh.ci.logs`](#ghcilogs) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`repository`**, **`job`**, **`limit`** |
+| [`gh.issue.create`](#ghissuecreate) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`repository`**, **`title`**, **`body`** |
+| [`gh.pr.comments`](#ghprcomments) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`repository`**, **`number`**, **`limit`** |
+| [`gh.pr.status`](#ghprstatus) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`repository`**, **`number`** |
+| [`git.commit`](#gitcommit) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`repository`**, **`files`**, **`message`**, **`expected_digest`** |
 | [`git.diff`](#gitdiff) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path`, `staged`, `from_revision`, `to_revision` |
 | [`git.log`](#gitlog) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path`, `limit`, `file` |
+| [`git.push`](#gitpush) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`repository`**, **`branch`**, **`expected_head`** |
 | [`git.show`](#gitshow) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path`, **`revision`**, `file` |
 | [`git.status`](#gitstatus) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | `path` |
+| [`git.worktrees`](#gitworktrees) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`repository`** |
+| [`git.write_preview`](#gitwrite_preview) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`repository`**, **`files`** |
+| [`glossary.lookup`](#glossarylookup) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`term`** |
+| [`gmail.draft`](#gmaildraft) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`to`**, **`subject`**, **`body`** |
+| [`gmail.search`](#gmailsearch) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`query`**, **`limit`** |
+| [`ha.config.check`](#haconfigcheck) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | — |
+| [`ha.history`](#hahistory) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`entity`**, **`since`** |
+| [`ha.service.call`](#haservicecall) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`entity`**, **`service`** |
+| [`ha.state.get`](#hastateget) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`entity`** |
+| [`image.describe`](#imagedescribe) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`node`**, **`model`**, **`path`**, **`text`**, **`max_tokens`** |
+| [`json.validate`](#jsonvalidate) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`document`**, **`schema`** |
+| [`lint.run`](#lintrun) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`recipe`** |
+| [`mac.disk.report`](#macdiskreport) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`** |
+| [`mac.pressure`](#macpressure) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`** |
+| [`machine.access.lookup`](#machineaccesslookup) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`source`**, **`machine`** |
 | [`md.outline`](#mdoutline) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, `max_headings` |
 | [`md.section`](#mdsection) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read_files` | — | `10.0` | `bounded` | sync | **`path`**, **`heading`**, `include_subsections` |
+| [`memory.propose`](#memorypropose) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`text`**, **`expected_digest`** |
+| [`memory.recall`](#memoryrecall) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`source`**, **`query`**, **`limit`** |
+| [`midi.map.lookup`](#midimaplookup) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`control`** |
+| [`model.ask`](#modelask) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`node`**, **`model`**, **`text`**, **`max_tokens`** |
+| [`model.consensus`](#modelconsensus) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`targets`**, **`text`**, **`max_tokens`** |
+| [`model.delete`](#modeldelete) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`node`**, **`model`** |
+| [`model.inventory_drift`](#modelinventory_drift) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`node`** |
+| [`model.pull`](#modelpull) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`node`**, **`model`** |
+| [`model.unload`](#modelunload) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`node`**, **`model`** |
+| [`model.warm`](#modelwarm) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`node`**, **`model`** |
+| [`nextsteps.read`](#nextstepsread) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`source`** |
+| [`nextsteps.update`](#nextstepsupdate) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`source`**, **`record_json`**, **`expected_digest`** |
+| [`node.ctx_check`](#nodectx_check) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`node`**, **`model`** |
+| [`node.diagnose`](#nodediagnose) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`node`** |
+| [`node.disk`](#nodedisk) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`** |
+| [`node.wake`](#nodewake) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`node`** |
+| [`notify.push`](#notifypush) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`destination`**, **`text`** |
 | [`notion.block.update`](#notionblockupdate) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call, preflight | `60.0` | `bounded` | async | **`page`**, **`block`**, `old_text`, `new_text`, `checked`, `block_text` |
+| [`notion.comment.add`](#notioncommentadd) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`page`**, **`text`**, **`expected_digest`** |
+| [`notion.db.create_row`](#notiondbcreate_row) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`database`**, **`properties_json`**, **`expected_digest`** |
+| [`notion.db.query`](#notiondbquery) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`database`**, **`limit`** |
+| [`notion.db.update_props`](#notiondbupdate_props) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`database`**, **`row`**, **`properties_json`**, **`expected_digest`** |
+| [`notion.inbox.triage`](#notioninboxtriage) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`database`**, **`limit`** |
+| [`notion.log_session`](#notionlog_session) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`database`**, **`properties_json`**, **`expected_digest`** |
 | [`notion.page.append`](#notionpageappend) | `DAVE_ENABLE_NOTION_TOOLS` | `write` | exact call, preflight | `60.0` | `bounded` | async | **`page`**, **`blocks`** |
+| [`notion.page.create`](#notionpagecreate) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`page`**, **`title`**, **`expected_digest`** |
+| [`notion.page.diff`](#notionpagediff) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`page`** |
 | [`notion.page.read`](#notionpageread) | `DAVE_ENABLE_NOTION_TOOLS` | `read` | — | `30.0` | `bounded` | async | **`page`** |
+| [`notion.routines.read`](#notionroutinesread) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`database`**, **`limit`** |
+| [`notion.search`](#notionsearch) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`query`**, **`limit`** |
+| [`ocr.image`](#ocrimage) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`path`** |
+| [`ollama.ps`](#ollamaps) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`node`** |
+| [`ollama.version_check`](#ollamaversion_check) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`node`**, **`compare_latest`** |
+| [`osc.send`](#oscsend) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`target`**, **`address`**, **`value`** |
+| [`pages.deploy_status`](#pagesdeploy_status) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`repository`** |
+| [`pdf.read`](#pdfread) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`path`**, **`start_page`**, **`pages`** |
+| [`perf.read`](#perfread) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`limit`** |
 | [`project.artifacts`](#projectartifacts) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | `artifact`, `max_entries` |
+| [`project.brain.pin`](#projectbrainpin) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`text`**, **`expected_revision`** |
 | [`project.brain.read`](#projectbrainread) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | — |
 | [`project.notepad.read`](#projectnotepadread) | `DAVE_ENABLE_EXTENDED_TOOLS` | `read` | — | `10.0` | `bounded` | sync | — |
+| [`project.notepad.snapshot`](#projectnotepadsnapshot) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | — |
+| [`project.notepad.write`](#projectnotepadwrite) | `DAVE_ENABLE_TOOLPACK` | `write` | exact call, preflight | `60` | `bounded` | async | **`text`**, **`expected_digest`** |
+| [`prompt.lint`](#promptlint) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`text`** |
+| [`resolume.status`](#resolumestatus) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`service`** |
+| [`route.suggest`](#routesuggest) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`text`** |
+| [`rules.lookup`](#ruleslookup) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`source`**, **`rule`** |
+| [`runner.select`](#runnerselect) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`capability`** |
+| [`secret.scan`](#secretscan) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`text`** |
+| [`service.health`](#servicehealth) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`service`** |
+| [`setlist.parse`](#setlistparse) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`text`** |
 | [`shell.exec`](#shellexec) | `DAVE_ENABLE_SHELL_TOOL` | `execute_process` | exact call | `6` | `bounded` | sync, run context | **`command`** |
 | [`system.info`](#systeminfo) | `DAVE_ENABLE_TOOLS` | `read_system` | — | `10.0` | `bounded` | sync | `type` |
+| [`tailscale.status`](#tailscalestatus) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`** |
+| [`test.run`](#testrun) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`recipe`** |
+| [`time.convert`](#timeconvert) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`timestamp`**, **`zone`** |
+| [`token.count`](#tokencount) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`text`**, **`node`** |
+| [`vector.index`](#vectorindex) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`source`** |
+| [`vector.search`](#vectorsearch) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`query`**, **`limit`** |
+| [`vercel.deploy_status`](#verceldeploy_status) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`project`**, **`limit`** |
+| [`video.gap_find`](#videogap_find) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`takes`** |
+| [`video.probe`](#videoprobe) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`path`** |
 | [`web.fetch`](#webfetch) | `DAVE_ENABLE_TOOLS` | `public_network` | — | `10.0` | `bounded` | async | **`url`** |
 | [`web.read`](#webread) | `DAVE_ENABLE_EXTENDED_TOOLS` | `public_network` | — | `10.0` | `bounded` | async | **`url`** |
 | [`web.search`](#websearch) | `DAVE_ENABLE_EXTENDED_TOOLS` | `public_network` | — | `10.0` | `bounded` | async | **`query`**, `max_results` |
 
 Required arguments are in bold. Every tool also needs `DAVE_ENABLE_TOOLS` to run.
+
+### agent.claim.check
+
+Read only claim presence/age in an admitted repository; no takeover.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `repository` | string | yes | maxLength `4096`, minLength `1` | — |
+
+### artnet.discover
+
+Run bounded approved Art-Net discovery on an operator-allowlisted interface recipe.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `interface` | string | yes | maxLength `80`, minLength `1` | — |
+
+### audio.transcribe
+
+Run bounded transcription on an approved Whisper-capable runner.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `path` | string | yes | maxLength `4096`, minLength `1` | — |
+| `language` | string | yes | maxLength `20`, minLength `1` | — |
+
+### av.inventory.lookup
+
+Look up equipment in an operator-configured nonsecret AV inventory.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `query` | string | yes | maxLength `200`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### calc.eval
+
+Evaluate bounded arithmetic AST and explicit unit conversion; never eval or function calls.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `expression` | string | yes | maxLength `200`, minLength `1` | — |
+| `from_unit` | string | yes | maxLength `20`, minLength `0` | — |
+| `to_unit` | string | yes | maxLength `20`, minLength `0` | — |
+
+### calendar.list
+
+Read events from one configured calendar in a bounded time window.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `calendar` | string | yes | maxLength `80`, minLength `1` | — |
+| `start` | string | yes | maxLength `50`, minLength `1` | — |
+| `end` | string | yes | maxLength `50`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### calendar.suggest_time
+
+Suggest a free interval from bounded configured calendar events; never books.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `calendar` | string | yes | maxLength `80`, minLength `1` | — |
+| `start` | string | yes | maxLength `50`, minLength `1` | — |
+| `end` | string | yes | maxLength `50`, minLength `1` | — |
+| `minutes` | integer | yes | maximum `480`, minimum `1` | — |
+
+### chat.export
+
+Return bounded owner-scoped Markdown in the result; no file is written.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `conversation` | string | yes | maxLength `100`, minLength `1` | — |
+
+### chat.read
+
+Read bounded user/assistant turns from a conversation owned by this run's user.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `conversation` | string | yes | maxLength `100`, minLength `1` | — |
+| `offset` | integer | yes | maximum `100000`, minimum `0` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
 
 ### chat.search
 
@@ -67,11 +258,186 @@ Search your own earlier DaveLLM conversations and return short matching snippets
 | `query` | string | yes | maxLength `200`, minLength `1` | — |
 | `max_results` | integer or null | no | default `5`, maximum `10`, minimum `1` | — |
 
+### chat.summarize
+
+Approved summary of the run owner's conversation on an installed model; no persistence.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `conversation` | string | yes | maxLength `100`, minLength `1` | — |
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+| `max_tokens` | integer | yes | maximum `512`, minimum `1` | — |
+
+### claude.memory.read
+
+Read a named owner-allowlisted memory file; never implicit home-directory access.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `path` | string | yes | maxLength `4096`, minLength `1` | — |
+
+### cluster.benchmark
+
+Approved bounded throughput measurement; never H9 qualification.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+| `text` | string | yes | maxLength `1000`, minLength `1` | — |
+| `max_tokens` | integer | yes | maximum `256`, minimum `1` | — |
+
 ### cluster.status
 
 Show which configured DaveLLM nodes are reachable and which models they are known to serve.
 
 No arguments.
+
+### code.grep_regex
+
+Run bounded regex matching in an isolated runner process, never in the router event loop.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `pattern` | string | yes | maxLength `200`, minLength `1` | — |
+
+### code.symbols
+
+Read Python functions/classes from an admitted bounded UTF-8 source file.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `path` | string | yes | maxLength `4096`, minLength `1` | — |
+
+### comms.log.append
+
+Append through an approved runner recipe with concurrent preservation and readback.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `text` | string | yes | maxLength `8000`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
+### comms.log.read
+
+Read bounded current-day entries from an owner-allowlisted log source.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### contacts.lookup
+
+Read bounded contact names/emails with router-held Google OAuth.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `query` | string | yes | maxLength `200`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### data.query
+
+Query bounded CSV/JSON records with isolated read-only SQL; extension/network/file access disabled.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `path` | string | yes | maxLength `4096`, minLength `1` | — |
+| `sql` | string | yes | maxLength `2000`, minLength `1` | — |
+
+### dep.audit
+
+Run an operator-defined remote dependency audit recipe; network access is part of approval.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `recipe` | string | yes | maxLength `80`, minLength `1` | — |
+
+### diagram.render
+
+Render Mermaid to an SVG artifact on an approved isolated runner; file-producing effect.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `source` | string | yes | maxLength `4000`, minLength `1` | — |
+| `output` | string | yes | maxLength `4096`, minLength `1` | — |
+
+### dmx.patch_check
+
+Validate DMX footprints and overlaps without sending network data.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `fixtures` | array | yes | items `{"type": "object", "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 80}, "universe": {"type": "integer", "minimum": 1, "maximum": 32768}, "address": {"type": "integer", "minimum": 1, "maximum": 512}, "footprint": {"type": "integer", "minimum": 1, "maximum": 512}}, "required": ["name", "universe", "address", "footprint"], "additionalProperties": false}` | — |
+
+### docker.logs
+
+Read bounded redacted logs for one configured container.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `container` | string | yes | maxLength `80`, minLength `1` | — |
+| `lines` | integer | yes | maximum `200`, minimum `1` | — |
+
+### docker.ps
+
+Read only operator-allowlisted containers through an approved read recipe.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+
+### docs.ask
+
+Approved folder-grounded answer from allowlisted source excerpts with citations; no recursive tools.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `query` | string | yes | maxLength `1000`, minLength `1` | — |
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+| `max_tokens` | integer | yes | maximum `512`, minimum `1` | — |
+
+### drive.read
+
+Read metadata or bounded plain-text export of one configured Drive document.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `file` | string | yes | maxLength `80`, minLength `1` | — |
+
+### drive.search
+
+Search only an operator-configured Drive folder; query escaped, no unrestricted Drive query syntax.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `folder` | string | yes | maxLength `80`, minLength `1` | — |
+| `query` | string | yes | maxLength `200`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### eval.run
+
+Approved single reference-prompt comparison with explicit expected text; not H9.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+| `text` | string | yes | maxLength `4000`, minLength `1` | — |
+| `expected` | string | yes | maxLength `1000`, minLength `1` | — |
+| `max_tokens` | integer | yes | maximum `256`, minimum `1` | — |
 
 ### file.append
 
@@ -142,6 +508,57 @@ Write UTF-8 text inside an allowed tool root.
 | `path` | string | yes | minLength `1` | — |
 | `content` | string | yes | — | — |
 
+### gh.ci.logs
+
+Read bounded job log tail; signed public downloads are DNS-pinned and receive no GitHub credentials.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `repository` | string | yes | maxLength `80`, minLength `1` | — |
+| `job` | integer | yes | maximum `999999999999`, minimum `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### gh.issue.create
+
+Create one issue after approval in a configured repository; verify by readback.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `repository` | string | yes | maxLength `80`, minLength `1` | — |
+| `title` | string | yes | maxLength `200`, minLength `1` | — |
+| `body` | string | yes | maxLength `8000`, minLength `1` | — |
+
+### gh.pr.comments
+
+Read bounded review comments on an allowlisted repository PR.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `repository` | string | yes | maxLength `80`, minLength `1` | — |
+| `number` | integer | yes | maximum `1000000`, minimum `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### gh.pr.status
+
+Read status/checks of a PR in an operator-allowlisted repository.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `repository` | string | yes | maxLength `80`, minLength `1` | — |
+| `number` | integer | yes | maximum `1000000`, minimum `1` | — |
+
+### git.commit
+
+Approved named-file-only commit recipe; hooks disabled, secret scan and exact diff required.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `repository` | string | yes | maxLength `80`, minLength `1` | — |
+| `files` | array | yes | items `{"type": "string", "minLength": 1, "maxLength": 4096}` | — |
+| `message` | string | yes | maxLength `1000`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
 ### git.diff
 
 Show a unified diff for a Git working tree inside an allowed tool root: working-tree changes by default, staged changes with staged=true, or the changes between from_revision and to_revision (default HEAD). Read only.
@@ -163,6 +580,17 @@ List up to 50 recent commits of a Git working tree inside an allowed tool root, 
 | `limit` | integer or null | no | default `20`, maximum `50`, minimum `1` | — |
 | `file` | string or null | no | maxLength `1024`, minLength `1` | A file path relative to the repository. |
 
+### git.push
+
+Approved configured remote/branch push recipe; no force, history rewrite or caller URL.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `repository` | string | yes | maxLength `80`, minLength `1` | — |
+| `branch` | string | yes | maxLength `120`, minLength `1` | — |
+| `expected_head` | string | yes | maxLength `40`, minLength `1` | — |
+
 ### git.show
 
 Show one commit of a Git working tree inside an allowed tool root, with its message and patch, or one file's text at that commit when file is given. Read only.
@@ -180,6 +608,137 @@ Show the branch, ahead/behind counts, and staged, unstaged, untracked, and confl
 | Argument | Type | Required | Constraints | Description |
 |---|---|---|---|---|
 | `path` | string or null | no | default `.`, maxLength `4096`, minLength `1` | A Git working tree folder, relative to the tool root or absolute inside it. |
+
+### git.worktrees
+
+List bounded admitted Git worktrees and claim presence without external paths.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `repository` | string | yes | maxLength `4096`, minLength `1` | — |
+
+### git.write_preview
+
+Read a named-file Git diff and digest for exact commit approval; no staging.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `repository` | string | yes | maxLength `4096`, minLength `1` | — |
+| `files` | array | yes | items `{"type": "string", "minLength": 1, "maxLength": 4096}` | — |
+
+### glossary.lookup
+
+Look up a term in the operator's nonsecret configured glossary.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `term` | string | yes | maxLength `200`, minLength `1` | — |
+
+### gmail.draft
+
+Create draft only after approval; never sends email; verify draft ID by readback.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `to` | string | yes | maxLength `200`, minLength `1` | — |
+| `subject` | string | yes | maxLength `200`, minLength `1` | — |
+| `body` | string | yes | maxLength `8000`, minLength `1` | — |
+
+### gmail.search
+
+Read bounded mailbox metadata with router-held OAuth; no send operation exists.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `query` | string | yes | maxLength `200`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### ha.config.check
+
+Request Home Assistant config validation after approval, never reloads configuration.
+
+No arguments.
+
+### ha.history
+
+Read bounded recent history of an allowlisted entity.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `entity` | string | yes | maxLength `80`, minLength `1` | — |
+| `since` | string | yes | maxLength `50`, minLength `1` | — |
+
+### ha.service.call
+
+Call one allowlisted service on one allowlisted entity after approval; no templates or arbitrary service data.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `entity` | string | yes | maxLength `80`, minLength `1` | — |
+| `service` | string | yes | maxLength `80`, minLength `1` | — |
+
+### ha.state.get
+
+Read one operator-allowlisted Home Assistant entity.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `entity` | string | yes | maxLength `80`, minLength `1` | — |
+
+### image.describe
+
+Approved bounded vision request to an installed model with an admitted image; no recursive tools.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+| `path` | string | yes | maxLength `4096`, minLength `1` | — |
+| `text` | string | yes | maxLength `1000`, minLength `1` | — |
+| `max_tokens` | integer | yes | maximum `256`, minimum `1` | — |
+
+### json.validate
+
+Validate bounded JSON against the existing harness schema subset; unsupported keywords refused.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `document` | string | yes | maxLength `8000`, minLength `1` | — |
+| `schema` | string | yes | maxLength `8000`, minLength `1` | — |
+
+### lint.run
+
+Run an operator-defined remote lint recipe with a bounded capture.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `recipe` | string | yes | maxLength `80`, minLength `1` | — |
+
+### mac.disk.report
+
+Read bounded disk/mount observations from an explicitly approved Mac-only recipe.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+
+### mac.pressure
+
+Read bounded memory/swap/process observations through an explicitly approved Mac-only recipe.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+
+### machine.access.lookup
+
+Read a named nonsecret access-guide section from an owner-allowlisted source.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `machine` | string | yes | maxLength `80`, minLength `1` | — |
 
 ### md.outline
 
@@ -200,6 +759,159 @@ Read the lines under one heading of a Markdown file inside an allowed tool root,
 | `heading` | string | yes | maxLength `500`, minLength `1` | The heading text, without the leading # marks. |
 | `include_subsections` | boolean or null | no | default `true` | false stops at the first subheading. |
 
+### memory.propose
+
+Append a proposal to the run's project notepad after approval; does not silently install memory.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `text` | string | yes | maxLength `4000`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
+### memory.recall
+
+Search only memory sources allowlisted for the current run owner.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `query` | string | yes | maxLength `200`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### midi.map.lookup
+
+Look up a control in an operator-configured MIDI map.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `control` | string | yes | maxLength `80`, minLength `1` | — |
+
+### model.ask
+
+Approved isolated second opinion with a bounded output; cannot run tools or recurse.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+| `text` | string | yes | maxLength `8000`, minLength `1` | — |
+| `max_tokens` | integer | yes | maximum `512`, minimum `1` | — |
+
+### model.consensus
+
+Approved two or three distinct-model answers, not a claim of correctness.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `targets` | array | yes | items `{"type": "object", "properties": {"node": {"type": "string", "minLength": 1, "maxLength": 40}, "model": {"type": "string", "minLength": 1, "maxLength": 160}}, "required": ["node", "model"], "additionalProperties": false}` | — |
+| `text` | string | yes | maxLength `8000`, minLength `1` | — |
+| `max_tokens` | integer | yes | maximum `256`, minimum `1` | — |
+
+### model.delete
+
+Delete one installed model after exact approval and inventory validation.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+
+### model.inventory_drift
+
+Compare installed models with operator-configured expected inventory.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+
+### model.pull
+
+Pull one operator-allowlisted model; approval required, no automatic retries.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+
+### model.unload
+
+Unload one installed model with keep_alive zero after approval.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+
+### model.warm
+
+Preload one installed model after approval; bounded, no question inference.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+
+### nextsteps.read
+
+Read one named owner-allowlisted project record, never the cross-project board implicitly.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+
+### nextsteps.update
+
+Approved governed updater recipe; --check and peer-project preservation required.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `record_json` | string | yes | maxLength `8000`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
+### node.ctx_check
+
+Read observed loaded context separately from router-requested context; missing observations are Unknown.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `model` | string | yes | maxLength `160`, minLength `1` | — |
+
+### node.diagnose
+
+Read bounded node service, inventory, latency and version evidence; timeout means Unknown.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+
+### node.disk
+
+Read an approved runner's disk and configured mount evidence.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+
+### node.wake
+
+Send one Wake-on-LAN packet to an operator-configured target after approval.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+
+### notify.push
+
+Send one approved redacted message to a configured ntfy destination; deduplicated and rate limited.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `destination` | string | yes | maxLength `80`, minLength `1` | — |
+| `text` | string | yes | maxLength `1000`, minLength `1` | — |
+
 ### notion.block.update
 
 Change one block that notion.page.read returned in this run: replace old_text with new_text inside it, and/or check or uncheck a to-do. old_text must occur once and stay inside one formatting run, so the block keeps its formatting. To check or uncheck a to-do, also give block_text, the to-do's text. Nothing is sent if the block changed or moved since it was read. Needs the user's approval, which shows the text before and after or the to-do.
@@ -213,6 +925,65 @@ Change one block that notion.page.read returned in this run: replace old_text wi
 | `checked` | boolean or null | no | — | For a to-do: true checks it, false unchecks it. |
 | `block_text` | string or null | no | maxLength `4000` | The block's whole text as notion.page.read showed it; required when only checked changes. |
 
+### notion.comment.add
+
+Add one comment on a configured page after snapshot freshness and approval.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `page` | string | yes | maxLength `80`, minLength `1` | — |
+| `text` | string | yes | maxLength `2000`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
+### notion.db.create_row
+
+Create one row in a configured data source after schema snapshot freshness and approval.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `database` | string | yes | maxLength `80`, minLength `1` | — |
+| `properties_json` | string | yes | maxLength `8000`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
+### notion.db.query
+
+Query one configured data source; bounded refs and property snapshots.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `database` | string | yes | maxLength `80`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### notion.db.update_props
+
+Patch only named row properties; run ref, fresh snapshot, approval and readback required.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `database` | string | yes | maxLength `80`, minLength `1` | — |
+| `row` | string | yes | maxLength `20`, minLength `1` | — |
+| `properties_json` | string | yes | maxLength `8000`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
+### notion.inbox.triage
+
+Propose inbox routing from configured data source rows; no mutation.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `database` | string | yes | maxLength `80`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### notion.log_session
+
+Create a session row in the configured logging data source after approval and readback.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `database` | string | yes | maxLength `80`, minLength `1` | — |
+| `properties_json` | string | yes | maxLength `8000`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
 ### notion.page.append
 
 Add plain-text blocks to the end of a configured Notion page: paragraphs, headings, list items, quotes, or to-dos. The result says whether the blocks were verified on the page. Needs the user's approval, which shows the page and every block.
@@ -222,6 +993,24 @@ Add plain-text blocks to the end of a configured Notion page: paragraphs, headin
 | `page` | string | yes | maxLength `40`, minLength `1` | The configured name of the Notion page, such as adapter-test; an unknown name lists the configured ones. |
 | `blocks` | array | yes | items `{"type": "object", "properties": {"type": {"type": "string", "enum": ["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "quote"]}, "text": {"type": "string", "maxLength": 2000, "description": "Plain text; no Markdown."}, "checked": {"type": ["boolean", "null"], "description": "Only for to_do blocks; default false."}}, "required": ["type", "text"], "additionalProperties": false}` | 1 to 50 blocks, added in this order. |
 
+### notion.page.create
+
+Create one child under a configured parent; no arbitrary parent ID.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `page` | string | yes | maxLength `80`, minLength `1` | — |
+| `title` | string | yes | maxLength `200`, minLength `1` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
+### notion.page.diff
+
+Compare a configured page's fresh metadata with this run's earlier snapshot.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `page` | string | yes | maxLength `80`, minLength `1` | — |
+
 ### notion.page.read
 
 Read a Notion page the operator configured for DaveLLM, by its configured name. Returns the title and the blocks in order, each with a ref such as b3 that notion.block.update uses in this run. Text is plain; blocks marked formatted keep their formatting when edited.
@@ -229,6 +1018,87 @@ Read a Notion page the operator configured for DaveLLM, by its configured name. 
 | Argument | Type | Required | Constraints | Description |
 |---|---|---|---|---|
 | `page` | string | yes | maxLength `40`, minLength `1` | The configured name of the Notion page, such as adapter-test; an unknown name lists the configured ones. |
+
+### notion.routines.read
+
+Read only a configured routines data source; never infer a database ID.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `database` | string | yes | maxLength `80`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### notion.search
+
+Search only configured pages/databases with run-local refs; no workspace-wide enumeration.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `query` | string | yes | maxLength `200`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### ocr.image
+
+Run bounded OCR on an approved capable runner and admitted image.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `path` | string | yes | maxLength `4096`, minLength `1` | — |
+
+### ollama.ps
+
+Read loaded models, observed residency and expiry on a configured node.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+
+### ollama.version_check
+
+Read local version; public latest comparison requires explicit compare_latest true.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+| `compare_latest` | boolean | yes | — | — |
+
+### osc.send
+
+Send one approved OSC string to a configured target/address; no caller host or port.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `target` | string | yes | maxLength `80`, minLength `1` | — |
+| `address` | string | yes | maxLength `200`, minLength `1` | — |
+| `value` | string | yes | maxLength `1000`, minLength `1` | — |
+
+### pages.deploy_status
+
+Read GitHub Pages build status; never starts a deployment.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `repository` | string | yes | maxLength `80`, minLength `1` | — |
+
+### pdf.read
+
+Read PDF text through a bounded isolated parsing recipe on an approved runner.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `path` | string | yes | maxLength `4096`, minLength `1` | — |
+| `start_page` | integer | yes | maximum `10000`, minimum `1` | — |
+| `pages` | integer | yes | maximum `10`, minimum `1` | — |
+
+### perf.read
+
+Read bounded owner-scoped performance/cost records, never unrestricted database SQL.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
 
 ### project.artifacts
 
@@ -238,6 +1108,15 @@ List the saved artifacts of the project this run belongs to, or read one artifac
 |---|---|---|---|---|
 | `artifact` | string or null | no | maxLength `100`, minLength `1` | An artifact identifier from the list; omit it to list. |
 | `max_entries` | integer or null | no | default `20`, maximum `50`, minimum `1` | — |
+
+### project.brain.pin
+
+Pin a run-owned BRAIN fact after exact approval and captured-revision freshness check.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `text` | string | yes | maxLength `4000`, minLength `1` | — |
+| `expected_revision` | integer | yes | maximum `1000000`, minimum `1` | — |
 
 ### project.brain.read
 
@@ -250,6 +1129,86 @@ No arguments.
 Read the plain-text notepad of the project this run belongs to.
 
 No arguments.
+
+### project.notepad.snapshot
+
+Read run-owned notepad and its freshness digest for an approved write proposal.
+
+No arguments.
+
+### project.notepad.write
+
+Replace run-owned plain notepad only when expected digest still matches, then read back.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `text` | string | yes | maxLength `20000`, minLength `0` | — |
+| `expected_digest` | string | yes | maxLength `64`, minLength `1` | — |
+
+### prompt.lint
+
+Report deterministic PRMT placeholder/scaffolding findings; no model call.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `text` | string | yes | maxLength `8000`, minLength `1` | — |
+
+### resolume.status
+
+Read a configured Resolume composition endpoint; no transport changes.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `service` | string | yes | maxLength `80`, minLength `1` | — |
+
+### route.suggest
+
+Suggest only currently installed node/model pairs; advisory, never executes.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `text` | string | yes | maxLength `8000`, minLength `1` | — |
+
+### rules.lookup
+
+Read one rule ID from a named owner-allowlisted governance source.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+| `rule` | string | yes | maxLength `80`, minLength `1` | — |
+
+### runner.select
+
+Suggest only configured runner capability records; no dispatch or agents.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `capability` | string | yes | maxLength `80`, minLength `1` | — |
+
+### secret.scan
+
+Detect common credential families in supplied text; returns locations/kinds, never matched secrets.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `text` | string | yes | maxLength `8000`, minLength `1` | — |
+
+### service.health
+
+Probe one named operator-configured health endpoint; caller supplies no URL.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `service` | string | yes | maxLength `80`, minLength `1` | — |
+
+### setlist.parse
+
+Parse bounded setlist lines and optional minute:second durations.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `text` | string | yes | maxLength `8000`, minLength `1` | — |
 
 ### shell.exec
 
@@ -266,6 +1225,85 @@ Read bounded operating system and Python runtime information.
 | Argument | Type | Required | Constraints | Description |
 |---|---|---|---|---|
 | `type` | string | no | enum `["all", "platform", "platform_version", "python_version", "processor"]` | — |
+
+### tailscale.status
+
+Read bounded, address-redacted peer presence through a configured recipe.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+
+### test.run
+
+Run one preconfigured remote test recipe; caller cannot choose a command.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `recipe` | string | yes | maxLength `80`, minLength `1` | — |
+
+### time.convert
+
+Convert an offset-aware ISO timestamp to an IANA timezone; ambiguous naive times refused.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `timestamp` | string | yes | maxLength `50`, minLength `1` | — |
+| `zone` | string | yes | maxLength `100`, minLength `1` | — |
+
+### token.count
+
+Estimate text tokens and compare with a configured node's advisory limit; not tokenizer-exact.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `text` | string | yes | maxLength `8000`, minLength `1` | — |
+| `node` | string | yes | maxLength `40`, minLength `1` | — |
+
+### vector.index
+
+Approved indexing recipe on an allowlisted capable runner and source.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `source` | string | yes | maxLength `80`, minLength `1` | — |
+
+### vector.search
+
+Search owner-scoped conversation vectors and the configured dedicated document index; no inference.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `query` | string | yes | maxLength `200`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### vercel.deploy_status
+
+Read deployments of one configured Vercel project.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `project` | string | yes | maxLength `80`, minLength `1` | — |
+| `limit` | integer | yes | maximum `50`, minimum `1` | — |
+
+### video.gap_find
+
+Find gaps/overlaps between supplied take intervals; no media decoding.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `takes` | array | yes | items `{"type": "object", "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 100}, "start": {"type": "string", "minLength": 1, "maxLength": 50}, "end": {"type": "string", "minLength": 1, "maxLength": 50}}, "required": ["name", "start", "end"], "additionalProperties": false}` | — |
+
+### video.probe
+
+Run bounded ffprobe metadata extraction on an approved media runner.
+
+| Argument | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `runner` | string | yes | maxLength `80`, minLength `1` | — |
+| `path` | string | yes | maxLength `4096`, minLength `1` | — |
 
 ### web.fetch
 
@@ -355,7 +1393,7 @@ DaveHarness's default ceiling for any JSON payload it admits.
 | `max_harness_input_bytes` | `1000000` |
 | `max_harness_model_response_bytes` | `1000000` |
 | `harness_store_headroom_bytes` | `4000000` |
-| `async_handler_allowlist` | `["notion.block.update", "notion.page.append", "notion.page.read", "web.fetch", "web.read", "web.search"]` |
+| `async_handler_allowlist` | `["agent.claim.check", "artnet.discover", "audio.transcribe", "av.inventory.lookup", "calc.eval", "calendar.list", "calendar.suggest_time", "chat.export", "chat.read", "chat.summarize", "claude.memory.read", "cluster.benchmark", "code.grep_regex", "code.symbols", "comms.log.append", "comms.log.read", "contacts.lookup", "data.query", "dep.audit", "diagram.render", "dmx.patch_check", "docker.logs", "docker.ps", "docs.ask", "drive.read", "drive.search", "eval.run", "gh.ci.logs", "gh.issue.create", "gh.pr.comments", "gh.pr.status", "git.commit", "git.push", "git.worktrees", "git.write_preview", "glossary.lookup", "gmail.draft", "gmail.search", "ha.config.check", "ha.history", "ha.service.call", "ha.state.get", "image.describe", "json.validate", "lint.run", "mac.disk.report", "mac.pressure", "machine.access.lookup", "memory.propose", "memory.recall", "midi.map.lookup", "model.ask", "model.consensus", "model.delete", "model.inventory_drift", "model.pull", "model.unload", "model.warm", "nextsteps.read", "nextsteps.update", "node.ctx_check", "node.diagnose", "node.disk", "node.wake", "notify.push", "notion.block.update", "notion.comment.add", "notion.db.create_row", "notion.db.query", "notion.db.update_props", "notion.inbox.triage", "notion.log_session", "notion.page.append", "notion.page.create", "notion.page.diff", "notion.page.read", "notion.routines.read", "notion.search", "ocr.image", "ollama.ps", "ollama.version_check", "osc.send", "pages.deploy_status", "pdf.read", "perf.read", "project.brain.pin", "project.notepad.snapshot", "project.notepad.write", "prompt.lint", "resolume.status", "route.suggest", "rules.lookup", "runner.select", "secret.scan", "service.health", "setlist.parse", "tailscale.status", "test.run", "time.convert", "token.count", "vector.index", "vector.search", "vercel.deploy_status", "video.gap_find", "video.probe", "web.fetch", "web.read", "web.search"]` |
 | `harness_store.max_runs` | `32` |
 | `harness_store.max_bytes` | `268435456` |
 | `harness_store.ttl_seconds` | `3600` |
@@ -639,3 +1677,15 @@ Public constants each module defines, including the fixed refusal messages.
 | `UNKNOWN_REF` | `Unknown block ref {ref}; refs come from notion.page.read in this run` |
 | `UNREACHABLE` | `Notion could not be reached` |
 | `WRITABLE_MENTIONS` | `["database", "date", "page", "user"]` |
+
+### davellm_toolpack
+
+| Name | Value |
+|---|---|
+| `TOOLPACK_MAX_ARRAY` | `50` |
+| `TOOLPACK_MAX_REFS` | `200` |
+| `TOOLPACK_MAX_RUNS` | `64` |
+| `TOOLPACK_OUTPUT_BYTES` | `49152` |
+| `TOOLPACK_RESPONSE_BYTES` | `524288` |
+| `TOOLPACK_TIMEOUT_SECONDS` | `60` |
+| `TOOLPACK_VERSION` | `tools100.v1` |
