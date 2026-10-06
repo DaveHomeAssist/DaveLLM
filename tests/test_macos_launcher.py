@@ -58,7 +58,30 @@ def test_macos_launcher_enables_tools_but_not_shell_or_roots():
     assert 'DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}"' in launcher
     assert 'DAVE_ENABLE_EXTENDED_TOOLS="${DAVE_ENABLE_EXTENDED_TOOLS:-true}"' in launcher
     assert "DAVE_ENABLE_SHELL_TOOL" not in launcher
-    assert "DAVE_TOOL_ROOTS" not in launcher
+    # Roots come only from the environment or an operator-created file, never a default.
+    assert 'tool_env+=("DAVE_TOOL_ROOTS=${tool_roots}")' in launcher
+    assert not re.search(r'DAVE_TOOL_ROOTS=["\']?\[', launcher)
+
+
+def test_macos_launcher_reads_tool_settings_only_from_private_files():
+    launcher = LAUNCHER.read_text()
+
+    for required in (
+        'tool_roots_file="${DATA_DIR}/tool-roots.json"',
+        'toolpack_file="${DATA_DIR}/toolpack.json"',
+        '[[ -f "$file" && ! -L "$file" ]] || return 1',
+        '[[ "$owner" == "$(/usr/bin/id -u)" ]] && (( (8#$mode & 8#022) == 0 ))',
+        'if [[ -z "${DAVE_TOOL_ROOTS:-}" && -e "$tool_roots_file" ]]; then',
+        'if [[ -z "${DAVE_TOOLPACK_CONFIG:-}" && -e "$toolpack_file" ]]; then',
+        '(.enabled_tools | type) == "array" and (.enabled_tools | length) > 0',
+        '<= 65536',
+        '"${tool_env[@]}" \\\n    "$NPM_BIN" start',
+    ):
+        assert required in launcher
+
+    # Settings files carry no secrets, and the launcher reads no token for them.
+    assert "TOKEN" not in launcher
+    assert not re.search(r"ignoring [^\n]*\$tool_roots|ignoring [^\n]*\$toolpack_config", launcher)
 
 
 def test_macos_launcher_adds_web_search_only_when_searxng_is_healthy():

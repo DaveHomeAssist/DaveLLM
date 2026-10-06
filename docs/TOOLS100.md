@@ -2,11 +2,13 @@
 
 All 100 approved candidates have separate schemas and implementations in `davellm_toolpack_catalog.py` and the local, cluster, HTTP, Notion and runner modules. The generated [capabilities catalog](DAVEHARNESS_CAPABILITIES.md) is the full argument/permission reference. The 100-name contract is independently pinned by `tests/test_toolpack.py`; the two additional tools are `project.notepad.snapshot` and `git.write_preview`, which supply freshness evidence for approved writes.
 
-This is an opt-in source delivery, not an installed-runtime upgrade. No existing launcher, service, credential store, model inventory or native UI is changed. Existing qualified handler provenance and Notion v1 behavior remain pinned. Provider and physical acceptance are separate from offline tests.
+This is an opt-in source delivery, not an installed-runtime upgrade. No service, credential store, model inventory or native UI is changed, and the macOS launcher registers the expansion only when the operator creates `toolpack.json` in the data folder ([setup guide](TOOLS100_SETUP.md)). Existing qualified handler provenance and Notion v1 behavior remain pinned. Provider and physical acceptance are separate from offline tests.
 
 ## Enabling
 
 `DAVE_ENABLE_TOOLS=true` and `DAVE_ENABLE_TOOLPACK=true` register the expansion at startup. Inference additionally needs `DAVE_ENABLE_TOOL_INFERENCE=true`; SSH jobs additionally need `DAVE_ENABLE_TOOL_JOBS=true`. All default to false. `DAVE_TOOLPACK_CONFIG` is at most 64 KiB of operator-owned nonsecret JSON. Malformed/unconfigured targets fail closed.
+
+`enabled_tools` in `DAVE_TOOLPACK_CONFIG` limits registration to the listed tools: exact names or `prefix.*` families. Without it all 102 register, as before. Every registered schema reaches the model on each agent step and the whole pack is about 11,000 tokens of descriptions, so turn on only what is configured. A malformed list, or an entry that matches no tool, registers no expansion tool. The [setup guide](TOOLS100_SETUP.md) has a read-only [starter](examples/toolpack.starter.json).
 
 Every mutation, model request, process job and UDP send requires exact-call lifecycle approval. Build approval does not automatically accept tool calls. Read-only network probes use named configured nodes/endpoints. No tool accepts credentials, a shell command, arbitrary provider URL or arbitrary remote host. A registry captures configuration and credentials in a private fingerprint; changing either invalidates pending calls and requires a fresh configured registry. Credential fingerprints are not published in the capabilities manifest.
 
@@ -16,6 +18,7 @@ The following are configuration **types**, not a runnable configuration or instr
 
 | Key | Admitted value / use |
 |---|---|
+| `enabled_tools` | List of at most 200 exact tool names or `prefix.*` families to register. Absent registers all 102; malformed or unmatched registers none. |
 | `sources` | Alias to `{path, users}`. Router paths must also fall inside `DAVE_TOOL_ROOTS`; runner paths inside its separate roots. Secret components and symlinks are refused. |
 | `runners` | Alias to `{ssh_alias, os, python, script, config, host, users, tools, capabilities}`. `os` is `posix`; `host` must equal the helper's observed hostname. Absolute Python/helper/private-config paths are fixed by the operator. |
 | `expected_models` | Node alias to expected model-name list. Without expectations, drift is unavailable, not an inferred removal. |

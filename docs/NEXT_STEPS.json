@@ -566,11 +566,36 @@
       "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
     },
     {
+      "id": "DL-15",
+      "type": "feature",
+      "sev": "P2",
+      "title": "Tools100 switch-on in the Mac app: launcher settings files and enabled_tools",
+      "detail": "The launcher now reads owner-only tool-roots.json and toolpack.json from the data folder so a Dock launch gets DAVE_TOOL_ROOTS and Tools100 settings; environment values win and bad files are skipped. DAVE_TOOLPACK_CONFIG gains enabled_tools (exact names or prefix.*), because every registered schema reaches the model on each agent step: the full pack is about 11,000 tokens of descriptions, about 13,700 to 18,300 with the launcher's other tools, against a 16,384 window. docs/TOOLS100_SETUP.md walks through roots, a 13-tool read-only starter, settings-only lanes and the token handling; tokens stay environment-only. Not installed or accepted on the Mac.",
+      "files": [
+        "scripts/macos/launch-davellm.sh",
+        "davellm_toolpack.py",
+        "docs/TOOLS100_SETUP.md",
+        "docs/examples/toolpack.starter.json"
+      ],
+      "evidence": "session",
+      "phase": 0,
+      "status": "implemented",
+      "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Built with tests; installed acceptance pending",
+          "detail": "selected_specs and launcher contract tests added; launcher block exercised under zsh with private, group-writable, symlinked and environment-overridden files. Dave switches it on by creating the files and restarting.",
+          "evidence": "session"
+        }
+      ],
+      "evidenceNote": "PR #70; offline tests only"
+    },
+    {
       "id": "DL-EVAL-01",
       "type": "decision",
       "sev": "P2",
       "title": "Prompt Lab Library Tests against DaveLLM models need a stateless eval route",
-      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Milestone 1 (/eval/chat) merged in PR #69; the Prompt Lab runner (milestone 2) is not built and no live model has been called.",
+      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Milestone 1 (/eval/chat) merged in PR #69; the Prompt Lab runner (milestone 2) is built in DaveHomeAssist/prompt-lab#131, awaiting review. No live model has been called.",
       "files": [
         "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md",
         "app.py:4587",
@@ -581,6 +606,12 @@
       "phase": 1,
       "status": "open",
       "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Milestone 2 built: Prompt Lab eval runner",
+          "detail": "DaveHomeAssist/prompt-lab#131 adds scripts/eval-davellm.mjs: the app's Enhance payload, PII gate, parseEnhancedPayload and checkTraits over /eval/chat, with format json, 10 cases and max_tokens 4096 by default; separate columns for invalid JSON, JSON without enhanced, truncated, empty and tool-call-only; the first-case stop rule; a JSON-constrained note in the report. 12 node --test cases against a fixture router; an end-to-end run through this router with a fake Ollama node sent the 2,230-character system prompt with format json and left DAVE_DATA_DIR byte-identical. Correction: the readiness review said a JSON reply without enhanced reached the raw-text fallback; parseEnhancedPayload rejects it, so the app gives it no verdict. Live run (milestone 3) stays Dave-gated.",
+          "evidence": "session"
+        },
         {
           "checkedOn": "2026-10-06",
           "title": "Readiness review of D-EVAL-04 A and D-EVAL-05 A",
