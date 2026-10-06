@@ -576,12 +576,18 @@
         "davellm_toolpack.py",
         "docs/TOOLS100_SETUP.md",
         "docs/examples/toolpack.starter.json",
-        "app.py (tool_schema_tokens, tool_run_fit_error)"
+        "app.py (tool_schema_tokens, tool_run_message_tokens, tool_run_fit_error)"
       ],
       "evidence": "session",
       "phase": 0,
       "status": "implemented",
       "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Budget counts tool calls; reply reserve must be positive",
+          "detail": "Codex review on PR #71: the message estimate read only content, so an assistant turn carrying its payload in tool_calls counted as about one token, and the legacy route accepted a zero or negative max_tokens that shrank the total. tool_run_message_tokens now adds every non-content message field as JSON at three characters per token, and AgentRunRequest.max_tokens requires at least 1 (422), as LifecycleRunRequest already did. Plain-chat prompt estimates are unchanged. Seven tests in tests/test_tool_context_budget.py; the new ones fail on the previous commit.",
+          "evidence": "session"
+        },
         {
           "checkedOn": "2026-10-06",
           "title": "Tool runs budget for tool descriptions",

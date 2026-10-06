@@ -2970,7 +2970,7 @@ class AgentRunRequest(BaseModel):
     messages: List[Dict]
     node_id: str
     model: str
-    max_tokens: int = 2048
+    max_tokens: int = Field(default=2048, ge=1)
     temperature: float = 0.7
     step_limit: int = DEFAULT_STEP_LIMIT
     error_budget: int = DEFAULT_ERROR_BUDGET
@@ -3873,6 +3873,20 @@ def tool_schema_tokens(registry: ToolRegistry) -> int:
     return max(1, len(text) // 3)
 
 
+def tool_run_message_tokens(messages: List[Dict]) -> int:
+    """Estimated tokens for a tool run's messages: the text, plus every other field as JSON.
+
+    Assistant turns can carry their payload in `tool_calls` with empty content, so those
+    fields count at the schema rate rather than not at all.
+    """
+    extra = (
+        len(json.dumps(fields, ensure_ascii=False, separators=(",", ":"), default=str)) // 3
+        for fields in ({k: v for k, v in message.items() if k not in ("role", "content")} for message in messages)
+        if fields
+    )
+    return estimate_prompt_tokens(messages, estimate_tokens) + sum(extra)
+
+
 def tool_run_fit_error(model_id: str, messages: List[Dict], schema_tokens: int, max_tokens: int) -> Optional[str]:
     """Why a tool run's first step cannot fit the window the router asks Ollama for, or None.
 
@@ -3880,7 +3894,7 @@ def tool_run_fit_error(model_id: str, messages: List[Dict], schema_tokens: int, 
     refusing here beats a run whose model never sees its tools.
     """
     window = chat_num_ctx(model_id)
-    message_tokens = estimate_prompt_tokens(messages, estimate_tokens)
+    message_tokens = tool_run_message_tokens(messages)
     if schema_tokens + message_tokens + max_tokens <= window:
         return None
     return (
