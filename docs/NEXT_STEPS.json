@@ -8,7 +8,7 @@
   "head": "Tools100 source delivered on main behind default-off gates; installed acceptance remains separate",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. A fresh one-CPU/two-GiB Dominic container passed the clean merged-source full suite: 1312 passed, one skipped, 90% DaveHarness coverage; 206 Notion tests passed at 97% branch coverage; offline qualification/load, strict types, JavaScript/Node/shell checks, npm tree and zero-vulnerability audit also passed. All required Python 3.12/3.13/3.14 PR and post-merge CI checks passed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate. DL-05 navigation source repair passed an isolated Electron fixture on Dominic; updated PR CI and merge remain pending.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. A fresh one-CPU/two-GiB Dominic container passed the clean merged-source full suite: 1312 passed, one skipped, 90% DaveHarness coverage; 206 Notion tests passed at 97% branch coverage; offline qualification/load, strict types, JavaScript/Node/shell checks, npm tree and zero-vulnerability audit also passed. All required Python 3.12/3.13/3.14 PR and post-merge CI checks passed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate. DL-05 navigation source repair passed an isolated Electron fixture on Dominic; all three required PR checks passed and PR #62 merged at 92dc458; installed/native acceptance remains separate.",
   "evidence": {
     "checkedOn": "2026-10-05",
     "sourceRevision": "0dc9f68fa4946a09f2e64a953c3c4d2ac6025452",
@@ -47,7 +47,7 @@
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; its CI and merge remain pending.",
+    "scope": "Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; all three required PR checks passed and its source merged; installed/native acceptance remains separate.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -178,18 +178,23 @@
     "consoleNavigation": {
       "checkedOn": "2026-10-06",
       "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
-      "implementationRevision": "792b75e8ffc85544c822da7fc044d31044de1281",
+      "implementationRevision": "685d478d43a10dc343e60c1f1728c9199e104ec6",
       "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/62",
       "source": "docs/design/CONSOLE_IMPLEMENTATION.md",
       "scope": "DL-05 only: semantic landmarks, active-view skip link and view-change focus. No hash/Back/title routing, dialogs, live-region changes, app restart, backend write, repeated Notion acceptance, inference, H9 or agents.",
-      "runner": "Dominic isolated Playwright Ubuntu container with Electron 44 and Xvfb; GitHub Actions CI remains pending",
+      "runner": "Dominic isolated Playwright Ubuntu container with Electron 44 and Xvfb; GitHub Actions Ubuntu Python 3.12/3.13/3.14",
       "regressions": "Pinned baseline reproduces four defects; candidate passed 24 combinations of four views, two themes and three viewports with trusted Enter/Tab input and Chromium accessibility tree on Dominic. No external requests, backend writes or inference.",
-      "deliveryGate": "All three required exact-candidate CI checks must pass before protected merge; Python 3.14 includes the new Electron navigation fixture. No installed runtime or screen-reader proof is implied.",
+      "deliveryGate": "Required PR CI 37418633159 passed on exact head 685d478, including the Python 3.14 Electron fixture. PR #62 merged to main at 92dc458019a8c1c3aeb8950ab5d7a65b1848fc7e. Installed runtime and screen-reader behavior remain unverified.",
       "retainedFailures": [
         "Initial fixture run 37398025121 failed before candidate checks: pinned-baseline Projects keyboard activation timed out, with zero unexpected/external requests. Fixture correction supplies Electron's separate Enter char event and verifies native/DOM focus and trusted keypress delivery; no application assertion or scope is relaxed.",
-        "CI run 37398623096 failed at the test-fixture Enter delivery assertion before candidate checks. Awaitable Chromium Input.dispatchKeyEvent repair passed the exact fixture on Dominic; updated PR CI is pending."
+        "CI run 37398623096 failed at the test-fixture Enter delivery assertion before candidate checks. Awaitable Chromium Input.dispatchKeyEvent repair passed the exact fixture on Dominic; updated PR CI is pending.",
+        "CI 37418008233 passed all earlier gates but still delivered no keyboard events to the renderer in the GitHub Xvfb session. Explicit Chromium Page.bringToFront before input passed on Dominic and in CI 37418633159 without weakening the trusted-key assertion.",
+        "Documentation follow-up PR #67 CI 37419336747 reproduced intermittent no-key delivery on GitHub Xvfb despite focus assertions and prior exact-head success. The fixture now disables background throttling and refocuses/retries only when zero native events arrive; trusted-key and candidate assertions remain required."
       ],
-      "installedRuntime": "Existing native app, backend, owner checkout and configuration are preserved. The source repair is not installed or activated by documentation publication."
+      "installedRuntime": "Existing native app, backend, owner checkout and configuration are preserved. The source repair is not installed or activated by documentation publication.",
+      "mergeRevision": "92dc458019a8c1c3aeb8950ab5d7a65b1848fc7e",
+      "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37418633159",
+      "sourceRevision": "92dc458019a8c1c3aeb8950ab5d7a65b1848fc7e"
     }
   },
   "shipped": [
@@ -327,7 +332,7 @@
       "type": "a11y",
       "sev": "P2",
       "title": "Implemented: named main, active skip target and view-change focus",
-      "detail": "Source repair 792b75e provides named top-level main landmarks, active-view skip targets and view-change focus. Pinned baseline defects and 24 candidate navigation cases passed in isolated Electron on Dominic on 2026-10-06. Updated PR CI and installed/native screen-reader acceptance remain separate.",
+      "detail": "Source repair 792b75e provides named top-level main landmarks, active-view skip targets and view-change focus. Pinned baseline defects and 24 candidate navigation cases passed in isolated Electron on Dominic on 2026-10-06. All three required PR checks passed and PR #62 merged to main at 92dc458. Installed/native screen-reader acceptance remains separate.",
       "files": [
         "static/index.html:74",
         "static/console.js:34",
@@ -343,8 +348,8 @@
           "evidence": "observed"
         }
       ],
-      "status": "implemented",
-      "evidenceNote": "2026-10-05 current-source repair; exact-candidate fixture and protected CI gates required; historical audit retained; installed/native and screen-reader acceptance separate"
+      "status": "resolved",
+      "evidenceNote": "2026-10-06 source merged in PR #62 after exact-head CI 37418633159 passed; installed/native and screen-reader acceptance separate"
     },
     {
       "id": "DL-06",
