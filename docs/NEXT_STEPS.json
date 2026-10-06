@@ -598,6 +598,10 @@
     {
       "path": "docs/DAVELLM_TOOL_ROADMAP.md",
       "why": "Candidate tool roadmap: 100 ideas, 21 refined families, phases and open decision DL-TOOLS-01"
+    },
+    {
+      "path": "docs/DAVELLM_TOOL_EXECUTION_PLAN.md",
+      "why": "Phased execution plan: executor contract, battle-test harness, 22 one-shot executor prompts covering all 100 roadmap tools, agent-bus lanes L06-L11"
     }
   ],
   "context": [
