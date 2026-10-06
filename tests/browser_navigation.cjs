@@ -56,6 +56,7 @@ async function waitFor(check, label) {
 
 const evaluate = (source) => window.webContents.executeJavaScript(source);
 async function key(keyCode) {
+    await window.webContents.debugger.sendCommand("Page.bringToFront");
     assert.equal(window.isFocused(), true, "fixture window must own native focus before input");
     assert.equal(await evaluate("document.hasFocus()"), true, "fixture page must own focus before input");
     const enter = keyCode === "Enter";
@@ -98,6 +99,7 @@ async function openFixture(sourceRevision) {
             window.__navigationEvents = window.__navigationEvents.slice(-12);
         }, true)`);
     window.webContents.debugger.attach("1.3");
+    await window.webContents.debugger.sendCommand("Page.bringToFront");
     return errors;
 }
 
