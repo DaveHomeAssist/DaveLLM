@@ -5,19 +5,34 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "DL-04 source repair 6ae6a08; bounded Notion acceptance retained",
+  "head": "DL-05 navigation repair 792b75e; installed acceptance separate",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "DL-04 source repair makes public health status/version-only and uses constant-time API-key comparison; required protected CI gates delivery. The installed runtime is deliberately unchanged. Completed bounded Notion acceptance is retained, not repeated. Project-completion scope is renewed, but H9 actions 55-60, native acceptance and historical UI findings remain open; inference windows are expired. Dominic SSH is currently unreachable; verification uses isolated GitHub Ubuntu CI, not a heavy Mac fallback.",
+  "statusReason": "DL-05 source repair supplies a named top-level main for every active view, a live skip target and focus movement on view changes without stealing same-view focus. Exact-candidate protected CI gates delivery, including isolated Electron keyboard/accessibility-tree fixtures. DL-04 source repair and completed bounded Notion acceptance are retained. The installed app, backend and configuration remain unchanged; native/VoiceOver acceptance, H9 and untouched historical findings remain open. Named runners are reserved for other work; verification uses isolated GitHub Ubuntu CI, not a heavy Mac fallback.",
   "evidence": {
     "checkedOn": "2026-10-05",
-    "sourceRevision": "6ae6a08ec5c543f962ca431d5d632134cc3868a6",
+    "sourceRevision": "792b75e8ffc85544c822da7fc044d31044de1281",
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness and boundedLiveAcceptance retain the separately authorized October 5 adapter evidence, not H9 qualification. securityRepair records the subsequent bounded source repair; installed-service acceptance is still separate.",
+    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness and boundedLiveAcceptance retain the separately authorized October 5 adapter evidence, not H9 qualification. securityRepair and consoleNavigation record subsequent bounded source repairs; installed-service and human acceptance are still separate.",
+    "consoleNavigation": {
+      "checkedOn": "2026-10-05",
+      "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
+      "implementationRevision": "792b75e8ffc85544c822da7fc044d31044de1281",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/62",
+      "source": "docs/design/CONSOLE_IMPLEMENTATION.md",
+      "scope": "DL-05 only: semantic landmarks, active-view skip link and view-change focus. No hash/Back/title routing, dialogs, live-region changes, app restart, backend write, repeated Notion acceptance, inference, H9 or agents.",
+      "runner": "GitHub Actions isolated Ubuntu; existing Electron 44 with Xvfb; fixture API only",
+      "regressions": "Pinned baseline reproduces nested Chat main, missing Projects main, hidden skip target and rail focus retention. Candidate matrix checks four views, two themes and three viewports with real Enter/Tab input and the Chromium accessibility tree; VM tests check same-view focus and invalid-view fallback.",
+      "deliveryGate": "All three required exact-candidate CI checks must pass before protected merge; Python 3.14 includes the new Electron navigation fixture. No installed runtime or screen-reader proof is implied.",
+      "retainedFailures": [
+        "Initial fixture run 37398025121 failed before candidate checks: pinned-baseline Projects keyboard activation timed out, with zero unexpected/external requests. Fixture correction supplies Electron's separate Enter char event and verifies native/DOM focus and trusted keypress delivery; no application assertion or scope is relaxed."
+      ],
+      "installedRuntime": "Existing native app, backend, owner checkout and configuration are preserved. The source repair is not installed or activated by documentation publication."
+    },
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -147,6 +162,7 @@
     }
   },
   "shipped": [
+    "DL-05 source repair 792b75e (PR #62): per-view main, active skip target and bounded focus movement; exact-candidate CI gates delivery, installed acceptance separate",
     "Bounded live Notion acceptance passed 2026-10-05 on Walter: read, approved append/edit, formatting preservation, rejected edit, unconfigured-page refusal and fresh readback; original content unchanged",
     "Notion readiness CLI merged (PR #58): local configuration by default, GET-only page access with --live; no write or model invocation",
     "Notion adapter v1 (read, verified append, block edit) merged: PR #48, 10-02",
@@ -158,9 +174,9 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Revalidate DL-05 landmarks and focus; decide D-006 diagnostic scope separately",
-    "why": "Dave renewed whole-project completion scope. After DL-04 source delivery, independently eligible native UI/accessibility findings must be checked against current main rather than parked behind inference permission. Keep completed Notion acceptance and healthy installed processes intact.",
-    "doneWhen": "DL-05 has current-source evidence, a bounded fix if still present and proportional fixture-backed verification. D-006 has an explicit answer to the proposed runner/model/budget/window/test-target contract before any live diagnosis or qualification.",
+    "title": "Revalidate DL-06 streaming announcements; decide D-006 separately",
+    "why": "After protected DL-05 delivery, the next independently eligible accessibility finding is DL-06. Recheck current source and use synthetic streaming fixtures; do not equate a browser accessibility-tree pass with VoiceOver, native approval-card or H9 acceptance. Preserve completed Notion acceptance and healthy installed services.",
+    "doneWhen": "DL-06 has current-source evidence, a bounded fix if still present and proportional fixture-backed verification without live inference. D-006 remains Open until Dave explicitly answers the proposed runner/model/budget/window/test-target contract.",
     "effort": "S",
     "owner": "either",
     "blockedBy": "H9 alone requires current explicit permission, a reachable qualified execution host and fresh target/context proof. The proposal names Dominic as Linux execution host (currently unreachable) and Walter as the pinned model host. Expired inference grants, a running desktop or passing offline CI cannot activate it. No service/configuration changes or repeated Notion writes are implied."
@@ -280,14 +296,14 @@
       "id": "DL-05",
       "type": "a11y",
       "sev": "P2",
-      "title": "Views lack <main>; skip link dead off Chat; focus stays on rail",
-      "detail": "Historical finding from 2026-10-02; not reverified by this package. axe: landmark-one-main on Projects/Cluster/Settings, main nested in a region on Chat; #chatPanel is hidden elsewhere; no focus move on view switch.",
+      "title": "Implemented: named main, active skip target and view-change focus",
+      "detail": "Revalidated on main 179a79c on 2026-10-05. Source repair 792b75e gives each active view one named top-level main, retargets and explicitly focuses the skip link, and moves focus only when the view changes. Pinned-baseline and candidate Electron keyboard/accessibility-tree fixtures gate protected delivery across four views, both themes and desktop/phone/ultrawide viewports. No installed-runtime, VoiceOver or full WCAG conformance claim.",
       "files": [
         "static/index.html:74",
         "static/console.js:34",
         "static/index.html:12"
       ],
-      "evidence": "doc",
+      "evidence": "code-read",
       "phase": 2,
       "history": [
         {
@@ -297,8 +313,8 @@
           "evidence": "observed"
         }
       ],
-      "status": "open",
-      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+      "status": "implemented",
+      "evidenceNote": "2026-10-05 current-source repair; exact-candidate fixture and protected CI gates required; historical audit retained; installed/native and screen-reader acceptance separate"
     },
     {
       "id": "DL-06",
@@ -666,6 +682,7 @@
     }
   ],
   "context": [
+    "2026-10-05 DL-05 was revalidated on current main 179a79c and repaired in an isolated owned checkout. Synthetic keyboard and accessibility-tree fixtures use existing Electron on isolated Ubuntu CI; Walter, Duncan and Dominic reservations are preserved, with no heavy Mac fallback or agents.",
     "2026-10-05 renewed project-completion scope applies the MUT-7 direct-instruction exception despite Focus=None. DL-04 was confirmed on current main and repaired without changing qualified tool definitions, version, configuration or installed services. Other findings remain historical until revalidated.",
     "2026-10-05 bounded live acceptance is complete on the unchanged installed runtime. The other installed models were inventoried, not all tested by inference. Preserve failed model attempts and native approval-card/H9 boundaries.",
     "2026-10-05 readiness slice uses the existing NotionSettings, read_page transport and a temporary ledger, without importing the router or initializing persistence. It follows existing validation/error handling conventions; no dependency or tool-definition changes.",
@@ -686,9 +703,14 @@
     "python -m mypy daveharness",
     "python scripts/generate_capabilities_manifest.py --check",
     "node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs tests/test_console.mjs",
+    "On an isolated Linux virtual display only: xvfb-run -a node_modules/.bin/electron --no-sandbox tests/browser_navigation.cjs; baseline commit 179a79c must be available",
     "Use .github/workflows/ci.yml for full compilation, coverage, offline qualification, syntax and dependency gates."
   ],
   "links": [
+    {
+      "label": "DL-05 navigation repair: PR #62",
+      "url": "https://github.com/DaveHomeAssist/DaveLLM/pull/62"
+    },
     {
       "label": "Notion adapter readiness: PR #58",
       "url": "https://github.com/DaveHomeAssist/DaveLLM/pull/58"
@@ -710,8 +732,8 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read current DaveLLM, workspace and machine-access instructions. Reuse an isolated owned checkout and preserve the canonical owner, installed app, configuration and healthy services. Verify DL-04 source delivery, then revalidate DL-05 landmarks, skip-link targets and focus on current main; fix confirmed issues in one bounded slice with remote fixture-backed tests and protected commit/push/CI/merge/documentation delivery. Preserve the completed bounded Notion acceptance without replaying it. Keep D-006 Open: the readiness review proposes precise diagnostic and later full-renewal contracts, but expired inference grants and whole-project completion scope activate neither. No inference, H9, delegation, credential persistence or service restart is authorized. Update only the existing project record, private board projection and shared communications log with actual evidence and the next eligible slice.",
-  "confidence": "high for inspected DL-04 source repair and retained bounded Notion backend evidence; source delivery requires exact protected CI, and installed repaired-runtime, model qualification and native approval-card acceptance remain separate",
+  "kickoffPrompt": "Read current DaveLLM, workspace and machine-access instructions. Reuse an isolated owned checkout and preserve the canonical owner, installed app, configuration and healthy services. Verify protected DL-05 source delivery, then revalidate DL-06 streaming live-region behavior on current main; fix confirmed issues in one bounded slice with synthetic streaming fixtures on a suitable nonconflicting remote runner or isolated CI and normal protected delivery. Preserve completed bounded Notion acceptance without replaying it. Keep D-006 Open: proposed diagnostic and later renewal contracts require Dave's explicit answer; expired inference grants and whole-project scope activate neither. No inference, H9, delegation, credential persistence or service restart. Update only existing project records, the private board projection and shared communications log with actual evidence and the next eligible slice.",
+  "confidence": "high for inspected DL-04/DL-05 source repairs and retained bounded Notion backend evidence; exact protected CI gates delivery, while installed repaired-runtime, screen-reader, model qualification and native approval-card acceptance remain separate",
   "unknowns": [
     "Dominic restoration and current installed inventory remain unverified after the reported disconnected cable; the initial inventory is historical, not empty or removed models.",
     "Model reliability beyond the bounded smoke; Duncan gpt-oss:20b GPU context allocation failed, and other inventoried models were not all exercised.",

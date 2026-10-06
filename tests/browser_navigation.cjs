@@ -56,8 +56,11 @@ async function waitFor(check, label) {
 
 const evaluate = (source) => window.webContents.executeJavaScript(source);
 async function key(keyCode) {
-    window.focus();
+    assert.equal(window.isFocused(), true, "fixture window must own native focus before input");
+    assert.equal(await evaluate("document.hasFocus()"), true, "fixture page must own focus before input");
     window.webContents.sendInputEvent({ type: "keyDown", keyCode });
+    // Electron sends keypress separately; native Enter activation needs CR.
+    if (keyCode === "Enter") window.webContents.sendInputEvent({ type: "char", keyCode: String.fromCharCode(13) });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode });
     await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
 }
@@ -81,6 +84,16 @@ async function openFixture(sourceRevision) {
     await window.loadURL(origin);
     await waitFor(() => ready, "fixture startup");
     assert.deepEqual(errors, [], "fixture must initialize without renderer errors");
+    window.focus();
+    window.webContents.focus();
+    await waitFor(() => window.isFocused(), "native fixture focus");
+    await waitFor(() => evaluate("document.hasFocus()"), "renderer fixture focus");
+    await evaluate(`window.__navigationEvents = [];
+        for (const type of ["keydown", "keypress", "keyup"]) document.addEventListener(type, event => {
+            window.__navigationEvents.push({ type, key: event.key, trusted: event.isTrusted, tag: event.target.tagName,
+                id: event.target.id, view: event.target.dataset.view });
+            window.__navigationEvents = window.__navigationEvents.slice(-12);
+        }, true)`);
     window.webContents.debugger.attach("1.3");
     return errors;
 }
@@ -92,7 +105,10 @@ async function mainLandmarks() {
 
 async function activateView(view) {
     await evaluate(`document.querySelector('button[data-view="${view}"]').focus()`);
+    assert.equal(await evaluate("document.activeElement.dataset.view"), view, "rail button must own DOM focus before Enter");
     await key("Enter");
+    assert.equal(await evaluate('window.__navigationEvents.some(event => event.type === "keypress" && event.key === "Enter" && event.trusted)'), true,
+        "native Enter keypress must reach the renderer");
     await waitFor(() => evaluate(`document.body.dataset.view === "${view}"`), `${view} activation`);
 }
 
@@ -193,7 +209,7 @@ app.whenReady().then(async () => {
     failed = true;
     console.error(error.stack);
     if (window && !window.isDestroyed()) {
-        console.error(JSON.stringify(await evaluate('({ view: document.body.dataset.view, focus: document.activeElement.id, title: document.title })').catch(() => ({}))));
+        console.error(JSON.stringify(await evaluate('({ view: document.body.dataset.view, focus: document.activeElement.id, tag: document.activeElement.tagName, focused: document.hasFocus(), keys: window.__navigationEvents, title: document.title })').catch(() => ({}))));
     }
     console.error(JSON.stringify({ unexpected, blocked }));
 }).finally(async () => {
