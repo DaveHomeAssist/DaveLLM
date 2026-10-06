@@ -163,7 +163,7 @@ None of the ideas below duplicates these.
 | 9 | Notion adapter v2 | 33–42 | Database query, row create and property update on allowlisted databases (`DAVE_NOTION_DBS`), search, page create, comments; every write first compares the page with the copy read earlier | Approval | L |
 | 10 | `github` | 43–46, 55, 56 | PR status, checks, review comments, failing CI logs, Pages and Vercel state | Read; issue create needs approval | M |
 | 11 | `git.write` | 47–49, 63, 100 | Lists worktrees and claims; commit and push after a secret scan and claim check; never force or rewrite history | Approval | M (highest risk) |
-| 12 | `code.check` | 50–54, 64 | Tests, lint, dependency audit, symbols, regex search; heavy jobs go to a runner picked by capability | Read_files, runner | M |
+| 12 | `code.check` | 50–54, 64 | Tests, lint, dependency audit, symbols, regex search; heavy jobs go to a runner picked by capability | Execute_process with approval for test.run, lint.run and dep.audit (they run repository-controlled code; a runner changes where, not whether); read_files for symbols and regex search | M |
 | 13 | `ops.governance` | 57–62 | Rule lookup, host access lookup, comms log read and append with readback, Next Steps read and update through the governed updater | Read; writes need approval | S–M |
 | 14 | `notify.push` | 82 | Phone notification when a long run finishes, a node drops or an approval is waiting | Write to an allowlisted topic | S |
 | 15 | `home.assistant` | 65–68 | State, history, config check, and service calls on allowlisted entities | Read; calls need approval | M |
@@ -178,13 +178,13 @@ None of the ideas below duplicates these.
 
 | Phase | Families | Reason |
 |---|---|---|
-| 1 | 1, 3, 16, 14 | Read-only and small; aimed at node reliability and unattended long runs |
+| 1 | 1, 3, 16 | Small; read-only diagnostics plus one approved write (`node.wake`); aimed at node reliability |
 | 2 | 13, 10, 20, 6 | DaveLLM follows the workspace's own operating rules; summaries work |
-| 3 | 9, 7, 15, 12 | Approved writes built on the Notion preflight pattern |
+| 3 | 9, 7, 15, 12, 14 | Approved writes built on the Notion preflight pattern; `notify.push` joins here because it is an outbound connector |
 | 4 | 4, 5, 21, 2, 11 | Inference and higher-risk writes, after the routing and evidence work |
 | 5 | 8, 17, 18, 19 | Large integrations, built when needed |
 
-Phase 1 does not conflict with the adapter-scope decision, because it adds no connector to an outside service. Notion adapter v2 (family 9) follows live write acceptance of the current adapter.
+Phase 1 is not read-only: `node.wake` changes state and keeps its approval requirement. Phase 1 adds no connector to another service; `notify.push` (family 14) needs an outbound notification transport the repository does not have, so it sits in Phase 3 behind the accepted 2026-10-05 decision to finish the Notion adapter before other-service connectors. Notion adapter v2 (family 9) follows live write acceptance of the current adapter.
 
 ## Open decision
 

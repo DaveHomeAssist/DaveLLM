@@ -7,9 +7,9 @@ Written 2026-10-05 by the tool architect and orchestrator session. It turns the 
 | Phase | Lane | Prompts | Tools covered | Gate to the next phase |
 |---|---|---|---|---|
 | 0 Harness | L06-tools-p0-harness | EX-00 | none (harness, manifest, CI lane) | `scripts/battle_test_tools.py --offline` passes on the 25 existing tools in CI |
-| 1 Cluster reliability | L07-tools-p1-cluster | EX-01, EX-03, EX-16, EX-14 | 1, 6, 7, 9, 11, 12, 69–74, 82 | all four merged; `--live` read-only run on the real cluster recorded in the lane |
+| 1 Cluster reliability | L07-tools-p1-cluster | EX-01, EX-03, EX-16 | 1, 6, 7, 9, 11, 12, 69–74 | all four merged; `--live` read-only run on the real cluster recorded in the lane |
 | 2 Governance and history | L08-tools-p2-governance | EX-13, EX-10, EX-20, EX-06 | 17, 27, 28, 43–46, 55–62, 93, 94, 97–99 | merged; conversation summaries verified on a 12-message chat |
-| 3 Approved writes | L09-tools-p3-writes | EX-09, EX-07, EX-15, EX-12 | 21, 22, 25, 26, 31–42, 50–54, 64–68 | merged; every write tool shows verified/failed/unknown in the live run |
+| 3 Approved writes | L09-tools-p3-writes | EX-09, EX-07, EX-15, EX-12, EX-14 | 21, 22, 25, 26, 31–42, 50–54, 64–68, 82 | merged; every write tool shows verified/failed/unknown in the live run |
 | 4 Inference and high risk | L10-tools-p4-inference | EX-04, EX-05, EX-21, EX-02, EX-11 | 2–5, 8, 10, 13–16, 18–20, 47–49, 63, 100 | merged; inference tools stay behind `DAVE_ENABLE_INFERENCE_TOOLS`; git.push decision recorded |
 | 5 Large integrations | L11-tools-p5-integrations | EX-08, EX-17, EX-18, EX-19 | 23, 24, 29, 30, 75–81, 83–92, 95, 96 | each merged separately; none required for the others |
 
@@ -113,7 +113,7 @@ Live check (read-only, allowed): host.disk and host.pressure on the Mac from a t
 Allowed gated actions: none. Report as in §2.
 ```
 
-### EX-14 — notify.push (Phase 1, lane L07; tool 82)
+### EX-14 — notify.push (Phase 3, lane L09; tool 82)
 
 ```text
 Add notify.push to DaveHomeAssist/DaveLLM. Apply the executor contract in docs/DAVELLM_TOOL_EXECUTION_PLAN.md §2 with branch codex/tools-ex14-notify, flag DAVE_ENABLE_NOTIFY_TOOLS, module davellm_notify.py.
