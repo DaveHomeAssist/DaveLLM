@@ -416,6 +416,15 @@
       ],
       "SHELL_OUTPUT_LIMIT": 2000
     },
+    "davellm_toolpack": {
+      "TOOLPACK_MAX_ARRAY": 50,
+      "TOOLPACK_MAX_REFS": 200,
+      "TOOLPACK_MAX_RUNS": 64,
+      "TOOLPACK_OUTPUT_BYTES": 49152,
+      "TOOLPACK_RESPONSE_BYTES": 524288,
+      "TOOLPACK_TIMEOUT_SECONDS": 60,
+      "TOOLPACK_VERSION": "tools100.v1"
+    },
     "davellm_web": {
       "HTML_TYPES": [
         "text/html",
@@ -481,6 +490,114 @@
         "shell.exec"
       ]
     },
+    "DAVE_ENABLE_TOOLPACK": {
+      "default": false,
+      "description": "Registers the 100 separately bounded expansion tools. Honored only with DAVE_ENABLE_TOOLS; external targets still require named operator configuration.",
+      "tools": [
+        "agent.claim.check",
+        "artnet.discover",
+        "audio.transcribe",
+        "av.inventory.lookup",
+        "calc.eval",
+        "calendar.list",
+        "calendar.suggest_time",
+        "chat.export",
+        "chat.read",
+        "chat.summarize",
+        "claude.memory.read",
+        "cluster.benchmark",
+        "code.grep_regex",
+        "code.symbols",
+        "comms.log.append",
+        "comms.log.read",
+        "contacts.lookup",
+        "data.query",
+        "dep.audit",
+        "diagram.render",
+        "dmx.patch_check",
+        "docker.logs",
+        "docker.ps",
+        "docs.ask",
+        "drive.read",
+        "drive.search",
+        "eval.run",
+        "gh.ci.logs",
+        "gh.issue.create",
+        "gh.pr.comments",
+        "gh.pr.status",
+        "git.commit",
+        "git.push",
+        "git.worktrees",
+        "git.write_preview",
+        "glossary.lookup",
+        "gmail.draft",
+        "gmail.search",
+        "ha.config.check",
+        "ha.history",
+        "ha.service.call",
+        "ha.state.get",
+        "image.describe",
+        "json.validate",
+        "lint.run",
+        "mac.disk.report",
+        "mac.pressure",
+        "machine.access.lookup",
+        "memory.propose",
+        "memory.recall",
+        "midi.map.lookup",
+        "model.ask",
+        "model.consensus",
+        "model.delete",
+        "model.inventory_drift",
+        "model.pull",
+        "model.unload",
+        "model.warm",
+        "nextsteps.read",
+        "nextsteps.update",
+        "node.ctx_check",
+        "node.diagnose",
+        "node.disk",
+        "node.wake",
+        "notify.push",
+        "notion.comment.add",
+        "notion.db.create_row",
+        "notion.db.query",
+        "notion.db.update_props",
+        "notion.inbox.triage",
+        "notion.log_session",
+        "notion.page.create",
+        "notion.page.diff",
+        "notion.routines.read",
+        "notion.search",
+        "ocr.image",
+        "ollama.ps",
+        "ollama.version_check",
+        "osc.send",
+        "pages.deploy_status",
+        "pdf.read",
+        "perf.read",
+        "project.brain.pin",
+        "project.notepad.snapshot",
+        "project.notepad.write",
+        "prompt.lint",
+        "resolume.status",
+        "route.suggest",
+        "rules.lookup",
+        "runner.select",
+        "secret.scan",
+        "service.health",
+        "setlist.parse",
+        "tailscale.status",
+        "test.run",
+        "time.convert",
+        "token.count",
+        "vector.index",
+        "vector.search",
+        "vercel.deploy_status",
+        "video.gap_find",
+        "video.probe"
+      ]
+    },
     "DAVE_ENABLE_TOOLS": {
       "default": false,
       "description": "Turns on tool execution and the core tools.",
@@ -492,6 +609,16 @@
         "web.fetch"
       ]
     },
+    "DAVE_ENABLE_TOOL_INFERENCE": {
+      "default": false,
+      "description": "Separate call-time opt-in for approved tool inference. Does not register additional tools or authorize H9.",
+      "tools": []
+    },
+    "DAVE_ENABLE_TOOL_JOBS": {
+      "default": false,
+      "description": "Separate call-time opt-in for configured SSH runner jobs. Does not register additional tools or authorize agents.",
+      "tools": []
+    },
     "DAVE_TOOL_ROOTS": {
       "default": [],
       "description": "JSON array of absolute folders that file and Git tools may use.",
@@ -501,9 +628,111 @@
   "generated_by": "scripts/generate_capabilities_manifest.py",
   "host": {
     "async_handler_allowlist": [
+      "agent.claim.check",
+      "artnet.discover",
+      "audio.transcribe",
+      "av.inventory.lookup",
+      "calc.eval",
+      "calendar.list",
+      "calendar.suggest_time",
+      "chat.export",
+      "chat.read",
+      "chat.summarize",
+      "claude.memory.read",
+      "cluster.benchmark",
+      "code.grep_regex",
+      "code.symbols",
+      "comms.log.append",
+      "comms.log.read",
+      "contacts.lookup",
+      "data.query",
+      "dep.audit",
+      "diagram.render",
+      "dmx.patch_check",
+      "docker.logs",
+      "docker.ps",
+      "docs.ask",
+      "drive.read",
+      "drive.search",
+      "eval.run",
+      "gh.ci.logs",
+      "gh.issue.create",
+      "gh.pr.comments",
+      "gh.pr.status",
+      "git.commit",
+      "git.push",
+      "git.worktrees",
+      "git.write_preview",
+      "glossary.lookup",
+      "gmail.draft",
+      "gmail.search",
+      "ha.config.check",
+      "ha.history",
+      "ha.service.call",
+      "ha.state.get",
+      "image.describe",
+      "json.validate",
+      "lint.run",
+      "mac.disk.report",
+      "mac.pressure",
+      "machine.access.lookup",
+      "memory.propose",
+      "memory.recall",
+      "midi.map.lookup",
+      "model.ask",
+      "model.consensus",
+      "model.delete",
+      "model.inventory_drift",
+      "model.pull",
+      "model.unload",
+      "model.warm",
+      "nextsteps.read",
+      "nextsteps.update",
+      "node.ctx_check",
+      "node.diagnose",
+      "node.disk",
+      "node.wake",
+      "notify.push",
       "notion.block.update",
+      "notion.comment.add",
+      "notion.db.create_row",
+      "notion.db.query",
+      "notion.db.update_props",
+      "notion.inbox.triage",
+      "notion.log_session",
       "notion.page.append",
+      "notion.page.create",
+      "notion.page.diff",
       "notion.page.read",
+      "notion.routines.read",
+      "notion.search",
+      "ocr.image",
+      "ollama.ps",
+      "ollama.version_check",
+      "osc.send",
+      "pages.deploy_status",
+      "pdf.read",
+      "perf.read",
+      "project.brain.pin",
+      "project.notepad.snapshot",
+      "project.notepad.write",
+      "prompt.lint",
+      "resolume.status",
+      "route.suggest",
+      "rules.lookup",
+      "runner.select",
+      "secret.scan",
+      "service.health",
+      "setlist.parse",
+      "tailscale.status",
+      "test.run",
+      "time.convert",
+      "token.count",
+      "vector.index",
+      "vector.search",
+      "vercel.deploy_status",
+      "video.gap_find",
+      "video.probe",
       "web.fetch",
       "web.read",
       "web.search"
@@ -708,6 +937,351 @@
     }
   },
   "tools": {
+    "agent.claim.check": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read only claim presence/age in an admitted repository; no takeover.",
+      "family": "agent",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "repository": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "artnet.discover": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Run bounded approved Art-Net discovery on an operator-allowlisted interface recipe.",
+      "family": "artnet",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "interface": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "interface"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "audio.transcribe": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Run bounded transcription on an approved Whisper-capable runner.",
+      "family": "audio",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "language": {
+            "maxLength": 20,
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "path",
+          "language"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "av.inventory.lookup": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Look up equipment in an operator-configured nonsecret AV inventory.",
+      "family": "av",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "calc.eval": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Evaluate bounded arithmetic AST and explicit unit conversion; never eval or function calls.",
+      "family": "calc",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expression": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "from_unit": {
+            "maxLength": 20,
+            "minLength": 0,
+            "type": "string"
+          },
+          "to_unit": {
+            "maxLength": 20,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "expression",
+          "from_unit",
+          "to_unit"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "calendar.list": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read events from one configured calendar in a bounded time window.",
+      "family": "calendar",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "calendar": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "end": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "start": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "calendar",
+          "start",
+          "end",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "calendar.suggest_time": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Suggest a free interval from bounded configured calendar events; never books.",
+      "family": "calendar",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "calendar": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "end": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minutes": {
+            "maximum": 480,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "start": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "calendar",
+          "start",
+          "end",
+          "minutes"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "chat.export": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Return bounded owner-scoped Markdown in the result; no file is written.",
+      "family": "chat",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "chat.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded user/assistant turns from a conversation owned by this run's user.",
+      "family": "chat",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation",
+          "offset",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
     "chat.search": {
       "approval_required": false,
       "async_handler": false,
@@ -746,6 +1320,135 @@
       ],
       "timeout_seconds": 10.0
     },
+    "chat.summarize": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved summary of the run owner's conversation on an installed model; no persistence.",
+      "family": "chat",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "max_tokens": {
+            "maximum": 512,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation",
+          "node",
+          "model",
+          "max_tokens"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "claude.memory.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a named owner-allowlisted memory file; never implicit home-directory access.",
+      "family": "claude",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "cluster.benchmark": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved bounded throughput measurement; never H9 qualification.",
+      "family": "cluster",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_tokens": {
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model",
+          "text",
+          "max_tokens"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
     "cluster.status": {
       "approval_required": false,
       "async_handler": false,
@@ -765,6 +1468,615 @@
         "DAVE_ENABLE_EXTENDED_TOOLS"
       ],
       "timeout_seconds": 10.0
+    },
+    "code.grep_regex": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Run bounded regex matching in an isolated runner process, never in the router event loop.",
+      "family": "code",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "pattern": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "source",
+          "pattern"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "code.symbols": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read Python functions/classes from an admitted bounded UTF-8 source file.",
+      "family": "code",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "comms.log.append": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Append through an approved runner recipe with concurrent preservation and readback.",
+      "family": "comms",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "source",
+          "text",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "comms.log.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded current-day entries from an owner-allowlisted log source.",
+      "family": "comms",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "contacts.lookup": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded contact names/emails with router-held Google OAuth.",
+      "family": "contacts",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "data.query": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Query bounded CSV/JSON records with isolated read-only SQL; extension/network/file access disabled.",
+      "family": "data",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sql": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "path",
+          "sql"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "dep.audit": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Run an operator-defined remote dependency audit recipe; network access is part of approval.",
+      "family": "dep",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "recipe": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "recipe"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "diagram.render": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Render Mermaid to an SVG artifact on an approved isolated runner; file-producing effect.",
+      "family": "diagram",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "output": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "source",
+          "output"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "dmx.patch_check": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Validate DMX footprints and overlaps without sending network data.",
+      "family": "dmx",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "fixtures": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "maximum": 512,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "footprint": {
+                  "maximum": 512,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "name": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "universe": {
+                  "maximum": 32768,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "universe",
+                "address",
+                "footprint"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "fixtures"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "docker.logs": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded redacted logs for one configured container.",
+      "family": "docker",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "container": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "lines": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "container",
+          "lines"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "docker.ps": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read only operator-allowlisted containers through an approved read recipe.",
+      "family": "docker",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "docs.ask": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved folder-grounded answer from allowlisted source excerpts with citations; no recursive tools.",
+      "family": "docs",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_tokens": {
+            "maximum": 512,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "query",
+          "node",
+          "model",
+          "max_tokens"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "drive.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read metadata or bounded plain-text export of one configured Drive document.",
+      "family": "drive",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "drive.search": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Search only an operator-configured Drive folder; query escaped, no unrestricted Drive query syntax.",
+      "family": "drive",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "folder": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "folder",
+          "query",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "eval.run": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved single reference-prompt comparison with explicit expected text; not H9.",
+      "family": "eval",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "max_tokens": {
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model",
+          "text",
+          "expected",
+          "max_tokens"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
     },
     "file.append": {
       "approval_required": true,
@@ -1070,6 +2382,220 @@
       ],
       "timeout_seconds": 10.0
     },
+    "gh.ci.logs": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded job log tail; signed public downloads are DNS-pinned and receive no GitHub credentials.",
+      "family": "gh",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "job": {
+            "maximum": 999999999999,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "repository": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "job",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "gh.issue.create": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Create one issue after approval in a configured repository; verify by readback.",
+      "family": "gh",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "repository": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "title",
+          "body"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "gh.pr.comments": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded review comments on an allowlisted repository PR.",
+      "family": "gh",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "number": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "repository": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "number",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "gh.pr.status": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read status/checks of a PR in an operator-allowlisted repository.",
+      "family": "gh",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "number": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "repository": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "number"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "git.commit": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved named-file-only commit recipe; hooks disabled, secret scan and exact diff required.",
+      "family": "git",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "message": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "repository": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "repository",
+          "files",
+          "message",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
     "git.diff": {
       "approval_required": false,
       "async_handler": false,
@@ -1175,6 +2701,53 @@
       ],
       "timeout_seconds": 10.0
     },
+    "git.push": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved configured remote/branch push recipe; no force, history rewrite or caller URL.",
+      "family": "git",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "branch": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expected_head": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "repository": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "repository",
+          "branch",
+          "expected_head"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
     "git.show": {
       "approval_required": false,
       "async_handler": false,
@@ -1254,6 +2827,514 @@
         "DAVE_ENABLE_EXTENDED_TOOLS"
       ],
       "timeout_seconds": 10.0
+    },
+    "git.worktrees": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "List bounded admitted Git worktrees and claim presence without external paths.",
+      "family": "git",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "repository": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "git.write_preview": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a named-file Git diff and digest for exact commit approval; no staging.",
+      "family": "git",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "items": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "repository": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "files"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "glossary.lookup": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Look up a term in the operator's nonsecret configured glossary.",
+      "family": "glossary",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "term": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "term"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "gmail.draft": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Create draft only after approval; never sends email; verify draft ID by readback.",
+      "family": "gmail",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subject": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "to": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "body"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "gmail.search": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded mailbox metadata with router-held OAuth; no send operation exists.",
+      "family": "gmail",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "ha.config.check": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Request Home Assistant config validation after approval, never reloads configuration.",
+      "family": "ha",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "ha.history": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded recent history of an allowlisted entity.",
+      "family": "ha",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "since": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "since"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "ha.service.call": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Call one allowlisted service on one allowlisted entity after approval; no templates or arbitrary service data.",
+      "family": "ha",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "service": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "service"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "ha.state.get": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read one operator-allowlisted Home Assistant entity.",
+      "family": "ha",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "image.describe": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved bounded vision request to an installed model with an admitted image; no recursive tools.",
+      "family": "image",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_tokens": {
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model",
+          "path",
+          "text",
+          "max_tokens"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "json.validate": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Validate bounded JSON against the existing harness schema subset; unsupported keywords refused.",
+      "family": "json",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "schema": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "document",
+          "schema"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "lint.run": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Run an operator-defined remote lint recipe with a bounded capture.",
+      "family": "lint",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "recipe": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "recipe"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "mac.disk.report": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded disk/mount observations from an explicitly approved Mac-only recipe.",
+      "family": "mac",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "mac.pressure": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded memory/swap/process observations through an explicitly approved Mac-only recipe.",
+      "family": "mac",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "machine.access.lookup": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a named nonsecret access-guide section from an owner-allowlisted source.",
+      "family": "machine",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "machine": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "machine"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
     },
     "md.outline": {
       "approval_required": false,
@@ -1339,6 +3420,619 @@
       ],
       "timeout_seconds": 10.0
     },
+    "memory.propose": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Append a proposal to the run's project notepad after approval; does not silently install memory.",
+      "family": "memory",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "memory.recall": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Search only memory sources allowlisted for the current run owner.",
+      "family": "memory",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "query",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "midi.map.lookup": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Look up a control in an operator-configured MIDI map.",
+      "family": "midi",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "control": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "control"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "model.ask": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved isolated second opinion with a bounded output; cannot run tools or recurse.",
+      "family": "model",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_tokens": {
+            "maximum": 512,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model",
+          "text",
+          "max_tokens"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "model.consensus": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved two or three distinct-model answers, not a claim of correctness.",
+      "family": "model",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "max_tokens": {
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "targets": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "node": {
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "node",
+                "model"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "targets",
+          "text",
+          "max_tokens"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "model.delete": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Delete one installed model after exact approval and inventory validation.",
+      "family": "model",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "model.inventory_drift": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Compare installed models with operator-configured expected inventory.",
+      "family": "model",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "model.pull": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Pull one operator-allowlisted model; approval required, no automatic retries.",
+      "family": "model",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "model.unload": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Unload one installed model with keep_alive zero after approval.",
+      "family": "model",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "model.warm": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Preload one installed model after approval; bounded, no question inference.",
+      "family": "model",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "nextsteps.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read one named owner-allowlisted project record, never the cross-project board implicitly.",
+      "family": "nextsteps",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "nextsteps.update": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved governed updater recipe; --check and peer-project preservation required.",
+      "family": "nextsteps",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "record_json": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "source",
+          "record_json",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "node.ctx_check": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read observed loaded context separately from router-requested context; missing observations are Unknown.",
+      "family": "node",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "node.diagnose": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded node service, inventory, latency and version evidence; timeout means Unknown.",
+      "family": "node",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "node.disk": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read an approved runner's disk and configured mount evidence.",
+      "family": "node",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "node.wake": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Send one Wake-on-LAN packet to an operator-configured target after approval.",
+      "family": "node",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "notify.push": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Send one approved redacted message to a configured ntfy destination; deduplicated and rate limited.",
+      "family": "notify",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "destination",
+          "text"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
     "notion.block.update": {
       "approval_required": true,
       "async_handler": true,
@@ -1407,6 +4101,246 @@
         "DAVE_ENABLE_NOTION_TOOLS"
       ],
       "timeout_seconds": 60.0
+    },
+    "notion.comment.add": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Add one comment on a configured page after snapshot freshness and approval.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "page": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "text",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "notion.db.create_row": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Create one row in a configured data source after schema snapshot freshness and approval.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "properties_json": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "properties_json",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "notion.db.query": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Query one configured data source; bounded refs and property snapshots.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "database",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "notion.db.update_props": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Patch only named row properties; run ref, fresh snapshot, approval and readback required.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "properties_json": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "row": {
+            "maxLength": 20,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "row",
+          "properties_json",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "notion.inbox.triage": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Propose inbox routing from configured data source rows; no mutation.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "database",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "notion.log_session": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Create a session row in the configured logging data source after approval and readback.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "properties_json": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "properties_json",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
     },
     "notion.page.append": {
       "approval_required": true,
@@ -1478,6 +4412,76 @@
       ],
       "timeout_seconds": 60.0
     },
+    "notion.page.create": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Create one child under a configured parent; no arbitrary parent ID.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "page": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "title",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "notion.page.diff": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Compare a configured page's fresh metadata with this run's earlier snapshot.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "page": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
     "notion.page.read": {
       "approval_required": false,
       "async_handler": true,
@@ -1507,6 +4511,319 @@
         "DAVE_ENABLE_NOTION_TOOLS"
       ],
       "timeout_seconds": 30.0
+    },
+    "notion.routines.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read only a configured routines data source; never infer a database ID.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "database",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "notion.search": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Search only configured pages/databases with run-local refs; no workspace-wide enumeration.",
+      "family": "notion",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "ocr.image": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Run bounded OCR on an approved capable runner and admitted image.",
+      "family": "ocr",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "ollama.ps": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read loaded models, observed residency and expiry on a configured node.",
+      "family": "ollama",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "ollama.version_check": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read local version; public latest comparison requires explicit compare_latest true.",
+      "family": "ollama",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "compare_latest": {
+            "type": "boolean"
+          },
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "compare_latest"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "osc.send": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Send one approved OSC string to a configured target/address; no caller host or port.",
+      "family": "osc",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "address",
+          "value"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "pages.deploy_status": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read GitHub Pages build status; never starts a deployment.",
+      "family": "pages",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "repository": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "pdf.read": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read PDF text through a bounded isolated parsing recipe on an approved runner.",
+      "family": "pdf",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "pages": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "start_page": {
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runner",
+          "path",
+          "start_page",
+          "pages"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "perf.read": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded owner-scoped performance/cost records, never unrestricted database SQL.",
+      "family": "perf",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
     },
     "project.artifacts": {
       "approval_required": false,
@@ -1547,6 +4864,41 @@
       ],
       "timeout_seconds": 10.0
     },
+    "project.brain.pin": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Pin a run-owned BRAIN fact after exact approval and captured-revision freshness check.",
+      "family": "project",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "expected_revision"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
     "project.brain.read": {
       "approval_required": false,
       "async_handler": false,
@@ -1586,6 +4938,300 @@
         "DAVE_ENABLE_EXTENDED_TOOLS"
       ],
       "timeout_seconds": 10.0
+    },
+    "project.notepad.snapshot": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read run-owned notepad and its freshness digest for an approved write proposal.",
+      "family": "project",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "project.notepad.write": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Replace run-owned plain notepad only when expected digest still matches, then read back.",
+      "family": "project",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_digest": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 20000,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "expected_digest"
+        ],
+        "type": "object"
+      },
+      "permission": "write",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "prompt.lint": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Report deterministic PRMT placeholder/scaffolding findings; no model call.",
+      "family": "prompt",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "resolume.status": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read a configured Resolume composition endpoint; no transport changes.",
+      "family": "resolume",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "service"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "route.suggest": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Suggest only currently installed node/model pairs; advisory, never executes.",
+      "family": "route",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "rules.lookup": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read one rule ID from a named owner-allowlisted governance source.",
+      "family": "rules",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "rule": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "rule"
+        ],
+        "type": "object"
+      },
+      "permission": "read_files",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "runner.select": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Suggest only configured runner capability records; no dispatch or agents.",
+      "family": "runner",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "capability"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "secret.scan": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Detect common credential families in supplied text; returns locations/kinds, never matched secrets.",
+      "family": "secret",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "service.health": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Probe one named operator-configured health endpoint; caller supplies no URL.",
+      "family": "service",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "service"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "setlist.parse": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Parse bounded setlist lines and optional minute:second durations.",
+      "family": "setlist",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
     },
     "shell.exec": {
       "approval_required": true,
@@ -1644,6 +5290,333 @@
         "DAVE_ENABLE_TOOLS"
       ],
       "timeout_seconds": 10.0
+    },
+    "tailscale.status": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read bounded, address-redacted peer presence through a configured recipe.",
+      "family": "tailscale",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "test.run": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Run one preconfigured remote test recipe; caller cannot choose a command.",
+      "family": "test",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "recipe": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "recipe"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "time.convert": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Convert an offset-aware ISO timestamp to an IANA timezone; ambiguous naive times refused.",
+      "family": "time",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "timestamp": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "zone": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp",
+          "zone"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "token.count": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Estimate text tokens and compare with a configured node's advisory limit; not tokenizer-exact.",
+      "family": "token",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "node"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "vector.index": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Approved indexing recipe on an allowlisted capable runner and source.",
+      "family": "vector",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "source"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "vector.search": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Search owner-scoped conversation vectors and the configured dedicated document index; no inference.",
+      "family": "vector",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "vercel.deploy_status": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Read deployments of one configured Vercel project.",
+      "family": "vercel",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "permission": "public_network",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "video.gap_find": {
+      "approval_required": false,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Find gaps/overlaps between supplied take intervals; no media decoding.",
+      "family": "video",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "takes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "end": {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "start": {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "start",
+                "end"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "takes"
+        ],
+        "type": "object"
+      },
+      "permission": "read",
+      "preflight": false,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
+    },
+    "video.probe": {
+      "approval_required": true,
+      "async_handler": true,
+      "cancellation": "bounded",
+      "context_handler": false,
+      "description": "Run bounded ffprobe metadata extraction on an approved media runner.",
+      "family": "video",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner",
+          "path"
+        ],
+        "type": "object"
+      },
+      "permission": "execute_process",
+      "preflight": true,
+      "requires_flags": [
+        "DAVE_ENABLE_TOOLS",
+        "DAVE_ENABLE_TOOLPACK"
+      ],
+      "timeout_seconds": 60
     },
     "web.fetch": {
       "approval_required": false,

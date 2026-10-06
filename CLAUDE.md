@@ -102,7 +102,7 @@ GitHub Actions runs these checks on every push to `main` and every pull request 
 Required checks after relevant changes:
 
 ```bash
-python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py davellm_ollama.py davellm_web.py davellm_public_http.py davellm_node_profiles.py davellm_notion.py scripts/project_context_cli.py tool_executor.py
+python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py davellm_ollama.py davellm_web.py davellm_public_http.py davellm_node_profiles.py davellm_notion.py davellm_toolpack.py davellm_toolpack_catalog.py davellm_toolpack_cluster.py davellm_toolpack_http.py davellm_toolpack_jobs.py davellm_toolpack_local.py davellm_toolpack_notion.py davellm_toolpack_runner.py scripts/tool_job_runner.py scripts/project_context_cli.py tool_executor.py
 python -m compileall -q daveharness
 python -m mypy daveharness
 python -m pytest -q

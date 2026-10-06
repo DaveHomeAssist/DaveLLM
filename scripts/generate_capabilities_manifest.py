@@ -43,7 +43,7 @@ JSON_NAME = "DAVEHARNESS_CAPABILITIES.json"
 MARKDOWN_NAME = "DAVEHARNESS_CAPABILITIES.md"
 COMMAND = "python scripts/generate_capabilities_manifest.py"
 TOOL_MODULES = ("davellm_shell", "davellm_files", "davellm_markdown", "davellm_git", "davellm_native_tools",
-                "davellm_edit", "davellm_web", "davellm_notion")
+                "davellm_edit", "davellm_web", "davellm_notion", "davellm_toolpack")
 FLAGS = {
     "DAVE_ENABLE_TOOLS": "Turns on tool execution and the core tools.",
     "DAVE_ENABLE_SHELL_TOOL": "Registers shell.exec. Execution still needs DAVE_ENABLE_TOOLS.",
@@ -57,12 +57,15 @@ FLAGS = {
         "Honored only with DAVE_ENABLE_TOOLS."
     ),
     "DAVE_TOOL_ROOTS": "JSON array of absolute folders that file and Git tools may use.",
+    "DAVE_ENABLE_TOOLPACK": "Registers the 100 separately bounded expansion tools. Honored only with DAVE_ENABLE_TOOLS; external targets still require named operator configuration.",
+    "DAVE_ENABLE_TOOL_INFERENCE": "Separate call-time opt-in for approved tool inference. Does not register additional tools or authorize H9.",
+    "DAVE_ENABLE_TOOL_JOBS": "Separate call-time opt-in for configured SSH runner jobs. Does not register additional tools or authorize agents.",
 }
 # DAVE_ENABLE_TOOLS alone gives the core tools. Each optional flag is then turned
 # on by itself, so a tool lists only the flags it needs; turning every flag on
 # gives the full catalog.
 BASE_FLAG = "DAVE_ENABLE_TOOLS"
-OPTIONAL_FLAGS = ("DAVE_ENABLE_SHELL_TOOL", "DAVE_ENABLE_EXTENDED_TOOLS", "DAVE_ENABLE_NOTION_TOOLS")
+OPTIONAL_FLAGS = ("DAVE_ENABLE_SHELL_TOOL", "DAVE_ENABLE_EXTENDED_TOOLS", "DAVE_ENABLE_NOTION_TOOLS", "DAVE_ENABLE_TOOLPACK")
 ALL_FLAGS = "all"
 HOST_LIMITS = (
     "MAX_ACTIVE_HARNESS_RUNS", "MAX_HARNESS_INPUT_BYTES", "MAX_HARNESS_MODEL_RESPONSE_BYTES",
@@ -197,6 +200,9 @@ def build_manifest() -> dict[str, Any]:
             "DAVE_ENABLE_EXTENDED_TOOLS": defaults.EXTENDED_TOOLS_ENABLED,
             "DAVE_ENABLE_NOTION_TOOLS": defaults.NOTION_TOOLS_ENABLED,
             "DAVE_TOOL_ROOTS": [str(root) for root in defaults.TOOL_ROOTS],
+            "DAVE_ENABLE_TOOLPACK": False,
+            "DAVE_ENABLE_TOOL_INFERENCE": False,
+            "DAVE_ENABLE_TOOL_JOBS": False,
         }
         base = {BASE_FLAG: "true"}
         routers = {
@@ -236,13 +242,13 @@ def build_manifest() -> dict[str, Any]:
                     "max_bytes": full.HARNESS_STORE.max_bytes,
                     "ttl_seconds": full.HARNESS_STORE.ttl_seconds,
                 },
-                "async_handler_allowlist": sorted(full.ASYNC_TOOL_HANDLER_ALLOWLIST),
+                "async_handler_allowlist": sorted(full.ASYNC_TOOL_HANDLER_ALLOWLIST | frozenset(name for name, tool in tools.items() if tool["async_handler"])),
             },
             "routes": tool_routes(full),
             "constants": {},
         }
         harness_modules = sorted(f"daveharness.{path.stem}" for path in (ROOT / "daveharness").glob("*.py")
-                                 if not path.stem.startswith("_"))
+                                 if not path.stem.startswith(("_", ".")))
         for module in (*harness_modules, *TOOL_MODULES):
             constants = public_constants(module)
             if constants:

@@ -5,19 +5,44 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "DL-04 source repair 6ae6a08; bounded Notion acceptance retained",
+  "head": "Tools100 final source gates pass on current main; protected PR and CI delivery next",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "DL-04 source repair makes public health status/version-only and uses constant-time API-key comparison; required protected CI gates delivery. The installed runtime is deliberately unchanged. Completed bounded Notion acceptance is retained, not repeated. Project-completion scope is renewed, but H9 actions 55-60, native acceptance and historical UI findings remain open; inference windows are expired. Dominic SSH is currently unreachable; verification uses isolated GitHub Ubuntu CI, not a heavy Mac fallback.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and reconciled with current main. A fresh one-CPU/two-GiB Dominic container passed the clean merged-source full suite: 1312 passed, one skipped, 90% DaveHarness coverage; 206 Notion tests passed at 97% branch coverage; offline qualification/load, strict types, JavaScript/Node/shell checks, npm tree and zero-vulnerability audit also passed. Protected PR/CI/merge delivery remains pending. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate.",
   "evidence": {
     "checkedOn": "2026-10-05",
-    "sourceRevision": "6ae6a08ec5c543f962ca431d5d632134cc3868a6",
+    "sourceRevision": "2c98ada772e4110897697958c4b124c6c39d1d3a",
+    "tools100": {
+      "checkedOn": "2026-10-05",
+      "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
+      "implementationRevision": "3c12673878dc282a6f06f0c1f700f00bbcdc2d92",
+      "testedMergeRevision": "2c98ada772e4110897697958c4b124c6c39d1d3a",
+      "integratedMainRevision": "e9dc44a91c8dedeba76c46e57074505a8d071072",
+      "candidateBranch": "codex/tools100",
+      "candidateCount": 100,
+      "readOnlyCompanions": 2,
+      "allFlagsCatalogCount": 128,
+      "runner": "Dominic, isolated Ubuntu container, Python 3.12; one CPU and two GiB memory",
+      "scope": "Serial tools-only build. Existing qualified, extended and Notion v1 provenance preserved; no harness redesign, subagents, frozen navigation work, inference, H9 or live external effects.",
+      "verification": "Initial 230 and expanded 242 checks passed. Historical full snapshot: 1299 passed, one skipped, three failures in 548.65 seconds. A 279-test hardened checkpoint passed after correcting all three cases. After merging current main, the clean final suite passed 1312 tests with one skip in 562.62 seconds and 90% DaveHarness coverage; 206 Notion tests passed with 97% branch coverage. Compilation, generated-manifest checks, 24-case offline qualification, bounded load measurement, strict mypy across 17 source files, JavaScript and shell syntax, 15 Node regressions, exact Electron dependency tree and npm audit with zero vulnerabilities all pass. Protected GitHub CI remains required.",
+      "checkpointTestsPassed": 279,
+      "fullSnapshotPassed": 1299,
+      "fullSnapshotFailed": 3,
+      "fullSnapshotSkipped": 1,
+      "finalFullPassed": 1312,
+      "finalFullFailed": 0,
+      "finalFullSkipped": 1,
+      "hold": "Restart hold lifted by the current explicit resume. Protected source delivery is active; no installed-runtime rollout, inference, H9 or live effect is authorized.",
+      "defaultFlags": "Toolpack, secondary inference and runner jobs are separately default off",
+      "liveAcceptance": "Not run. Installed configuration and healthy services preserved. Provider credentials, target allowlists, runner recipes and POSIX helper installation are deployment inputs; Windows helper jobs fail closed.",
+      "source": "docs/TOOLS100.md"
+    },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness and boundedLiveAcceptance retain the separately authorized October 5 adapter evidence, not H9 qualification. securityRepair records the subsequent bounded source repair; installed-service acceptance is still separate.",
+    "scope": "Tools100 source is current at testedMergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates pass; protected GitHub CI/merge and installed Tools100 acceptance remain separate.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -158,12 +183,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Revalidate DL-05 landmarks and focus; decide D-006 diagnostic scope separately",
-    "why": "Dave renewed whole-project completion scope. After DL-04 source delivery, independently eligible native UI/accessibility findings must be checked against current main rather than parked behind inference permission. Keep completed Notion acceptance and healthy installed processes intact.",
-    "doneWhen": "DL-05 has current-source evidence, a bounded fix if still present and proportional fixture-backed verification. D-006 has an explicit answer to the proposed runner/model/budget/window/test-target contract before any live diagnosis or qualification.",
-    "effort": "S",
+    "title": "Complete Tools100 protected PR, CI and merge delivery",
+    "why": "The exact merged-source verification is green on Dominic. Finish provider-gated source delivery without expanding into the frozen UI task; preserve existing app state and separate build evidence from live connector acceptance.",
+    "doneWhen": "The exact 100-name catalog, owner/configuration/approval boundaries and full repository gates pass; required checks merge the source. Named provider and POSIX runner readiness are recorded before any installed-runtime activation or separately scoped live acceptance.",
+    "effort": "L",
     "owner": "either",
-    "blockedBy": "H9 alone requires current explicit permission, a reachable qualified execution host and fresh target/context proof. The proposal names Dominic as Linux execution host (currently unreachable) and Walter as the pinned model host. Expired inference grants, a running desktop or passing offline CI cannot activate it. No service/configuration changes or repeated Notion writes are implied."
+    "blockedBy": "Source build is not blocked on another routine approval. Missing provider credentials/allowlists, remote recipe/executable configuration and helper installation block their live lanes only. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes are not part of build verification."
   },
   "findings": [
     {
@@ -516,6 +541,17 @@
   ],
   "phases": [
     {
+      "name": "Active scope: Tools100",
+      "goal": "Deliver all 100 independently bounded tools, with configured runtime acceptance kept separate",
+      "items": [
+        "Catalog and 100 implementations, plus two read-only freshness previews; no broad action-switch schema",
+        "Offline provider, owner/freshness, isolated runner, cancellation, provenance and full repository checks on Dominic",
+        "Generated catalog, protected CI/merge/Pages and governed board/comms readback",
+        "Named deployment inputs and unavailable provider/hardware lanes remain explicit"
+      ],
+      "gate": "Full source tests and required Python 3.12/3.13/3.14 checks pass; no live acceptance inferred"
+    },
+    {
       "name": "Phase 0 - Prove the Notion adapter live",
       "goal": "Completed bounded acceptance against the designated real adapter-test page; preserve evidence and remaining qualification boundaries",
       "items": [
@@ -537,7 +573,7 @@
     },
     {
       "name": "Phase 2 - Console a11y, nav and dead UI",
-      "goal": "Fix landmarks, focus, live region, dialogs, dead controls, touch and ultrawide gaps",
+      "goal": "Paused outside tools-only scope; historical landmarks, focus and UI findings retained without new work or merge",
       "items": [
         "DL-05/11: main per view, live skip link, focus heading, hash/Back, document.title",
         "DL-06/08: aria-busy while streaming, name 5 dialogs, trim new-project fields",
@@ -581,6 +617,12 @@
     "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector."
   ],
   "decisionHistory": [
+    {
+      "id": "Tools100 scope 2026-10-05",
+      "status": "accepted",
+      "date": "2026-10-05",
+      "decision": "Dave explicitly approved all 100 expansion candidates and instructed tools-only work with no further routine approval questions. Work is serial; no subagents/new sessions or frozen UI continuation. Build approval preserves per-call approval gates and does not provision credentials or authorize live inference/H9/effects."
+    },
     {
       "id": "Project completion scope 2026-10-05",
       "status": "accepted scope; live gates remain closed",
@@ -675,6 +717,7 @@
     }
   ],
   "context": [
+    "2026-10-05 Tools100 uses the MUT-7 direct-current-instruction exception with Focus unchanged. All tools are source implementations, not claims of installed/native/provider acceptance. The earlier DL-05 next action is paused by Dave's tools-only scope; historical findings and unresolved D-006 remain preserved.",
     "2026-10-05 renewed project-completion scope applies the MUT-7 direct-instruction exception despite Focus=None. DL-04 was confirmed on current main and repaired without changing qualified tool definitions, version, configuration or installed services. Other findings remain historical until revalidated.",
     "2026-10-05 bounded live acceptance is complete on the unchanged installed runtime. The other installed models were inventoried, not all tested by inference. Preserve failed model attempts and native approval-card/H9 boundaries.",
     "2026-10-05 readiness slice uses the existing NotionSettings, read_page transport and a temporary ledger, without importing the router or initializing persistence. It follows existing validation/error handling conventions; no dependency or tool-definition changes.",
@@ -719,10 +762,11 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read current DaveLLM, workspace and machine-access instructions. Reuse an isolated owned checkout and preserve the canonical owner, installed app, configuration and healthy services. Verify DL-04 source delivery, then revalidate DL-05 landmarks, skip-link targets and focus on current main; fix confirmed issues in one bounded slice with remote fixture-backed tests and protected commit/push/CI/merge/documentation delivery. Preserve the completed bounded Notion acceptance without replaying it. Keep D-006 Open: the readiness review proposes precise diagnostic and later full-renewal contracts, but expired inference grants and whole-project completion scope activate neither. No inference, H9, delegation, credential persistence or service restart is authorized. Update only the existing project record, private board projection and shared communications log with actual evidence and the next eligible slice.",
-  "confidence": "high for inspected DL-04 source repair and retained bounded Notion backend evidence; source delivery requires exact protected CI, and installed repaired-runtime, model qualification and native approval-card acceptance remain separate",
+  "kickoffPrompt": "Continue DaveLLM Tools100 protected source delivery from the current candidate. Work serially and preserve the installed app, configuration, services, historical Notion acceptance and frozen navigation work. Monitor required Python 3.12/3.13/3.14 CI on the exact pull-request head, resolve genuine failures without weakening gates, merge only when protected checks pass, verify main contains the implementation and refresh the existing next-steps projection and shared communications log. Do not run inference, H9, account writes, notifications, wake/restarts/model mutations, service changes, subagents or UI work.",
+  "confidence": "high for exact catalog and isolated implementation contracts; clean final source gates pass, protected CI/merge remain required, and installed/provider/native/physical acceptance is not implied",
   "unknowns": [
-    "Dominic restoration and current installed inventory remain unverified after the reported disconnected cable; the initial inventory is historical, not empty or removed models.",
+    "Dominic SSH and container capability are freshly verified for this source build. Current installed runtime/model inventory and inference on that node were not reprobed by the tools-only build; previous inventory snapshots remain historical.",
+    "Tools100 runtime target configuration, provider credentials/grants, recipes, executable installations and POSIX helper deployment are not established by source tests. Windows job-object isolation is not implemented; Windows helper calls fail closed.",
     "Model reliability beyond the bounded smoke; Duncan gpt-oss:20b GPU context allocation failed, and other inventoried models were not all exercised.",
     "H9 structured-write compatibility and the remaining fixed corpus; passing native bounded acceptance is not governing qualification.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",

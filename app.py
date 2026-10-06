@@ -2118,6 +2118,17 @@ def notion_tool_definitions() -> List[ToolDefinition]:
 
 def register_builtin_tools() -> None:
     """Load built-in schemas and handlers into the revocable runtime registry."""
+    global TOOL_REGISTRY, HARNESS_REGISTRY, TOOLPACK_HOST
+    # Additive opt-in below every pinned handler/preflight. Recreate registries
+    # with the host's explicit coroutine allowlist, not private-field mutation.
+    from davellm_toolpack import ToolpackHost, definitions as toolpack_definitions
+    from davellm_toolpack_catalog import BY_NAME as toolpack_names
+    TOOLPACK_HOST = ToolpackHost.from_environment(globals())
+    toolpack_enabled = TOOLS_ENABLED and _env_flag("DAVE_ENABLE_TOOLPACK")
+    if toolpack_enabled:
+        allowlist = ASYNC_TOOL_HANDLER_ALLOWLIST | frozenset(toolpack_names)
+        TOOL_REGISTRY = ToolRegistry(async_handler_allowlist=allowlist)
+        HARNESS_REGISTRY = ToolRegistry(async_handler_allowlist=allowlist)
     definitions = [
         ToolDefinition(
             name="system.info",
@@ -2232,6 +2243,8 @@ def register_builtin_tools() -> None:
         definitions.extend(extended_tool_definitions())
     if NOTION_TOOLS_ENABLED:
         definitions.extend(notion_tool_definitions())
+    if toolpack_enabled:
+        definitions.extend(toolpack_definitions(TOOLPACK_HOST))
     for definition in definitions:
         TOOL_REGISTRY.register(definition)
         HARNESS_REGISTRY.register(
@@ -2269,6 +2282,7 @@ HARNESS_STORE_HEADROOM_BYTES = 4_000_000
 HARNESS_STORE = InMemoryRunStore(max_runs=32, max_bytes=268_435_456, ttl_seconds=3600)
 HARNESS_STORE.add_remove_listener(lambda run_id: HOST_RUN_BINDINGS.pop(run_id, None))
 HARNESS_STORE.add_remove_listener(NOTION_LEDGERS.drop)
+HARNESS_STORE.add_remove_listener(TOOLPACK_HOST.drop)
 
 
 def _env_seconds(name: str, default: float) -> float:
@@ -3789,17 +3803,19 @@ def update_project_notepad(
     user_id: str = Depends(get_current_user),
 ):
     """Autosave project-scoped plain text without creating a second document model."""
-    project = get_project(project_id, user_id)
-    project["notepad"] = req.content
-    project["notepad_updated_at"] = datetime.now().isoformat()
-    project["updated_at"] = project["notepad_updated_at"]
-    save_projects(PROJECTS)
-    return {
-        "project_id": project_id,
-        "content": project["notepad"],
-        "character_count": len(project["notepad"]),
-        "updated_at": project["notepad_updated_at"],
-    }
+    # Share the tool's freshness/write boundary with normal autosave calls.
+    with TOOLPACK_HOST.native_lock:
+        project = get_project(project_id, user_id)
+        project["notepad"] = req.content
+        project["notepad_updated_at"] = datetime.now().isoformat()
+        project["updated_at"] = project["notepad_updated_at"]
+        save_projects(PROJECTS)
+        return {
+            "project_id": project_id,
+            "content": project["notepad"],
+            "character_count": len(project["notepad"]),
+            "updated_at": project["notepad_updated_at"],
+        }
 
 @app.delete("/projects/{project_id}")
 def delete_project(project_id: str, user_id: str = Depends(get_current_user)):
