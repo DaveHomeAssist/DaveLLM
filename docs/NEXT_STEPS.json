@@ -570,16 +570,23 @@
       "type": "decision",
       "sev": "P2",
       "title": "Prompt Lab Library Tests against DaveLLM models need a stateless eval route",
-      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Not implemented; no live model called.",
+      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Milestone 1 (/eval/chat) merged in PR #69; the Prompt Lab runner (milestone 2) is not built and no live model has been called.",
       "files": [
         "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md",
         "app.py:4587",
+        "app.py:4804",
         "app.py:2492"
       ],
       "evidence": "session",
       "phase": 1,
       "status": "open",
       "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Readiness review of D-EVAL-04 A and D-EVAL-05 A",
+          "detail": "PR #69 merged with checks green on Python 3.12, 3.13 and 3.14; full pytest 1,318 passed, 3 skipped. The router side of both decisions is ready. Not ready: the runner that sends format json by default and counts invalid JSON is unbuilt, and the live run stays Dave-gated. Runner requirements added to the brief: format json default, invalid JSON split by done_reason, a column for valid JSON without an enhanced field, and a report note that the app's Ollama adapter sends no format. Risk recorded: gpt-oss reasoning tokens count against max_tokens.",
+          "evidence": "session"
+        },
         {
           "checkedOn": "2026-10-06",
           "title": "Milestone 1 built: stateless POST /eval/chat",
@@ -740,13 +747,13 @@
       "id": "D-EVAL-04",
       "status": "accepted",
       "date": "2026-10-06",
-      "decision": "A: first live run on walter only, two models (8B-class and 20B-class), 10 cases, one pass, max_tokens 4096."
+      "decision": "A: first live run on walter only, two models (8B-class and 20B-class), 10 cases, one pass, max_tokens 4096. This sets the run's shape; the live run (milestone 3) stays Dave-gated and this record authorizes no live inference."
     },
     {
       "id": "D-EVAL-05",
       "status": "accepted",
       "date": "2026-10-06",
-      "decision": "A: send format json by default and report invalid-JSON counts."
+      "decision": "A: send format json by default and report invalid-JSON counts. The Prompt Lab runner sends it; /eval/chat leaves format out unless the caller asks."
     }
   ],
   "files": [
