@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import json
 import sqlite3
 from pathlib import Path
@@ -28,18 +29,57 @@ def test_health_and_authentication(router_factory):
     router, client, _ = router_factory()
     health = client.get("/health")
     assert health.status_code == 200
+    assert health.json() == {"status": "ok", "version": PRODUCT_VERSION}
     assert health.json()["version"] == router.PRODUCT_VERSION == PRODUCT_VERSION
     assert router.app.version == router.PRODUCT_VERSION
     assert client.get("/nodes").status_code == 401
     assert client.get("/nodes", headers={"X-API-Key": "wrong"}).status_code == 401
     response = client.get("/nodes", headers=AUTH)
     assert response.status_code == 200
-    assert response.json()[0]["id"] == "node-test"
+    assert response.json() == [TEST_NODE]
 
     _, unconfigured_client, _ = router_factory(api_key=None)
     response = unconfigured_client.get("/nodes")
     assert response.status_code == 503
     assert "DAVE_API_KEY" in response.json()["detail"]
+
+
+def test_public_health_never_discloses_operational_state(router_factory):
+    for configured_key in (TEST_API_KEY, None):
+        router, client, _ = router_factory(api_key=configured_key)
+        router.CONVERSATIONS["private-session"] = {"user_id": "private-user"}
+        for headers in ({}, {"X-API-Key": "wrong"}, AUTH):
+            response = client.get("/health", headers=headers)
+            assert response.status_code == 200
+            assert response.json() == {"status": "ok", "version": PRODUCT_VERSION}
+
+
+def test_api_keys_use_constant_time_byte_comparison(router_factory, monkeypatch):
+    router, client, _ = router_factory()
+    comparisons = []
+
+    def compare(candidate, expected):
+        comparisons.append((candidate, expected))
+        return hmac.compare_digest(candidate, expected)
+
+    monkeypatch.setattr(router, "compare_digest", compare)
+    assert client.get("/nodes").status_code == 401
+    assert client.get("/nodes", headers={"X-API-Key": ""}).status_code == 401
+    assert comparisons == []
+    candidates = ("wrong", TEST_API_KEY[:-1] + "X", TEST_API_KEY + " ", TEST_API_KEY)
+    for candidate in candidates:
+        response = client.get("/nodes", headers={"X-API-Key": candidate})
+        assert response.status_code == (200 if candidate == TEST_API_KEY else 401)
+    assert comparisons == [(candidate.encode("utf-8"), TEST_API_KEY.encode("utf-8"))
+                           for candidate in candidates]
+
+
+def test_constant_time_comparison_accepts_non_ascii_key_values(router_factory):
+    router, _, _ = router_factory(api_key="test-only-clé")
+    assert router.require_api_key("test-only-clé") == "default"
+    with pytest.raises(router.HTTPException) as caught:
+        router.require_api_key("test-only-clè")
+    assert caught.value.status_code == 401
 
 
 def test_static_root_is_isolated(router_factory):
