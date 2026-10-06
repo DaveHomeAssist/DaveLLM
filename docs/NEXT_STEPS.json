@@ -11,10 +11,11 @@
   "statusReason": "All 100 approved tools are implemented behind additive default-off gates. Restart hold stops this session at the saved source checkpoint, before PR/CI/merge/deployment. The Dominic full snapshot reported 1299 passed, one skipped and three failures: a compile-list mismatch and two child-process dependency-path failures. All three corrected cases and the final hardened toolpack/provenance/catalog suite pass in a bounded 279-test checkpoint rerun. No clean final full suite is claimed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate.",
   "evidence": {
     "checkedOn": "2026-10-05",
-    "sourceRevision": "6ae6a08ec5c543f962ca431d5d632134cc3868a6",
+    "sourceRevision": "3c12673878dc282a6f06f0c1f700f00bbcdc2d92",
     "tools100": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
+      "implementationRevision": "3c12673878dc282a6f06f0c1f700f00bbcdc2d92",
       "candidateBranch": "codex/tools100",
       "candidateCount": 100,
       "readOnlyCompanions": 2,
@@ -36,7 +37,7 @@
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness and boundedLiveAcceptance retain the separately authorized October 5 adapter evidence, not H9 qualification. securityRepair records the subsequent bounded source repair; installed-service acceptance is still separate.",
+    "scope": "Tools100 source checkpoint is current at implementationRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. No final clean full-suite, protected delivery or installed Tools100 acceptance is claimed.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -747,7 +748,7 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read the current DaveLLM, workspace and machine-access instructions. Work serially on Tools100 only using the owned isolated checkout and Dominic for bounded verification. Preserve the installed app, configuration, services, historical Notion acceptance and frozen navigation work. Verify the exact 100 candidates, two read-only preview companions, unchanged qualified provenance and complete repository checks; complete protected source delivery and documentation deployment. Record the actual provider and runner configuration gaps without claiming live acceptance. Do not run inference, H9, account writes, notifications, wake/restarts/model mutations, service changes, subagents or UI work. Update the existing next-steps projection and shared communications log with current evidence.",
+  "kickoffPrompt": "After Dave explicitly resumes from the restart hold, read the current DaveLLM, workspace and machine-access instructions. Work serially on Tools100 only using the saved codex/tools100 source and Dominic for bounded verification. Preserve the installed app, configuration, services, historical Notion acceptance and frozen navigation work. Verify the exact 100 candidates, two read-only preview companions, unchanged qualified provenance and complete repository checks; complete protected source delivery and documentation deployment. Record actual provider and runner configuration gaps without claiming live acceptance. Do not run inference, H9, account writes, notifications, wake/restarts/model mutations, service changes, subagents or UI work. Update the existing next-steps projection and shared communications log with current evidence.",
   "confidence": "high for exact catalog and isolated implementation contracts; final source gates remain required, and installed/provider/native/physical acceptance is not implied",
   "unknowns": [
     "Dominic SSH and container capability are freshly verified for this source build. Current installed runtime/model inventory and inference on that node were not reprobed by the tools-only build; previous inventory snapshots remain historical.",
