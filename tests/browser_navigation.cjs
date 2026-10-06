@@ -58,10 +58,13 @@ const evaluate = (source) => window.webContents.executeJavaScript(source);
 async function key(keyCode) {
     assert.equal(window.isFocused(), true, "fixture window must own native focus before input");
     assert.equal(await evaluate("document.hasFocus()"), true, "fixture page must own focus before input");
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode });
-    // Electron sends keypress separately; native Enter activation needs CR.
-    if (keyCode === "Enter") window.webContents.sendInputEvent({ type: "char", keyCode: String.fromCharCode(13) });
-    window.webContents.sendInputEvent({ type: "keyUp", keyCode });
+    const enter = keyCode === "Enter";
+    const options = { windowsVirtualKeyCode: enter ? 13 : 9, code: keyCode, key: keyCode };
+    await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "rawKeyDown", ...options });
+    if (enter) await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", {
+        type: "char", ...options, text: "\r", unmodifiedText: "\r",
+    });
+    await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyUp", ...options });
     await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
 }
 
