@@ -97,7 +97,12 @@ Accepted 2026-10-06 (Dave, "Go with your picks"):
 - D-EVAL-02: stateless `/eval/chat` on the router; not OpenAI compatibility, not direct Ollama.
 - D-EVAL-03: eval calls log nothing in v1.
 
-Open, needed before milestone 3:
+Accepted 2026-10-06 (Dave, "complete all of these NOW", recommended options):
+
+- D-EVAL-04: A. First live run on walter only, two models from its inventory (one 8B-class, one 20B-class), 10 cases, one pass, `max_tokens` 4,096.
+- D-EVAL-05: A. Send `format: "json"` by default and report invalid-JSON counts.
+
+Options as originally presented (kept for the record):
 
 - D-EVAL-04 (first live run). A: walter only, two models from its inventory (one 8B-class, one 20B-class), 10 cases, one pass, `max_tokens` kept at the app's 4,096 (recommended; about 20 calls, under an hour). B: add duncan with gpt-oss:120b for the same 10 cases (adds roughly an hour or more). C: cap `max_tokens` at 1,500 for the first run to halve time at the cost of parity with the app.
 - D-EVAL-05 (JSON mode). A: send `format: "json"` by default and report invalid-JSON counts (recommended; matches the intent of `responseFormat: 'json'`). B: never constrain, measure raw compliance. C: run both and report side by side (doubles calls).

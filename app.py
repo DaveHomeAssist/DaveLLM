@@ -4789,6 +4789,71 @@ def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_c
         model=preferred_model
     )
 
+class EvalChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str = Field(max_length=100_000)
+
+class EvalChatRequest(BaseModel):
+    node_id: str
+    model: str
+    messages: List[EvalChatMessage] = Field(min_length=1, max_length=64)
+    max_tokens: Optional[int] = Field(default=4096, ge=1, le=32_768)
+    temperature: Optional[float] = Field(default=None, ge=0, le=2)
+    format: Optional[Literal["json"]] = None
+
+@app.post("/eval/chat")
+def eval_chat(req: EvalChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):
+    """DL-EVAL-01: one stateless completion for an evaluation harness such as Prompt Lab's Library Tests.
+
+    The caller supplies every message, including its own system prompt, so no DaveLLM persona,
+    project, session layer or history is added. Nothing is persisted: no conversation, embedding,
+    cost or performance row, title, artifact, budget charge or model-health entry. The call still
+    counts on NODE_ACTIVITY so other users' waiting status sees it in the node's queue.
+    """
+    if request:
+        check_rate_limit(request.client.host)
+    node = get_node_by_id(req.node_id)
+    inventory = MODEL_INVENTORY.get(node.id)
+    if inventory is None:
+        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
+    if req.model not in inventory:
+        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    messages = [message.model_dump() for message in req.messages]
+    try:
+        start = time.perf_counter()
+        with NODE_ACTIVITY.track(node.url):
+            result = ollama_chat(
+                node.url, req.model, messages, stream=False, timeout=node_complete_timeout(),
+                total_timeout=NODE_TOTAL_TIMEOUT,
+                num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
+                options=chat_node_options(node, req.model),
+                keep_alive=chat_keep_alive(None),
+                format=req.format,
+            )
+        latency_ms = round((time.perf_counter() - start) * 1000, 1)
+    except httpx.TimeoutException:
+        raise HTTPException(504, f"Node '{node.name}' timed out")
+    except httpx.ConnectError:
+        raise HTTPException(503, f"Cannot connect to node '{node.name}' at {node.url}")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(502, f"Node error: {e.response.text if e.response else str(e)}")
+    except OllamaResponseError as e:
+        raise HTTPException(502, f"Invalid response from node: {str(e)}")
+
+    body = {
+        "response": result.content,
+        "node": node.name,
+        "node_id": node.id,
+        "model": req.model,
+        "done_reason": result.done_reason,
+        "stats": stream_stats(result.metrics, None),
+        "latency_ms": latency_ms,
+    }
+    notice = tool_call_only_notice(result.content, result.tool_calls)
+    if notice is not None:
+        body.update(notice)
+    return body
+
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):
     """

@@ -187,6 +187,7 @@ def build_ollama_chat_payload(
     keep_alive: Optional[KeepAlive] = None,
     think: Optional[Think] = None,
     tools: Optional[Sequence[Mapping[str, Any]]] = None,
+    format: Optional[str] = None,
 ) -> dict:
     """The ``/api/chat`` request body.
 
@@ -195,7 +196,8 @@ def build_ollama_chat_payload(
     value. Caller ``options`` are merged last so they win; ``None`` values
     inside them are dropped. ``keep_alive`` and ``think`` pass through verbatim
     and are omitted when ``None``; ``tools`` (function schemas, the same shape
-    as OpenAI's) is sent only when non-empty.
+    as OpenAI's) is sent only when non-empty. ``format`` (``"json"``) becomes
+    Ollama's top-level ``format`` field and is omitted when ``None``.
     """
     payload: dict = {"model": model, "messages": list(messages), "stream": bool(stream)}
     opts: dict = {"top_p": V1_TOP_P}
@@ -213,6 +215,8 @@ def build_ollama_chat_payload(
         payload["think"] = think
     if tools:
         payload["tools"] = [dict(tool) for tool in tools]
+    if format is not None:
+        payload["format"] = format
     return payload
 
 
@@ -507,6 +511,7 @@ def ollama_chat_complete(
     keep_alive: Optional[KeepAlive] = None,
     think: Optional[Think] = None,
     total_timeout: Optional[float] = None,
+    format: Optional[str] = None,
 ) -> OllamaChatResult:
     """One blocking ``/api/chat`` request, cancellable when a total is set.
 
@@ -523,7 +528,7 @@ def ollama_chat_complete(
     """
     payload = build_ollama_chat_payload(
         model, messages, stream=False, num_predict=num_predict, temperature=temperature,
-        options=options, keep_alive=keep_alive, think=think,
+        options=options, keep_alive=keep_alive, think=think, format=format,
     )
     async def request() -> httpx.Response:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -586,7 +591,7 @@ def ollama_chat(
     node_url: str, model: str, messages: Sequence[Mapping[str, Any]], *, stream: Literal[False],
     timeout: Union[float, httpx.Timeout], num_predict: Optional[int] = None, temperature: Optional[float] = None,
     options: Optional[Mapping[str, Any]] = None, keep_alive: Optional[KeepAlive] = None,
-    think: Optional[Think] = None, total_timeout: Optional[float] = None,
+    think: Optional[Think] = None, total_timeout: Optional[float] = None, format: Optional[str] = None,
 ) -> OllamaChatResult: ...
 
 
@@ -615,6 +620,7 @@ def ollama_chat(
     first_chunk_timeout: Optional[float] = None,
     idle_timeout: Optional[float] = None,
     total_timeout: Optional[float] = None,
+    format: Optional[str] = None,
 ) -> Union[OllamaChatResult, OllamaChatStream]:
     """The shared plain-chat entry point; dispatches on ``stream``.
 
@@ -625,7 +631,8 @@ def ollama_chat(
     native shape (see ``ollama_user_message``). ``timeout`` is a number or an
     ``httpx.Timeout``; the stream-only ``first_chunk_timeout`` / ``idle_timeout``
     are ignored for a complete (non-streaming) call, and the complete-only
-    ``total_timeout`` (wall clock for the whole reply) is ignored for a stream.
+    ``total_timeout`` (wall clock for the whole reply) and ``format`` are
+    ignored for a stream.
     """
     kwargs = dict(
         timeout=timeout, num_predict=num_predict, temperature=temperature,
@@ -636,4 +643,4 @@ def ollama_chat(
             node_url, model, messages, **kwargs,
             first_chunk_timeout=first_chunk_timeout, idle_timeout=idle_timeout,
         )
-    return ollama_chat_complete(node_url, model, messages, **kwargs, total_timeout=total_timeout)
+    return ollama_chat_complete(node_url, model, messages, **kwargs, total_timeout=total_timeout, format=format)
