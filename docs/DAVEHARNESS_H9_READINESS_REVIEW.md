@@ -83,6 +83,36 @@ Added 2026-10-04. The authoritative record, with the smoke and per-family tables
 - **What this changes.** Qualification still needs every case to pass, so fixing cause a alone cannot turn this into a pass: causes b and c each fail it. H9 actions 55–60 remain incomplete, and the October 1 statement that the governing runner was undecided is superseded by D-002.
 - **Next decision (pending with Dave, D-006).** Stop and accept this record; make `/v1` return structured write calls and rerun in a fresh window (this might mean an Ollama update on Walter, done at Walter; the cause is not established); or re-govern H9 on the adapter runner, which uses native `/api/chat` but cannot meter or cap tokens. No run is authorized until Dave chooses.
 
+## 2026-10-05 renewal decision: D-006 remains Open
+
+Reconciled against main `d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2` and implementation-plan blob `27c0cd510ea6feba52da9f397b42e1d39b7c3a27`. Dave's renewed project-completion scope does **not** renew live inference, mutation-corpus or H9 permission. The completed bounded Notion acceptance is separate evidence; do not repeat it. H9 actions 55–60 and native candidate/human acceptance remain incomplete.
+
+Choose one path; recommendations are not approvals:
+
+- **D-006 B (recommended): diagnose `/v1` structured-write compatibility first.** Keep the fixed runner's generic boundary, pinned Walter model and existing task/effect assertions. Prepare and offline-test a bounded diagnostic driver before any dispatch; the current CLI exposes only `--authorized` and cannot express the smaller limits below. This choice alone must not start the 500-case runner.
+- **D-006 C: re-govern on native `/api/chat`.** First implement equivalent aggregate reservations, durable accounting, wall limits, full fixed corpus/assertions and qualifying exit semantics. Requires an explicit governing-contract change; existing native acceptance is not H9 credit.
+- **D-006 A: accept the unqualified record and stop qualification.** Requires Dave's explicit exception to the qualified-project finish line; no version promotion follows.
+
+### Proposed B diagnostic grant — not authorized
+
+| Contract field | Exact proposed boundary |
+|---|---|
+| Execution host | Dominic, isolated Linux checkout, Python 3.12+; currently unreachable. Fresh SSH, capability, reservation and Walter API reachability checks must pass first. No sustained Mac fallback or shared-service restart. |
+| Model host / model | Walter / `qwen3-coder:30b`, digest `06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca`; re-read inventory and record server context before dispatch. No model, context, driver or Ollama update is implied. |
+| Transport / requests | `/v1/chat/completions`, one request at a time, temperature 0, at most 512 completion tokens per request; maximum 30 model dispatches across the ten cases. |
+| Test targets / order | `read_basic_0_0`, `read_unicode_0_0`, `permission_denial_0_0`, `write_reject_0_0`, `injection_1_2`, then `write_approve_0_0`, `write_approve_1_0`, `write_approve_2_0`, `write_approve_3_0`, `write_approve_4_0`, from the fixed corpus with unchanged assertions. |
+| Wall / token cap | A new 20-minute window, exact UTC and Eastern activation/end timestamps recorded before first dispatch; at most 60,000 additional charged tokens, including full reservations for unknown usage or failures. Preserve the historical 379,556 tokens / 707 dispatches separately and in cumulative accounting. |
+| Allowed effects | Generated case data and exactly approved `out.txt` writes only under Dominic's new session-specific subdirectory of `/tmp/daveharness-h9`; exact arguments, content, path and fingerprint. No production files, Notion calls, shell/network tools, paid APIs or credential persistence. |
+| Stop / evidence | Stop before any resource overrun and immediately on unauthorized effects, transport timeout/failure or accounting failure. Persist reservations before dispatch. Retain case/task failures, raw evidence locally, candidate/script/corpus/model hashes, exclusions, usage and one-terminal-event checks. Diagnostic cases count toward no qualification quota. |
+
+Only an explicit current approval of this complete contract may activate it. Runner restoration alone grants nothing. If the host, model, transport, effects, limits or test targets change, return the revised boundary to Dave; never repurpose an old ledger or expired window.
+
+### Full renewal after diagnosis — separate decision
+
+After the structured-call and injection failures are resolved and offline verified, propose a **fresh complete 500-case fixed-corpus run**, first 375 read-only then 125 exact-approval write cases, on the same qualified execution/model hosts and pinned digest. Record exact activation/end timestamps for a new six-hour window. Proposed cumulative cap remains 1,000,000 charged tokens, seeded at **379,556 plus all newly charged diagnostic usage** (620,444 available before diagnosis); historical elapsed time does not become a current grant, and tokens never silently reset. Keep the existing pre-dispatch reservation rule, 512-token completion cap, serial requests, disposable roots and failure stops.
+
+All original thresholds and every fixed task/effect assertion must pass. No partial rerun, native smoke or diagnostic subset substitutes for 500 evaluations. A signed per-model report, restrictions, actions 57–59 on the exact release candidate and action 60 human acceptance still follow; neither this proposal nor project-completion scope authorizes a release/tag/service change.
+
 ## Remaining gates and handoff
 
 State as of October 1. Completed by that package: current-state documentation and bounded access observations. H9 actions 55–60 remain incomplete. SSH TCP timeout: the same unreachable condition seen on September 23, not a new failure (see [context-size and access evidence](#context-size-and-access-evidence)). Skipped by scope: inference, model loading, service changes, runtime mutations and full desktop acceptance.

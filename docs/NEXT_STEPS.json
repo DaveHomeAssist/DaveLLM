@@ -5,14 +5,23 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "2a2df35 readiness merged; live Notion acceptance 2026-10-05",
+  "head": "DL-04 repair candidate from d1914c4; bounded Notion acceptance retained",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "Bounded live Notion read, approved append/edit, formatting preservation, rejection, refusal and final readback pass on Walter; all 11 original blocks and the sentinel are unchanged. Plain inference passes on Walter and Duncan. Dominic remains offline after the reported cable disconnect, and Duncan gpt-oss:20b fails GPU context allocation. Native desktop/backend remain healthy. H9 and native approval-card acceptance remain incomplete; PR #58 is merged.",
+  "statusReason": "DL-04 source repair makes public health status/version-only and uses constant-time API-key comparison; required protected CI gates delivery. The installed runtime is deliberately unchanged. Completed bounded Notion acceptance is retained, not repeated. Project-completion scope is renewed, but H9 actions 55-60, native acceptance and historical UI findings remain open; inference windows are expired. Dominic SSH is currently unreachable; verification uses isolated GitHub Ubuntu CI, not a heavy Mac fallback.",
   "evidence": {
     "checkedOn": "2026-10-04",
     "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
-    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness records the 2026-10-05 read-only implementation. boundedLiveAcceptance is the separately authorized current live evidence, not H9 qualification.",
+    "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness and boundedLiveAcceptance retain the separately authorized October 5 adapter evidence, not H9 qualification. securityRepair records the subsequent bounded source repair; installed-service acceptance is still separate.",
+    "securityRepair": {
+      "checkedOn": "2026-10-05",
+      "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
+      "scope": "DL-04 only: public readiness metadata minimization, constant-time UTF-8 API-key comparison and regression/documentation contracts. No new agents, inference, service restart, configuration changes or repeated Notion acceptance.",
+      "runner": "GitHub Actions isolated Ubuntu, Python 3.12/3.13/3.14",
+      "regressions": "Exact public health response with configured/unconfigured authentication and populated private state; missing/empty/wrong/correct keys; byte-comparison primitive; non-ASCII key values; authenticated node inventory retained.",
+      "deliveryGate": "All three required CI checks on the exact candidate must pass before protected merge. Provenance tests must confirm qualified tool fingerprints remain unchanged.",
+      "installedRuntime": "Preserved at the existing installed revision; this source repair does not prove deployment into the running desktop backend."
+    },
     "adapterReadiness": {
       "checkedOn": "2026-10-05",
       "sourceRevision": "3ac59a497790c1c03786070e8a4da74dc8fe1eee",
@@ -142,12 +151,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Restore Dominic reachability and choose Notion setup durability",
-    "why": "The bounded Notion acceptance gate is complete. Preserve that evidence and the healthy app; verify Dominic after physical reconnection and decide whether the proven environment-only path needs a separately scoped persistent setup.",
-    "doneWhen": "Dominic has fresh authenticated status and installed inventory, and Dave chooses environment-only continuation or a scoped Keychain-backed setup brief. Model-load repair and new connectors remain separately scoped.",
+    "title": "Revalidate DL-05 landmarks and focus; decide D-006 diagnostic scope separately",
+    "why": "Dave renewed whole-project completion scope. After DL-04 source delivery, independently eligible native UI/accessibility findings must be checked against current main rather than parked behind inference permission. Keep completed Notion acceptance and healthy installed processes intact.",
+    "doneWhen": "DL-05 has current-source evidence, a bounded fix if still present and proportional fixture-backed verification. D-006 has an explicit answer to the proposed runner/model/budget/window/test-target contract before any live diagnosis or qualification.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Dominic remains unreachable after the reported disconnected cable; physical restoration is not verified. Duncan gpt-oss:20b reports GPU context allocation failure despite a passing plain llama3 smoke. Do not change healthy services or settings, persist credentials, repeat acceptance writes, or treat the completed bounded grant as H9 authority."
+    "blockedBy": "H9 alone requires current explicit permission, a reachable qualified execution host and fresh target/context proof. The proposal names Dominic as Linux execution host (currently unreachable) and Walter as the pinned model host. Expired inference grants, a running desktop or passing offline CI cannot activate it. No service/configuration changes or repeated Notion writes are implied."
   },
   "findings": [
     {
@@ -192,7 +201,7 @@
       "type": "decision",
       "sev": "P1",
       "title": "H9 run unqualified; D-006 remains pending",
-      "detail": "PR #55 records 406/500 evaluations, 374 task assertions passing, 32 failing and zero writes. The macOS symlink false positive is fixed but not rerun live. Text-form calls on /v1 and a blocked injection-driven task failure remain open. D-002 selected the fixed runner and a new window ending 2026-10-04 at 05:33:43 EDT. The run stopped; its record authorizes no restart. The September 23 grant is expired. Actions 55-60 remain incomplete.",
+      "detail": "PR #55 records 406/500 evaluations, 374 task assertions passing, 32 failing and zero writes. The macOS symlink false positive is fixed but not rerun live. Text-form calls on /v1 and a blocked injection-driven task failure remain open. D-002's window ended October 4 at 05:33:43 EDT; both inference windows are expired. The October 5 readiness review proposes a separate bounded diagnosis and later full renewal, naming hosts, pinned digest, exact cases, wall/token/dispatch caps and preserved 379,556-token historical seed. No proposed grant is activated; actions 55-60 remain incomplete.",
       "files": [
         "docs/DAVEHARNESS_H9_RESULTS.md",
         "docs/DAVEHARNESS_H9_READINESS_REVIEW.md",
@@ -239,14 +248,15 @@
       "id": "DL-04",
       "type": "security",
       "sev": "P2",
-      "title": "Public /health lists node URLs; API key compare not constant-time",
-      "detail": "Historical finding from 2026-10-02; not reverified by this package. Unauthenticated GET /health returns each node's id, name and url (observed). require_api_key compares with !=. Router binds 127.0.0.1 by default.",
+      "title": "Public health disclosure and API-key comparison repaired in source",
+      "detail": "Reconfirmed on d1914c4 on October 5: public health exposed node URLs/conversation count and the guard used !=. The repair returns status/version only and compares UTF-8 bytes with hmac.compare_digest; 401/503 and authenticated node contracts are preserved. Three new regressions and the strengthened existing contract gate delivery. Installed runtime remains unchanged until a separately scheduled update; no live repaired-service claim.",
       "files": [
-        "app.py:3125",
+        "app.py",
         "app.py:498",
-        "INTEGRATION.md:27"
+        "INTEGRATION.md",
+        "tests/test_api_contracts.py"
       ],
-      "evidence": "doc",
+      "evidence": "source and required CI gate",
       "phase": 3,
       "history": [
         {
@@ -256,8 +266,8 @@
           "evidence": "observed"
         }
       ],
-      "status": "open",
-      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+      "status": "implemented",
+      "evidenceNote": "October 5 source repair; exact-candidate protected CI required before merge, installed runtime intentionally preserved"
     },
     {
       "id": "DL-05",
@@ -533,7 +543,7 @@
       "name": "Phase 3 - Harden API and CI",
       "goal": "Close the public-info leak and CI drift; spare doomed Notion approvals",
       "items": [
-        "DL-04: /health returns status+version only; compare_digest; update INTEGRATION.md",
+        "DL-04 implemented in source: minimal /health, compare_digest and contract regressions; protected CI gates merge, installed runtime update remains separate",
         "DL-12 resolved: local write preflight verified against simulated Notion; exact approval and remote handler checks preserved",
         "DL-13: pin or lock deps, migrate on_event to lifespan, keep 3.12-3.14 green"
       ],
@@ -551,7 +561,7 @@
     }
   ],
   "decisionsForDave": [
-    "D-006 [Open]: H9 next path. Options: A accept the unqualified record and stop; B diagnose structured write calls on /v1 before a separately authorized new run (recommended); C re-govern on the native adapter runner after resolving its missing equivalent token accounting. The stopped run grants no restart permission; the September 23 grant remains expired.",
+    "D-006 [Open]: B diagnose /v1 first (recommended): Dominic Linux execution, Walter pinned qwen3-coder:30b, ten specified cases, at most 30 serial model dispatches / 512 completion tokens each, 20 minutes / 60,000 additional charged tokens, exact disposable-root writes only. Current CLI needs an offline-tested bounded driver first. C explicitly re-govern the native adapter after equivalent accounting/full-corpus/assertion/exit gates; A accept unqualified status under Dave's finish-line exception. Full 500-case renewal is separate: six hours, cumulative 1,000,000-token cap seeded at 379,556 plus diagnostic usage. Exact boundaries are in the October 5 H9 readiness review; no permission activated.",
     "DL-03 [Open, carried from 2026-10-02]: ratify the zero-approval outside-root edit case. Options: A retain preflight and explicitly re-baseline the case (recommended); B leave the historical comparison unresolved. This package changes no corpus or qualification assertion.",
     "DL-14 [Open, carried from 2026-10-02]: design-manifest and unused-control decisions. Options: A ratify the implemented console and scope removal of confirmed unused controls (recommended); B retain controls until product behavior is specified.",
     "DL-14 [Open, carried from 2026-10-02]: version, changelog and release policy. Options: A define a release package with its own acceptance gates (recommended); B leave current versions unchanged. No release is authorized here.",
@@ -563,6 +573,12 @@
     "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today."
   ],
   "decisionHistory": [
+    {
+      "id": "Project completion scope 2026-10-05",
+      "status": "accepted scope; live gates remain closed",
+      "date": "2026-10-05",
+      "decision": "Dave renewed completion scope for the discussed projects. The first DaveLLM slice repairs confirmed DL-04 on current main and reconciles remaining work. This authorizes normal independent source delivery, not live inference, H9, new agents, service restarts, configuration changes or repeated Notion acceptance. D-006 recommendations remain unanswered."
+    },
     {
       "id": "Bounded adapter acceptance 2026-10-05",
       "status": "accepted and executed",
@@ -643,6 +659,7 @@
     }
   ],
   "context": [
+    "2026-10-05 renewed project-completion scope applies the MUT-7 direct-instruction exception despite Focus=None. DL-04 was confirmed on current main and repaired without changing qualified tool definitions, version, configuration or installed services. Other findings remain historical until revalidated.",
     "2026-10-05 bounded live acceptance is complete on the unchanged installed runtime. The other installed models were inventoried, not all tested by inference. Preserve failed model attempts and native approval-card/H9 boundaries.",
     "2026-10-05 readiness slice uses the existing NotionSettings, read_page transport and a temporary ledger, without importing the router or initializing persistence. It follows existing validation/error handling conventions; no dependency or tool-definition changes.",
     "An existing Notion approval/reject regression was flaky because its TestClient closed the run event loop between requests. Reusing the adversarial tests' persistent-portal pattern fixes the test only; production behavior is unchanged.",
@@ -686,8 +703,8 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Read current DaveLLM and machine-access instructions; preserve the canonical owner checkout, existing app and healthy services. The bounded live Notion acceptance gate is complete: read, labelled append/edit, formatting preservation, rejection, refusal and final readback passed on Walter, with original content unchanged. Do not replay acceptance writes. PR #58 is merged. Dominic remains offline after Dave reported a disconnected cable; after physical reconnection, verify authenticated status and a fresh inventory with read-only checks. Duncan passed a plain llama3 smoke but gpt-oss:20b failed GPU context allocation; do not silently change model context, GPU or service settings. Keep the environment-only setup decision Open, and scope any persistent configuration or next connector before implementation. No inference, H9, delegation or healthy-service restart follows from this completed grant. Record new evidence and blockers in the board and shared communications log.",
-  "confidence": "high for bounded installed-runtime Notion backend acceptance, independent page preservation and Walter/Duncan plain inference; not model qualification or native approval-card acceptance",
+  "kickoffPrompt": "Read current DaveLLM, workspace and machine-access instructions. Reuse an isolated owned checkout and preserve the canonical owner, installed app, configuration and healthy services. Verify DL-04 source delivery, then revalidate DL-05 landmarks, skip-link targets and focus on current main; fix confirmed issues in one bounded slice with remote fixture-backed tests and protected commit/push/CI/merge/documentation delivery. Preserve the completed bounded Notion acceptance without replaying it. Keep D-006 Open: the readiness review proposes precise diagnostic and later full-renewal contracts, but expired inference grants and whole-project completion scope activate neither. No inference, H9, delegation, credential persistence or service restart is authorized. Update only the existing project record, private board projection and shared communications log with actual evidence and the next eligible slice.",
+  "confidence": "high for inspected DL-04 source repair and retained bounded Notion backend evidence; source delivery requires exact protected CI, and installed repaired-runtime, model qualification and native approval-card acceptance remain separate",
   "unknowns": [
     "Dominic restoration and current installed inventory remain unverified after the reported disconnected cable; the initial inventory is historical, not empty or removed models.",
     "Model reliability beyond the bounded smoke; Duncan gpt-oss:20b GPU context allocation failed, and other inventoried models were not all exercised.",

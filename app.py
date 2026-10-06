@@ -495,7 +495,7 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None)):
             "Router is not configured: DAVE_API_KEY env var is unset. "
             "Set it and restart the router.",
         )
-    if not x_api_key or x_api_key != API_KEY:
+    if not x_api_key or not compare_digest(x_api_key.encode("utf-8"), API_KEY.encode("utf-8")):
         raise HTTPException(401, "Invalid API key")
     return USER_DB.get(x_api_key, "default")
 
@@ -2556,6 +2556,7 @@ def build_project_messages_for_node(
         },
     )
 
+from hmac import compare_digest  # below the tool handlers to preserve their qualified fingerprints
 from davellm_ollama import (  # native /api/chat transport, kept below the handlers (see tests/test_tool_catalog_provenance.py)
     OllamaResponseError, OllamaStreamError, model_is_loaded, ollama_chat, ollama_chat_bounded, ollama_image_data,
     ollama_loaded_models, ollama_tool_call_names, ollama_user_message,
@@ -3141,12 +3142,10 @@ async def brain_compaction_worker() -> None:
 
 @app.get("/health")
 def health():
-    """Health check endpoint."""
+    """Public process readiness only; operational details require authentication."""
     return {
         "status": "ok",
         "version": PRODUCT_VERSION,
-        "nodes": [n.model_dump() for n in NODE_CONFIGS],
-        "active_conversations": len(CONVERSATIONS)
     }           
 
 @app.get("/nodes")

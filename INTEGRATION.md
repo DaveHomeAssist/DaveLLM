@@ -20,6 +20,10 @@ There is no `/api` prefix.
 - Missing or wrong `X-API-Key`: protected route returns `401`.
 - Correct `X-API-Key`: request proceeds.
 
+Keys are compared as UTF-8 bytes with Python's constant-time `hmac.compare_digest`.
+This hardens comparison without changing the API-key mechanism, route permissions,
+or the existing `401`/`503` failure contracts.
+
 Electron stores no renderer credential. `desktop/main.js` injects the environment key only for the exact `http://127.0.0.1:<DAVE_PORT>` origin. `desktop/preload.js` never receives the key. Non-Electron browser use prompts for a session-only value.
 
 ## Core contracts
@@ -29,13 +33,15 @@ Electron stores no renderer credential. `desktop/main.js` injects the environmen
 ```json
 {
   "status": "ok",
-  "version": "2.1.0",
-  "nodes": [],
-  "active_conversations": 0
+  "version": "2.1.0"
 }
 ```
 
 The version is read from root `VERSION`, the canonical DaveLLM Semantic Version, and must match the desktop package manifests.
+Readiness intentionally exposes no node inventory, addresses, conversation count,
+or runtime configuration, even if an API key is supplied. Use authenticated
+`GET /nodes` and `GET /nodes/status` for operational information. Existing
+Electron readiness checks require only a successful response and remain compatible.
 
 ### `GET /nodes`
 
