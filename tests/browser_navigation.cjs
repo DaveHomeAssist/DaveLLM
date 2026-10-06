@@ -56,17 +56,25 @@ async function waitFor(check, label) {
 
 const evaluate = (source) => window.webContents.executeJavaScript(source);
 async function key(keyCode) {
-    await window.webContents.debugger.sendCommand("Page.bringToFront");
-    assert.equal(window.isFocused(), true, "fixture window must own native focus before input");
-    assert.equal(await evaluate("document.hasFocus()"), true, "fixture page must own focus before input");
     const enter = keyCode === "Enter";
     const options = { windowsVirtualKeyCode: enter ? 13 : 9, code: keyCode, key: keyCode };
-    await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "rawKeyDown", ...options });
-    if (enter) await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", {
-        type: "char", ...options, text: "\r", unmodifiedText: "\r",
-    });
-    await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyUp", ...options });
-    await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        window.focus();
+        window.webContents.focus();
+        await window.webContents.debugger.sendCommand("Page.bringToFront");
+        assert.equal(window.isFocused(), true, "fixture window must own native focus before input");
+        assert.equal(await evaluate("document.hasFocus()"), true, "fixture page must own focus before input");
+        const before = await evaluate("window.__navigationEventCount");
+        await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "rawKeyDown", ...options });
+        if (enter) await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", {
+            type: "char", ...options, text: "\r", unmodifiedText: "\r",
+        });
+        await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyUp", ...options });
+        await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+        if (await evaluate(`window.__navigationEventCount > ${before}`)) return;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.fail(`native ${keyCode} input never reached the renderer`);
 }
 
 async function openFixture(sourceRevision) {
@@ -74,7 +82,8 @@ async function openFixture(sourceRevision) {
     const errors = [];
     let ready = false;
     window = new BrowserWindow({ width: 1440, height: 900, useContentSize: true,
-        webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: `navigation-${sourceRevision || "candidate"}` } });
+        webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
+            partition: `navigation-${sourceRevision || "candidate"}` } });
     window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
         const allowed = details.url.startsWith(`${origin}/`);
         if (!allowed) blocked.push(details.url);
@@ -92,8 +101,9 @@ async function openFixture(sourceRevision) {
     window.webContents.focus();
     await waitFor(() => window.isFocused(), "native fixture focus");
     await waitFor(() => evaluate("document.hasFocus()"), "renderer fixture focus");
-    await evaluate(`window.__navigationEvents = [];
+    await evaluate(`window.__navigationEvents = []; window.__navigationEventCount = 0;
         for (const type of ["keydown", "keypress", "keyup"]) document.addEventListener(type, event => {
+            window.__navigationEventCount += 1;
             window.__navigationEvents.push({ type, key: event.key, trusted: event.isTrusted, tag: event.target.tagName,
                 id: event.target.id, view: event.target.dataset.view });
             window.__navigationEvents = window.__navigationEvents.slice(-12);
