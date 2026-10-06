@@ -4837,6 +4837,9 @@ def eval_chat(req: EvalChatRequest, request: Request = None, user_id: str = Depe
         raise HTTPException(503, f"Cannot connect to node '{node.name}' at {node.url}")
     except httpx.HTTPStatusError as e:
         raise HTTPException(502, f"Node error: {e.response.text if e.response else str(e)}")
+    except httpx.TransportError as e:
+        # Dropped or malformed exchanges mid-reply (RemoteProtocolError, ReadError, WriteError).
+        raise HTTPException(502, f"Node '{node.name}' transport failed: {type(e).__name__}")
     except OllamaResponseError as e:
         raise HTTPException(502, f"Invalid response from node: {str(e)}")
 

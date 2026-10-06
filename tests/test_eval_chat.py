@@ -153,6 +153,11 @@ def test_eval_chat_inventory_and_node_errors(router_factory):
         assert client.post("/eval/chat", headers=AUTH, json=eval_body()).status_code == 504
         route.mock(return_value=httpx.Response(500, text="boom"))
         assert client.post("/eval/chat", headers=AUTH, json=eval_body()).status_code == 502
+        for failure in (httpx.RemoteProtocolError("dropped"), httpx.ReadError("reset")):
+            route.mock(side_effect=failure)
+            response = client.post("/eval/chat", headers=AUTH, json=eval_body())
+            assert response.status_code == 502
+            assert type(failure).__name__ in response.json()["detail"]
 
 
 def test_eval_chat_node_failures_do_not_touch_model_health(router_factory):
