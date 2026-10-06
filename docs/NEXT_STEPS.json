@@ -575,12 +575,19 @@
         "scripts/macos/launch-davellm.sh",
         "davellm_toolpack.py",
         "docs/TOOLS100_SETUP.md",
-        "docs/examples/toolpack.starter.json"
+        "docs/examples/toolpack.starter.json",
+        "app.py (tool_schema_tokens, tool_run_fit_error)"
       ],
       "evidence": "session",
       "phase": 0,
       "status": "implemented",
       "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Tool runs budget for tool descriptions",
+          "detail": "Both tool-run routes now estimate the registered schemas (three characters per token) and refuse with 413 before any model call when schemas, messages and max_tokens exceed chat_num_ctx; lifecycle runs with a project reserve the schema tokens when assembling project context. Five tests in tests/test_tool_context_budget.py; pinned handler provenance and the capabilities manifest unchanged. This closes the gap noted in PR #71; later steps that append tool results are not re-checked.",
+          "evidence": "session"
+        },
         {
           "checkedOn": "2026-10-06",
           "title": "Built with tests; installed acceptance pending",
@@ -595,7 +602,7 @@
       "type": "decision",
       "sev": "P2",
       "title": "Prompt Lab Library Tests against DaveLLM models need a stateless eval route",
-      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Milestone 1 (/eval/chat) merged in PR #69; the Prompt Lab runner (milestone 2) is built in DaveHomeAssist/prompt-lab#131, awaiting review. No live model has been called.",
+      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Milestone 1 (/eval/chat) merged in PR #69; the Prompt Lab runner (milestone 2) and the Prompt Lab half of milestone 4 are in DaveHomeAssist/prompt-lab#131. No live model has been called.",
       "files": [
         "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md",
         "app.py:4587",
@@ -606,6 +613,12 @@
       "phase": 1,
       "status": "open",
       "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Milestone 4 doc truth done; audit gate fixed on prompt-lab#131",
+          "detail": "prompt-lab#131 now also marks DECISIONS.md D-003 and the EXECUTION_PRD DaveLLM integration (DLM-1 to DLM-4) superseded, bumps source-map-js to 1.2.2 (GHSA-68fv-2mgg-jv7q blocked the audit gate on every branch) and refreshes project-progress from a complete 40-row backlog query. Notion: the SFT DaveLLM architecture page no longer lists /v1 routes or an optional API key, records native /api/chat and /eval/chat, and its live log, Next Action and Next Step are current; the PromptLab dependency-gate row records the advisory. All writes read back. Milestone 3 (live run) stays Dave-gated.",
+          "evidence": "session"
+        },
         {
           "checkedOn": "2026-10-06",
           "title": "Milestone 2 built: Prompt Lab eval runner",

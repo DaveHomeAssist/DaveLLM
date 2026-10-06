@@ -61,7 +61,7 @@ Every registered tool's description goes to the model on every step of a tool ru
 | Plus the starter | 35 | about 4,100 to 5,500 tokens |
 | Plus all of Tools100 | 124 | about 13,700 to 18,300 tokens |
 
-Plain chat asks Ollama for 16,384 tokens, and llama3 holds only 8,192. The whole pack would leave no room for the conversation, so turn on families as you configure them, and use a model with the larger window (such as `gpt-oss:20b`) for tool runs.
+Plain chat asks Ollama for 16,384 tokens, and llama3 holds only 8,192. The whole pack would leave no room for the conversation, so turn on families as you configure them, and use a model with the larger window (such as `gpt-oss:20b`) for tool runs. A tool run that cannot fit is refused before the model is called, with a message naming the tool descriptions, the messages and the reply reserve; project context in a run already leaves room for the descriptions.
 
 ## 4. Tools that need settings but no token
 
