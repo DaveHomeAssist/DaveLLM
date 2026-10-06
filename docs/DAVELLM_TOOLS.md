@@ -4,6 +4,8 @@ DaveLLM offers tools to Ollama models through the in-process DaveHarness registr
 
 [DAVEHARNESS_CAPABILITIES.md](DAVEHARNESS_CAPABILITIES.md) lists every tool's full schema, flags, run budgets, host limits, routes, and tool-module constants in one place. It and its machine-readable twin, [DAVEHARNESS_CAPABILITIES.json](DAVEHARNESS_CAPABILITIES.json), are generated from the registry by `scripts/generate_capabilities_manifest.py`.
 
+The separately enabled [Tools100 expansion](TOOLS100.md) implements all 100 approved candidates, plus two read-only approval-preview companions. It is additive: the original qualified, extended and Notion v1 tools keep their existing contracts. Registration is not provider configuration or live acceptance.
+
 ## Settings
 
 | Setting | Default | Effect |
@@ -16,6 +18,10 @@ DaveLLM offers tools to Ollama models through the in-process DaveHarness registr
 | `DAVE_ENABLE_NOTION_TOOLS` | `false` | Adds `notion.page.read`, `notion.page.append`, and `notion.block.update`. Honored only when `DAVE_ENABLE_TOOLS` is also on. See [Notion tools](#notion-tools). |
 | `DAVE_NOTION_TOKEN` | unset | The internal Notion connection's secret. Read once at startup from the environment; never stored by the launcher, logged, or returned. |
 | `DAVE_NOTION_PAGES` | unset | JSON object of short page names to Notion page IDs or page URLs, such as `{"adapter-test": "https://www.notion.so/...-<32 hex>"}`. Names are 1–40 lowercase letters, digits, or hyphens; at most 20 pages. |
+| `DAVE_ENABLE_TOOLPACK` | `false` | Register 100 expansion tools and two read-only companions; requires `DAVE_ENABLE_TOOLS`. |
+| `DAVE_TOOLPACK_CONFIG` | `{}` | Bounded nonsecret operator JSON for named targets, source owners, runner capabilities and allowlists. See [Tools100 configuration](TOOLS100.md#configuration). |
+| `DAVE_ENABLE_TOOL_INFERENCE` | `false` | Separate opt-in for exact-approved secondary model calls; at most three per lifecycle run. Does not authorize H9. |
+| `DAVE_ENABLE_TOOL_JOBS` | `false` | Separate opt-in for fixed operator-configured SSH jobs. No agents or caller commands. |
 
 ```bash
 export DAVE_ENABLE_TOOLS=true
@@ -70,7 +76,7 @@ Search is literal: characters such as `.`, `*`, and `(` match themselves. It rep
 
 The result also counts `files_scanned`, `skipped_large` (over 1 MiB), `skipped_binary` (NUL bytes or invalid UTF-8), and `skipped_unreadable`. `truncated` means more matches or files existed than were returned or scanned. At most 2,000 files and 20,000 walked entries are considered per search. Symlinks are not searched, and there is no cursor; narrow `path` or `query` instead.
 
-Regex search is not available. Python's regular-expression engine can backtrack for an unbounded time, and a synchronous tool handler cannot be interrupted, so a regex mode would need a bounded engine such as `google-re2` or a separate process. That is a pending decision.
+`file.search` remains literal. The separately enabled `code.grep_regex` expansion runs regex only in an isolated POSIX helper with wall-clock and CPU watchdogs; it does not add regex to this synchronous reader.
 
 ### `file.read_lines`
 

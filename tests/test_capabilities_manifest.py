@@ -55,11 +55,13 @@ def test_check_names_each_stale_file(tmp_path):
 
 
 def test_manifest_tools_match_the_pinned_catalog():
+    from davellm_toolpack_catalog import ALL_SPECS
     tools = json.loads((REPO / "docs" / JSON_NAME).read_text())["tools"]
     pinned = {**CATALOG["HARNESS_REGISTRY"], **CATALOG["extended_tools"], **CATALOG["notion_tools"]}
 
-    assert set(tools) == set(pinned)
-    for name, tool in tools.items():
+    assert set(tools) == set(pinned) | {s.name for s in ALL_SPECS}
+    for name in pinned:
+        tool = tools[name]
         assert {field: tool[field] for field in PINNED_FIELDS} == {field: pinned[name][field] for field in PINNED_FIELDS}, name
         assert tool["preflight"] is ("preflight" in pinned[name]), name
     expected_flags = {
@@ -67,6 +69,7 @@ def test_manifest_tools_match_the_pinned_catalog():
         "shell.exec": ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_SHELL_TOOL"],
         **{name: ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_EXTENDED_TOOLS"] for name in CATALOG["extended_tools"]},
         **{name: ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_NOTION_TOOLS"] for name in CATALOG["notion_tools"]},
+        **{s.name: ["DAVE_ENABLE_TOOLS", "DAVE_ENABLE_TOOLPACK"] for s in ALL_SPECS},
     }
     assert {name: tool["requires_flags"] for name, tool in tools.items()} == expected_flags
 
