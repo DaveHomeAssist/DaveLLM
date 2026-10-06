@@ -5,29 +5,34 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 source checkpoint: 100 candidates plus two read-only previews; held for restart before protected delivery",
+  "head": "Tools100 final source gates pass on current main; protected PR and CI delivery next",
   "lastActivity": "2026-10-05",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates. Restart hold stops this session at the saved source checkpoint, before PR/CI/merge/deployment. The Dominic full snapshot reported 1299 passed, one skipped and three failures: a compile-list mismatch and two child-process dependency-path failures. All three corrected cases and the final hardened toolpack/provenance/catalog suite pass in a bounded 279-test checkpoint rerun. No clean final full suite is claimed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and reconciled with current main. A fresh one-CPU/two-GiB Dominic container passed the clean merged-source full suite: 1312 passed, one skipped, 90% DaveHarness coverage; 206 Notion tests passed at 97% branch coverage; offline qualification/load, strict types, JavaScript/Node/shell checks, npm tree and zero-vulnerability audit also passed. Protected PR/CI/merge delivery remains pending. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate.",
   "evidence": {
     "checkedOn": "2026-10-05",
-    "sourceRevision": "3c12673878dc282a6f06f0c1f700f00bbcdc2d92",
+    "sourceRevision": "2c98ada772e4110897697958c4b124c6c39d1d3a",
     "tools100": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
       "implementationRevision": "3c12673878dc282a6f06f0c1f700f00bbcdc2d92",
+      "testedMergeRevision": "2c98ada772e4110897697958c4b124c6c39d1d3a",
+      "integratedMainRevision": "e9dc44a91c8dedeba76c46e57074505a8d071072",
       "candidateBranch": "codex/tools100",
       "candidateCount": 100,
       "readOnlyCompanions": 2,
       "allFlagsCatalogCount": 128,
       "runner": "Dominic, isolated Ubuntu container, Python 3.12; one CPU and two GiB memory",
       "scope": "Serial tools-only build. Existing qualified, extended and Notion v1 provenance preserved; no harness redesign, subagents, frozen navigation work, inference, H9 or live external effects.",
-      "verification": "Initial 230 and expanded 242 checks passed. Full snapshot: 1299 passed, one skipped, three failures in 548.65 seconds. Final hardened checkpoint: 279 passed in 69.86 seconds, including all three corrected failures, exact catalog/provenance, owner/freshness, provider fixtures, process isolation and real catastrophic-regex helper watchdog. Compilation and generated-manifest checks pass. No clean final full suite or protected CI is claimed.",
+      "verification": "Initial 230 and expanded 242 checks passed. Historical full snapshot: 1299 passed, one skipped, three failures in 548.65 seconds. A 279-test hardened checkpoint passed after correcting all three cases. After merging current main, the clean final suite passed 1312 tests with one skip in 562.62 seconds and 90% DaveHarness coverage; 206 Notion tests passed with 97% branch coverage. Compilation, generated-manifest checks, 24-case offline qualification, bounded load measurement, strict mypy across 17 source files, JavaScript and shell syntax, 15 Node regressions, exact Electron dependency tree and npm audit with zero vulnerabilities all pass. Protected GitHub CI remains required.",
       "checkpointTestsPassed": 279,
       "fullSnapshotPassed": 1299,
       "fullSnapshotFailed": 3,
       "fullSnapshotSkipped": 1,
-      "hold": "Held for restart after the current safe source checkpoint. No PR, merge, deployment, new campaign or live effect begins until Dave explicitly resumes.",
+      "finalFullPassed": 1312,
+      "finalFullFailed": 0,
+      "finalFullSkipped": 1,
+      "hold": "Restart hold lifted by the current explicit resume. Protected source delivery is active; no installed-runtime rollout, inference, H9 or live effect is authorized.",
       "defaultFlags": "Toolpack, secondary inference and runner jobs are separately default off",
       "liveAcceptance": "Not run. Installed configuration and healthy services preserved. Provider credentials, target allowlists, runner recipes and POSIX helper installation are deployment inputs; Windows helper jobs fail closed.",
       "source": "docs/TOOLS100.md"
@@ -37,7 +42,7 @@
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "Tools100 source checkpoint is current at implementationRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. No final clean full-suite, protected delivery or installed Tools100 acceptance is claimed.",
+    "scope": "Tools100 source is current at testedMergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates pass; protected GitHub CI/merge and installed Tools100 acceptance remain separate.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -178,8 +183,8 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "After explicit resume, verify Tools100 final full suite and protected delivery",
-    "why": "All 100 tools are explicitly approved. Finish exact-source verification and protected delivery without expanding into the frozen UI task; preserve existing app state and separate build evidence from live connector acceptance.",
+    "title": "Complete Tools100 protected PR, CI and merge delivery",
+    "why": "The exact merged-source verification is green on Dominic. Finish provider-gated source delivery without expanding into the frozen UI task; preserve existing app state and separate build evidence from live connector acceptance.",
     "doneWhen": "The exact 100-name catalog, owner/configuration/approval boundaries and full repository gates pass; required checks merge the source. Named provider and POSIX runner readiness are recorded before any installed-runtime activation or separately scoped live acceptance.",
     "effort": "L",
     "owner": "either",
@@ -757,8 +762,8 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "After Dave explicitly resumes from the restart hold, read the current DaveLLM, workspace and machine-access instructions. Work serially on Tools100 only using the saved codex/tools100 source and Dominic for bounded verification. Preserve the installed app, configuration, services, historical Notion acceptance and frozen navigation work. Verify the exact 100 candidates, two read-only preview companions, unchanged qualified provenance and complete repository checks; complete protected source delivery and documentation deployment. Record actual provider and runner configuration gaps without claiming live acceptance. Do not run inference, H9, account writes, notifications, wake/restarts/model mutations, service changes, subagents or UI work. Update the existing next-steps projection and shared communications log with current evidence.",
-  "confidence": "high for exact catalog and isolated implementation contracts; final source gates remain required, and installed/provider/native/physical acceptance is not implied",
+  "kickoffPrompt": "Continue DaveLLM Tools100 protected source delivery from the current candidate. Work serially and preserve the installed app, configuration, services, historical Notion acceptance and frozen navigation work. Monitor required Python 3.12/3.13/3.14 CI on the exact pull-request head, resolve genuine failures without weakening gates, merge only when protected checks pass, verify main contains the implementation and refresh the existing next-steps projection and shared communications log. Do not run inference, H9, account writes, notifications, wake/restarts/model mutations, service changes, subagents or UI work.",
+  "confidence": "high for exact catalog and isolated implementation contracts; clean final source gates pass, protected CI/merge remain required, and installed/provider/native/physical acceptance is not implied",
   "unknowns": [
     "Dominic SSH and container capability are freshly verified for this source build. Current installed runtime/model inventory and inference on that node were not reprobed by the tools-only build; previous inventory snapshots remain historical.",
     "Tools100 runtime target configuration, provider credentials/grants, recipes, executable installations and POSIX helper deployment are not established by source tests. Windows job-object isolation is not implemented; Windows helper calls fail closed.",
