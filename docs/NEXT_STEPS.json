@@ -5,17 +5,24 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "DL-04 repair candidate from d1914c4; bounded Notion acceptance retained",
+  "head": "DL-04 source repair 6ae6a08; bounded Notion acceptance retained",
   "lastActivity": "2026-10-05",
   "status": "amber",
   "statusReason": "DL-04 source repair makes public health status/version-only and uses constant-time API-key comparison; required protected CI gates delivery. The installed runtime is deliberately unchanged. Completed bounded Notion acceptance is retained, not repeated. Project-completion scope is renewed, but H9 actions 55-60, native acceptance and historical UI findings remain open; inference windows are expired. Dominic SSH is currently unreachable; verification uses isolated GitHub Ubuntu CI, not a heavy Mac fallback.",
   "evidence": {
-    "checkedOn": "2026-10-04",
-    "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
+    "checkedOn": "2026-10-05",
+    "sourceRevision": "6ae6a08ec5c543f962ca431d5d632134cc3868a6",
+    "historicalPreflight": {
+      "checkedOn": "2026-10-04",
+      "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
+      "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
+    },
     "scope": "Historical Notion preflight evidence below is from 2026-10-04. adapterReadiness and boundedLiveAcceptance retain the separately authorized October 5 adapter evidence, not H9 qualification. securityRepair records the subsequent bounded source repair; installed-service acceptance is still separate.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
+      "implementationRevision": "6ae6a08ec5c543f962ca431d5d632134cc3868a6",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/61",
       "scope": "DL-04 only: public readiness metadata minimization, constant-time UTF-8 API-key comparison and regression/documentation contracts. No new agents, inference, service restart, configuration changes or repeated Notion acceptance.",
       "runner": "GitHub Actions isolated Ubuntu, Python 3.12/3.13/3.14",
       "regressions": "Exact public health response with configured/unconfigured authentication and populated private state; missing/empty/wrong/correct keys; byte-comparison primitive; non-ASCII key values; authenticated node inventory retained.",
