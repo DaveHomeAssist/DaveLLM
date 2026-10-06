@@ -67,7 +67,7 @@ test("Enter during a streaming reply keeps the draft instead of starting a secon
     });
     await context.sendMessage();
     assert.equal(promptInput.value, "next question");
-    assert.deepEqual(notices, ["A reply is still coming. Press Stop to end it; your draft is kept."]);
+    assert.deepEqual(notices, ["A reply is still being written. Press Stop to end it, or wait for it to finish. Your draft is kept."]);
 });
 
 function ledgerContext(overrides = {}) {
