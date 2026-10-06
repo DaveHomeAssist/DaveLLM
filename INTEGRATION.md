@@ -91,6 +91,28 @@ The body is validated by Pydantic. Existing templates remain `general`, `code_re
 
 Plain chat sends no tools and runs none. When the node replies with blank content and at least one `message.tool_calls` entry (gpt-oss, for example, emits a hallucinated `browser.run` call), the router keeps no assistant message, cost, embedding, artifact, or title for that turn; the user message stays, as it does after a node error. `/chat` then answers `200` with the usual five fields, where `response` is a notice rather than model output, plus `notice` (the same text), `reason: "tool_call_only"`, and `tools` (the attempted tool names, plain identifiers only, at most four). The notice tells the user to use the Run tools button (`web.search`, `web.read`) for lookups. A reply with any visible content keeps the unchanged contract, even if it also carries a tool call.
 
+### `POST /eval/chat`
+
+```json
+{
+  "node_id": "<configured-node-id>",
+  "model": "<model-id-from-that-node>",
+  "messages": [
+    {"role": "system", "content": "<the caller's own system prompt>"},
+    {"role": "user", "content": "<case input>"}
+  ],
+  "max_tokens": 4096,
+  "temperature": 0.4,
+  "format": "json"
+}
+```
+
+DL-EVAL-01. A stateless completion for evaluation harnesses such as Prompt Lab's Library Tests. The node receives exactly the caller's `messages` (1 to 64, roles `system`, `user` or `assistant`): no DaveLLM persona, project, session layer or history is added. Same `X-API-Key` guard and rate limit as `/chat`, and the same inventory errors (`404` unknown node, `409` unloaded inventory, `400` unavailable model). `format` accepts only `"json"` and becomes Ollama's top-level `format` field; omit it for an unconstrained reply. `max_tokens` defaults to 4,096 and `temperature` to the `/chat` null default.
+
+The reply is `{response, node, node_id, model, done_reason, stats, latency_ms}`, where `response` is the raw model content and `stats` has the `/chat/stream` speed fields. A reply with blank content and a tool call adds `notice`, `reason: "tool_call_only"` and `tools`, and `response` stays empty. Node failures map to `503` (connect), `504` (timeout) and `502` (node error, invalid body, or a transport failure mid-reply).
+
+Nothing is written: no conversation, embedding, cost log, performance row, title, artifact, budget charge or model-health entry, so eval load cannot change routing advice or cost totals. The call does count on the in-memory node activity so other users' waiting status sees it.
+
 ### `POST /chat/stream`
 
 Progress events (DL-UX-01). The stream opens with a status event, before the node has answered:

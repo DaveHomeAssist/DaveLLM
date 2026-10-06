@@ -582,6 +582,12 @@
       "history": [
         {
           "checkedOn": "2026-10-06",
+          "title": "Milestone 1 built: stateless POST /eval/chat",
+          "detail": "D-EVAL-04 A and D-EVAL-05 A accepted by Dave 2026-10-06. /eval/chat added with format passthrough, contract tests (persists nothing, NODE_ACTIVITY counted, inventory and node errors) and an INTEGRATION.md entry. Milestone 2 (Prompt Lab runner) next; live run per D-EVAL-04 A.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
           "title": "Prompt Lab eval harness researched; brief and spike only",
           "detail": "Decisions D-EVAL-01..03 accepted by Dave 2026-10-06 (Enhance-only tests, stateless /eval/chat, no logging). D-EVAL-04 (first live run size) and D-EVAL-05 (JSON mode) open.",
           "evidence": "session"
@@ -665,9 +671,7 @@
     "DL-UI-02 [Open, 2026-10-05]: desktop notifications when a reply finishes. Options: A only while the window is hidden or unfocused, with a Settings toggle on by default (recommended); B always; C none.",
     "DL-UI-03 [Open, 2026-10-05]: sending during a reply. Options: A refuse and keep the draft (built, recommended); B stop the current reply and send; C queue until the reply ends.",
     "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today.",
-    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector.",
-    "D-EVAL-04 [Open]: first live Library Test run. Options: A walter only, two models, 10 cases, one pass, app max_tokens 4096 (recommended); B add duncan gpt-oss:120b; C cap max_tokens at 1500 for speed. No live run is authorized by this record.",
-    "D-EVAL-05 [Open]: JSON mode for /eval/chat. Options: A send format json by default and report invalid-JSON counts (recommended); B never constrain; C run both."
+    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector."
   ],
   "decisionHistory": [
     {
@@ -731,6 +735,18 @@
       "status": "prepared; access unverified",
       "date": "2026-10-02",
       "decision": "A designated adapter test page already exists; do not create another page based on the superseded board setup question."
+    },
+    {
+      "id": "D-EVAL-04",
+      "status": "accepted",
+      "date": "2026-10-06",
+      "decision": "A: first live run on walter only, two models (8B-class and 20B-class), 10 cases, one pass, max_tokens 4096."
+    },
+    {
+      "id": "D-EVAL-05",
+      "status": "accepted",
+      "date": "2026-10-06",
+      "decision": "A: send format json by default and report invalid-JSON counts."
     }
   ],
   "files": [
