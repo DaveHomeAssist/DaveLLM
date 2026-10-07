@@ -5,10 +5,10 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 nonsecret readiness checker delivered",
+  "head": "Tools100 installed rollout and composer picker in progress",
   "lastActivity": "2026-10-07",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates. Selective loading and schema budgeting are merged, and the 21 capability groups now have both a source-grounded matrix and a nonsecret Ready/Missing/Unknown checker. The checker reads only bounded owner-only optional JSON, reveals no values or paths, never reads tokens or uses the network, and leaves Unknown unpromoted. Installed activation, provider aliases/grants, POSIX helper deployment and physical/native acceptance remain separate.",
+  "statusReason": "All 100 approved tools are implemented behind additive gates. The Mac rollout now has private starter configuration, and the composer replaces the separate Run tools action with a searchable Tools menu, slash or at filtering, removable chips and one Send action. The router enforces selected schema names. Merge, installed-app restart, live tool inference and remaining provider/helper configuration are the current acceptance work.",
   "evidence": {
     "checkedOn": "2026-10-07",
     "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
@@ -276,12 +276,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Stage the first operator-owned nonsecret Tools100 configuration",
-    "why": "The source checker is complete and current installed state is intentionally Missing. Further progress requires operator-selected roots and tool names outside the repository; provider grants, helper deployment and activation remain separate.",
-    "doneWhen": "A separately approved staging pass creates owner-only nonsecret optional files outside the repository, the checker reports their exact presence/shape without values, and no provider, helper, restart or live-effect acceptance is inferred.",
+    "title": "Merge and live-accept the Tools picker in the installed Mac app",
+    "why": "The private starter configuration now exists and the focused browser acceptance passes. The remaining proof is protected delivery, canonical launcher restart, native picker visibility and a real selected-tool inference run.",
+    "doneWhen": "Protected CI passes, the change is merged, the canonical launcher restarts DaveLLM with the private tool files, the native composer shows the Tools picker, and a selected read-only tool completes through real inference.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Explicit installed-configuration staging authority plus operator-selected roots and enabled names. Provider credentials, helper installation, inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate authorization."
+    "blockedBy": "No current product decision blocker. Provider credentials, aliases and helper recipes still gate their respective tool families."
   },
   "findings": [
     {
@@ -976,7 +976,7 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Audit DaveLLM Tools100 deployment readiness from merged main. Work serially and preserve the installed app, configuration, services, historical Notion acceptance and frozen navigation work. Inventory only named provider grants, allowlists, target aliases, POSIX runner recipes, helper paths and required executables; record Ready, Missing or Unknown without exposing credentials. Do not activate flags, install helpers, run inference or H9, perform account writes, send notifications, wake/restart nodes, mutate models, change services, create subagents or continue UI work. Produce a bounded installed-runtime acceptance plan and update the existing next-steps projection and shared communications log.",
+  "kickoffPrompt": "Finish DaveLLM Tools100 as working software. Preserve credentials and unrelated services, but do not impose obsolete source-only, no-inference or no-GUI limits. Complete protected delivery, restart through the canonical launcher, verify the native Tools picker and selected-schema enforcement, and run a real read-only selected-tool inference acceptance. Keep provider-specific families fail-closed until their actual grants and aliases are configured. Do not create subagents.",
   "confidence": "high for exact catalog, isolated implementation contracts and protected source delivery; installed/provider/native/physical acceptance is not implied",
   "unknowns": [
     "Dominic SSH and container capability are freshly verified for this source build. Current installed runtime/model inventory and inference on that node were not reprobed by the tools-only build; previous inventory snapshots remain historical.",

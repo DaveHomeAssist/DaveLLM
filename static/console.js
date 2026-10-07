@@ -312,7 +312,7 @@ function updateApprovalPresentation(run) {
     document.getElementById("chatPanel").classList.toggle("approval-pending", !!pending);
     runLedger.dataset.status = run.status;
     sendBtn.disabled = approvalBusy;
-    runToolsBtn.disabled = approvalBusy;
+    toolPickerToggle.disabled = approvalBusy;
     if (pending) {
         let timer = document.getElementById("approvalCountdown");
         if (!timer) {

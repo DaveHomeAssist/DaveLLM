@@ -194,9 +194,23 @@ button.message-action:hover { background: var(--surface-300); }
 .footer-inputs { border: 1px solid var(--border-strong); border-radius: 12px; padding: 10px; background: var(--surface-200); }
 #promptInput { border: 0; background: transparent; resize: none; padding: 4px; min-height: 46px; max-height: 160px; font-size: 15px; }
 #promptInput:focus-visible { outline-offset: 0; }
-.composer-primary-actions, .actions { display: flex; align-items: center; gap: 8px; }
+.composer-primary-actions, .composer-left-actions, .actions { display: flex; align-items: center; gap: 8px; }
 .composer-primary-actions { justify-content: space-between; }
 #attachToolsToggle { font-size: 12px; }
+.tool-picker { border: 1px solid var(--border); border-radius: 10px; margin: 6px 0; padding: 8px; background: var(--surface-100); }
+.tool-picker-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.tool-picker-header label { font-size: 12px; font-weight: 600; }
+#toolSearch { width: 100%; min-height: 34px; margin-bottom: 6px; }
+.tool-picker-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; max-height: 220px; overflow: auto; }
+.tool-picker-option { display: flex; align-items: flex-start; gap: 8px; text-align: left; padding: 7px 8px; min-width: 0; }
+.tool-picker-option[aria-selected="true"] { border-color: var(--accent); background: var(--surface-300); }
+.tool-picker-option span { min-width: 0; }
+.tool-picker-option strong, .tool-picker-option small { display: block; overflow-wrap: anywhere; }
+.tool-picker-option small { color: var(--muted); margin-top: 2px; }
+.selected-tools { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 7px; }
+.selected-tools:empty { display: none; }
+.selected-tool-chip { min-height: 26px; padding: 3px 7px; font-size: 11px; }
+@media (max-width: 640px) { .tool-picker-list { grid-template-columns: 1fr; } }
 .tool-row { display: none; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
 .tool-row.mobile-tools-open { display: flex; }
 .tool-row > * { font-size: 12px; }
