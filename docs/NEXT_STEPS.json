@@ -5,13 +5,13 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 source delivered on main behind default-off gates; installed acceptance remains separate",
-  "lastActivity": "2026-10-05",
+  "head": "Tools100 source delivered; deployment inputs mapped without activation",
+  "lastActivity": "2026-10-07",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. A fresh one-CPU/two-GiB Dominic container passed the clean merged-source full suite: 1312 passed, one skipped, 90% DaveHarness coverage; 206 Notion tests passed at 97% branch coverage; offline qualification/load, strict types, JavaScript/Node/shell checks, npm tree and zero-vulnerability audit also passed. All required Python 3.12/3.13/3.14 PR and post-merge CI checks passed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate. DL-05 navigation source repair passed an isolated Electron fixture on Dominic; all three required PR checks passed and PR #62 merged at 92dc458; installed/native acceptance remains separate.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. PR #72 at 8e8bc3c closes three retained review gaps, PR #73 at 8283015 records protected delivery and PR #74 at b935ea0 records the safely stopped Duncan diagnostic. The 21 capability groups now have a source-grounded Ready/Missing/Unknown deployment-input matrix. The running app exposes 22 existing tools and no Tools100 definitions; no optional toolpack or root file is installed. Installed activation, provider aliases/grants, POSIX helper deployment and physical/native acceptance remain separate. PR #71 owns overlapping selective switch-on/setup work and remains untouched.",
   "evidence": {
-    "checkedOn": "2026-10-05",
-    "sourceRevision": "0dc9f68fa4946a09f2e64a953c3c4d2ac6025452",
+    "checkedOn": "2026-10-07",
+    "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
     "tools100": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
@@ -41,6 +41,45 @@
       "defaultFlags": "Toolpack, secondary inference and runner jobs are separately default off",
       "liveAcceptance": "Not run. Installed configuration and healthy services preserved. Provider credentials, target allowlists, runner recipes and POSIX helper installation are deployment inputs; Windows helper jobs fail closed.",
       "source": "docs/TOOLS100.md"
+    },
+    "tools100ReviewRepair": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "1314c9cfb3627d3a9808274552c3d6c6927c26d7",
+      "implementationRevision": "bbd4852b6405d3f60a11db3db975e9d0010bc531",
+      "mergeRevision": "8e8bc3cb62cbd83aa9de7a56dcf036446734b8c5",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/72",
+      "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37570959012",
+      "postMergeCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37571686927",
+      "scope": "Three PR #63 review findings only: descendant cleanup after runner abort, untracked-file preview/commit refusal without index mutation, and owner-filtered capability-only runner selection. No PR #71 edits, installed activation, inference, H9, provider effects, service changes or model mutations.",
+      "runner": "Dominic, disposable Python 3.12 container; one CPU and two GiB memory",
+      "verification": "Three focused regressions passed on Linux, including a real descendant process and unrelated process group. The complete toolpack, runner, catalog provenance and capability manifest set passed 223 tests with two skips. Required Python 3.12/3.13/3.14 PR and post-merge CI checks passed; Pages completed successfully.",
+      "reviewFindings": [
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169239",
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169248",
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169253"
+      ],
+      "installedRuntime": "Preserved; source repair does not prove installed or native acceptance."
+    },
+    "duncanDiagnostic": {
+      "checkedOn": "2026-10-07",
+      "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
+      "authorization": "Maximum five total serial gpt-oss:20b requests, 128 output tokens and 180 seconds each; CPU num_gpu 0 and num_ctx 4096 first; stop tuning on CPU failure; request-local keep_alive 0; no persistent settings, restart, repull, upgrade, other model, H9, Notion write or paid call.",
+      "historicalConsumption": "Zero requests. The controller dispatch ledger did not include BUS-CHOICES-DUNCAN-001, the daily record described it as queued, and the prior Tools100 closeout recorded Duncan as untouched.",
+      "requestCount": 1,
+      "remainingBudgetNotExercised": 4,
+      "result": "Stopped on the required CPU baseline. Ollama launched llama-server with -c 4096 and -ngl 0, then returned HTTP 500 after CPU_REPACK allocation of 10152345600 bytes failed. GPU 4, GPU 8, GPU 16 and the final actual-context DaveLLM request were skipped; no retry or budget reset occurred.",
+      "caps": "Request body set num_predict 128, num_ctx 4096, num_gpu 0, keep_alive 0 and stream false; curl enforced a 180-second deadline. The failure returned in 2.9 seconds before generation.",
+      "capacity": "Duncan had about 37 GiB free RAM, gpt-oss:20b installed, no loaded model and no llama-server before dispatch. Current Ollama reported no usable GPU for this runner build.",
+      "release": "After failure, both local and remote /api/ps returned no loaded models and only the pre-existing Ollama service process remained. No configuration, service, model or file was changed."
+    },
+    "tools100DeploymentReadiness": {
+      "checkedOn": "2026-10-07",
+      "sourceRevision": "b935ea09cb0832c5ca76233db93a16ac30c5c3da",
+      "source": "docs/TOOLS100_READINESS.md",
+      "scope": "Twenty-one capability groups mapped to actual named nodes, aliases, owners, grants, runner recipes, executables and POSIX helper prerequisites. Read-only source and nonsecret presence/status only; no activation, installation, provider call, inference, helper deployment, service change or restart.",
+      "installedObservation": "Authenticated /tools returned 22 existing qualified/extended tools and no Tools100 definitions. toolpack.json and tool-roots.json are absent. Dominic, Walter and Duncan report online through node status; this does not establish model or helper readiness.",
+      "overlap": "PR #71 remains open at 22a5bf332927b46d01fa6dabc09f12da4d1663a2 and owns selective enabled_tools, secure optional-file loading and docs/TOOLS100_SETUP.md. This matrix changes none of those files.",
+      "nextSourceItem": "After PR #71 reconciliation, add a nonsecret readiness checker that reports enabled names and required alias/owner/runner/executable key presence as Ready, Missing or Unknown without secret reads, effects, provider calls, installation or restart."
     },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
@@ -210,12 +249,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Configure Tools100 deployment inputs before installed acceptance",
-    "why": "Source delivery is complete. Provider credentials/allowlists, named targets, POSIX runner recipes and helper installation remain explicit deployment inputs; preserve the installed app until a separate rollout is scoped.",
-    "doneWhen": "Named provider and POSIX runner readiness are recorded, missing integrations fail closed, and a separately authorized installed-runtime acceptance plan preserves inference, H9, account writes, notifications, wake/restarts/model mutations and service changes unless explicitly granted.",
-    "effort": "L",
+    "title": "Reconcile PR #71, then add a nonsecret Tools100 readiness checker",
+    "why": "The 21-group matrix now identifies every missing or unknown deployment input without activating the installed app. PR #71 already owns selective tool loading and secure optional files; the next independent source step is a repeatable checker, not duplicate setup code or a credential request.",
+    "doneWhen": "Current main contains reconciled selective setup plus a checker that reports enabled names and required alias, owner, runner-capability and executable-key presence as Ready, Missing or Unknown without reading secret values, contacting providers, installing helpers, mutating configuration or restarting the app.",
+    "effort": "S",
     "owner": "either",
-    "blockedBy": "Source delivery is not blocked. Missing provider credentials/allowlists, remote recipe/executable configuration and helper installation block their live lanes only. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate explicit authorization."
+    "blockedBy": "Reconcile rather than duplicate PR #71's overlapping setup files. Missing aliases/grants/helper recipes block only their dependent live rows. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate explicit authorization."
   },
   "findings": [
     {
@@ -915,7 +954,7 @@
   "unknowns": [
     "Dominic SSH and container capability are freshly verified for this source build. Current installed runtime/model inventory and inference on that node were not reprobed by the tools-only build; previous inventory snapshots remain historical.",
     "Tools100 runtime target configuration, provider credentials/grants, recipes, executable installations and POSIX helper deployment are not established by source tests. Windows job-object isolation is not implemented; Windows helper calls fail closed.",
-    "Model reliability beyond the bounded smoke; Duncan gpt-oss:20b GPU context allocation failed, and other inventoried models were not all exercised.",
+    "Duncan gpt-oss:20b is not currently viable on the required path: the October 7 request-local CPU-only 4K baseline failed allocating a 10152345600-byte CPU repack buffer, and Ollama reported no usable GPU for its current runner build. No higher profile or actual-context request was attempted after the required stop.",
     "H9 structured-write compatibility and the remaining fixed corpus; passing native bounded acceptance is not governing qualification.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
