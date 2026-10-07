@@ -496,7 +496,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
   .empty-chat, .starting-modes { display: none; }
   .prompt.is-empty { justify-content: flex-end; }
   #contextDisclosure > summary { display: list-item; width: fit-content; cursor: pointer; font-size: 12px; padding: 4px; }
-  #contextDisclosure[open] .compact-context-body { position: fixed; z-index: 12; inset: 58px 12px auto; padding: 10px; border: 1px solid var(--border-strong); background: var(--panel); border-radius: 8px; }
+  #contextDisclosure[open] .compact-context-body { position: fixed; z-index: 12; inset: 58px 12px 80px; overflow-y: auto; padding: 10px; border: 1px solid var(--border-strong); background: var(--panel); border-radius: 8px; }
   #contextDisclosure #contextStrip { display: flex; flex-wrap: wrap; }
   #closeCompactContext { display: block; margin-left: auto; }
   #contextTemplateBtn { display: inline-flex; }
@@ -509,6 +509,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
   .app-nav { padding-top: 2px; padding-bottom: 2px; }
   .app-nav button { min-height: 44px; padding: 3px 2px; gap: 3px; }
   .tool-picker:not(.hidden) { top: 50px; bottom: 60px; }
+  #contextDisclosure[open] .compact-context-body { top: 50px; bottom: 60px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

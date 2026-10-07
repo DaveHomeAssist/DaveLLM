@@ -42,6 +42,9 @@ The first PR CI run found one legacy source test explicitly requiring the remove
 landscape page-scroll escape hatch (1,368 other tests passed on Python 3.12).
 That test now enforces the locked shell, compact disclosure and opaque tool
 overlay; actual geometry is covered by the new browser gate.
+PR review also identified long labels overflowing the compact context panel.
+It now has a bottom bound and internal scrolling; the browser fixture wraps all
+context labels and verifies that the model control and Done remain reachable.
 
 ## Preserved requirements
 

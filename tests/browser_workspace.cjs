@@ -141,11 +141,23 @@ const server = http.createServer((request, response) => {
                     await page.locator("#inspectorClose").click();
                 }
                 if (h <= 500) {
+                    const originalLabels = await page.locator("#contextStrip strong").evaluateAll((labels) => labels.map((label) => {
+                        const original = label.textContent;
+                        label.textContent = "A deliberately long project or model name with enough detail to wrap onto several lines";
+                        return original;
+                    }));
                     await page.locator("#contextDisclosure summary").click();
                     assert.equal(await page.locator("#contextTemplateBtn").isVisible(), true);
-                    const contextBounds = await page.locator("#contextStrip").boundingBox();
+                    const contextBounds = await page.locator(".compact-context-body").boundingBox();
                     assert.ok(contextBounds.y >= 0 && contextBounds.y + contextBounds.height <= h);
+                    await page.locator("#contextModelBtn").focus();
+                    const modelBounds = await page.locator("#contextModelBtn").boundingBox();
+                    assert.ok(modelBounds.y >= contextBounds.y && modelBounds.y + modelBounds.height <= contextBounds.y + contextBounds.height);
+                    await page.locator("#closeCompactContext").focus();
+                    const doneBounds = await page.locator("#closeCompactContext").boundingBox();
+                    assert.ok(doneBounds.y >= contextBounds.y && doneBounds.y + doneBounds.height <= contextBounds.y + contextBounds.height);
                     await page.locator("#closeCompactContext").click();
+                    await page.locator("#contextStrip strong").evaluateAll((labels, originals) => labels.forEach((label, index) => { label.textContent = originals[index]; }), originalLabels);
                 }
             }
         }

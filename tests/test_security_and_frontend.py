@@ -375,6 +375,8 @@ def test_frontend_scroll_contract_constrains_shell_and_preserves_compact_control
     assert "display: list-item;" in rule(compact_source, "#contextDisclosure > summary")
     assert "width: fit-content;" in rule(compact_source, "#contextDisclosure > summary")
     assert "position: fixed;" in rule(compact_source, ".tool-picker:not(.hidden)")
+    assert "inset: 58px 12px 80px;" in rule(compact_source, "#contextDisclosure[open] .compact-context-body")
+    assert "overflow-y: auto;" in rule(compact_source, "#contextDisclosure[open] .compact-context-body")
     assert "min-height: 0;" in rule(compact_source, ".tool-picker-list")
     assert "background: var(--panel);" in rule(desktop_source, ".tool-picker")
 
