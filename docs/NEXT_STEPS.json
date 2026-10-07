@@ -5,13 +5,13 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 review boundaries repaired on main; installed acceptance remains separate",
+  "head": "Tools100 source is repaired; bounded Duncan CPU diagnostic stopped safely",
   "lastActivity": "2026-10-07",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. PR #72 at 8e8bc3c closes three retained review gaps: configured command aborts terminate their descendant process group, untracked Git files are refused before preview or staging, and runner selection is owner-filtered with capability-only output. A capped Dominic container passed 223 focused toolpack checks with two skips; all required Python 3.12/3.13/3.14 PR and post-merge CI checks passed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate. DL-05 navigation source repair passed an isolated Electron fixture on Dominic; all three required PR checks passed and PR #62 merged at 92dc458; installed/native acceptance remains separate.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. PR #72 at 8e8bc3c closes three retained review gaps and PR #73 at 8283015 records the protected delivery. The separately approved Duncan diagnostic established zero prior requests, then stopped after request 1 of 5: gpt-oss:20b failed its required CPU-only 4K load while allocating the CPU repack buffer. GPU profiles and the final actual-context request were skipped by the accepted stop rule. Installed desktop/services/configuration and frozen UI work remain preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate.",
   "evidence": {
     "checkedOn": "2026-10-07",
-    "sourceRevision": "8e8bc3cb62cbd83aa9de7a56dcf036446734b8c5",
+    "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
     "tools100": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
@@ -59,6 +59,18 @@
         "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169253"
       ],
       "installedRuntime": "Preserved; source repair does not prove installed or native acceptance."
+    },
+    "duncanDiagnostic": {
+      "checkedOn": "2026-10-07",
+      "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
+      "authorization": "Maximum five total serial gpt-oss:20b requests, 128 output tokens and 180 seconds each; CPU num_gpu 0 and num_ctx 4096 first; stop tuning on CPU failure; request-local keep_alive 0; no persistent settings, restart, repull, upgrade, other model, H9, Notion write or paid call.",
+      "historicalConsumption": "Zero requests. The controller dispatch ledger did not include BUS-CHOICES-DUNCAN-001, the daily record described it as queued, and the prior Tools100 closeout recorded Duncan as untouched.",
+      "requestCount": 1,
+      "remainingBudgetNotExercised": 4,
+      "result": "Stopped on the required CPU baseline. Ollama launched llama-server with -c 4096 and -ngl 0, then returned HTTP 500 after CPU_REPACK allocation of 10152345600 bytes failed. GPU 4, GPU 8, GPU 16 and the final actual-context DaveLLM request were skipped; no retry or budget reset occurred.",
+      "caps": "Request body set num_predict 128, num_ctx 4096, num_gpu 0, keep_alive 0 and stream false; curl enforced a 180-second deadline. The failure returned in 2.9 seconds before generation.",
+      "capacity": "Duncan had about 37 GiB free RAM, gpt-oss:20b installed, no loaded model and no llama-server before dispatch. Current Ollama reported no usable GPU for this runner build.",
+      "release": "After failure, both local and remote /api/ps returned no loaded models and only the pre-existing Ollama service process remained. No configuration, service, model or file was changed."
     },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
@@ -883,7 +895,7 @@
   "unknowns": [
     "Dominic SSH and container capability are freshly verified for this source build. Current installed runtime/model inventory and inference on that node were not reprobed by the tools-only build; previous inventory snapshots remain historical.",
     "Tools100 runtime target configuration, provider credentials/grants, recipes, executable installations and POSIX helper deployment are not established by source tests. Windows job-object isolation is not implemented; Windows helper calls fail closed.",
-    "Model reliability beyond the bounded smoke; Duncan gpt-oss:20b GPU context allocation failed, and other inventoried models were not all exercised.",
+    "Duncan gpt-oss:20b is not currently viable on the required path: the October 7 request-local CPU-only 4K baseline failed allocating a 10152345600-byte CPU repack buffer, and Ollama reported no usable GPU for its current runner build. No higher profile or actual-context request was attempted after the required stop.",
     "H9 structured-write compatibility and the remaining fixed corpus; passing native bounded acceptance is not governing qualification.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
