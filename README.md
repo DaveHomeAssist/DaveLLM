@@ -154,8 +154,8 @@ python scripts/project_context_cli.py restore <project-id> 2
 Project-context configuration:
 
 - `DAVE_MODEL_CONTEXT_DEFAULT` — fallback model window, default `32768`.
-- `DAVE_MODEL_CONTEXT_WINDOWS` — JSON object of model IDs to context-window tokens. For plain chat the router sends each window, capped at `DAVE_CHAT_NUM_CTX`, to Ollama as `num_ctx`, and sizes plain chat's project-context budget (and the context preview) with the same capped number. Agent runs, which still use `/v1` and send no `num_ctx`, budget with the uncapped window.
-- `DAVE_CHAT_NUM_CTX` — largest context the router requests for plain chat, default `16384`; values below `8192` are raised to `8192`, the smallest window that leaves room for project context after the output and safety reserves.
+- `DAVE_MODEL_CONTEXT_WINDOWS` — JSON object of model IDs to context-window tokens. Plain chat and tool runs send each window, capped at `DAVE_CHAT_NUM_CTX`, to Ollama as `num_ctx`, and size their project-context budget with the same capped number. Context previews use the same cap.
+- `DAVE_CHAT_NUM_CTX` — largest context the router requests for plain chat and tool runs, default `16384`; values below `8192` are raised to `8192`, the smallest window that leaves room for project context after the output and safety reserves. The Mac launcher can persist these limits in an owner-controlled, nonsecret `model-context.json`; see [model context settings](docs/MODEL_CONTEXT_SETUP.md).
 - `DAVE_CHAT_KEEP_ALIVE` — how long Ollama keeps a model loaded after a chat in a conversation, default `30m`; empty uses the server default.
 - `DAVE_NODE_CONNECT_TIMEOUT` — seconds to connect to a node before giving up, default `10`.
 - `DAVE_NODE_FIRST_CHUNK_TIMEOUT` — seconds a streamed chat may wait for its first line (model load plus prompt reading), default `300`.

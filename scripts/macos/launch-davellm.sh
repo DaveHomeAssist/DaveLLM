@@ -152,6 +152,35 @@ if [[ -z "${DAVE_TOOLPACK_CONFIG:-}" && -e "$toolpack_file" ]]; then
     fi
 fi
 
+# Model context settings: share the existing router knobs without raising every model's window.
+model_context_file="${DATA_DIR}/model-context.json"
+if [[ -e "$model_context_file" ]]; then
+    if private_settings_file "$model_context_file" \
+        && (( $(/usr/bin/wc -c < "$model_context_file") <= 16384 )) \
+        && model_context="$("$JQ_BIN" -ce '
+            def window($minimum; $maximum):
+                type == "number" and . == floor and . >= $minimum and . <= $maximum;
+            if type == "object"
+                and (keys == ["default_context", "max_context", "models"])
+                and (.max_context | window(8192; 262144))
+                and (.default_context | window(4096; 262144))
+                and (.default_context <= .max_context)
+                and (.models | type == "object")
+                and (.max_context as $maximum | .models | to_entries | all(.[];
+                    (.key | length > 0 and length <= 200)
+                    and (.value | window(4096; $maximum))))
+            then . else error("invalid") end' "$model_context_file" 2>/dev/null)"; then
+        tool_env+=(
+            "DAVE_CHAT_NUM_CTX=${DAVE_CHAT_NUM_CTX:-$(print -r -- "$model_context" | "$JQ_BIN" -r '.max_context')}"
+            "DAVE_MODEL_CONTEXT_DEFAULT=${DAVE_MODEL_CONTEXT_DEFAULT:-$(print -r -- "$model_context" | "$JQ_BIN" -r '.default_context')}"
+            "DAVE_MODEL_CONTEXT_WINDOWS=${DAVE_MODEL_CONTEXT_WINDOWS:-$(print -r -- "$model_context" | "$JQ_BIN" -c '.models')}"
+        )
+    else
+        print -u2 -- "DaveLLM launcher: ignoring model-context.json (needs private, valid context limits, under 16 KiB)"
+    fi
+fi
+# End model context settings.
+
 if /usr/sbin/lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
     fail "TCP port 8000 is already in use; stop the existing DaveLLM/browser-mode process first"
 fi
