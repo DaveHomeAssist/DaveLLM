@@ -5,10 +5,10 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 selective loading reconciled; readiness checker is next",
+  "head": "Tools100 nonsecret readiness checker delivered",
   "lastActivity": "2026-10-07",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates. PR #71 has been reconciled with current main and now owns selective enabled_tools loading, private optional launcher files and tool-schema context budgeting. Its two prior review findings remain fixed, and malformed toolpack JSON now fails closed by registering no expansion tools. The 21 capability groups have a source-grounded Ready/Missing/Unknown deployment-input matrix. Installed activation, provider aliases/grants, POSIX helper deployment and physical/native acceptance remain separate.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates. Selective loading and schema budgeting are merged, and the 21 capability groups now have both a source-grounded matrix and a nonsecret Ready/Missing/Unknown checker. The checker reads only bounded owner-only optional JSON, reveals no values or paths, never reads tokens or uses the network, and leaves Unknown unpromoted. Installed activation, provider aliases/grants, POSIX helper deployment and physical/native acceptance remain separate.",
   "evidence": {
     "checkedOn": "2026-10-07",
     "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
@@ -94,6 +94,14 @@
       "scope": "Reconciled the accepted selective Tools100 launcher configuration and tool-schema context budgeting with current main. Preserved installed files and services; no activation, token, helper installation, provider call, inference, H9 or restart.",
       "review": "The two earlier inline findings were already fixed at 22a5bf3. One remaining fail-closed mismatch was repaired: invalid DAVE_TOOLPACK_CONFIG now registers no expansion tools instead of all 102, matching the PR contract.",
       "verification": "Targeted launcher, toolpack, context-budget and documentation tests passed 200 locally. Initial reconciled CI run 37578113061 exposed a Linux-only assertion race after the descendant had already exited: /proc/<pid>/stat disappeared between exists and read_text. The assertion now treats FileNotFoundError as successful termination. Required Python 3.12/3.13/3.14 checks passed on PR head 7ff229f and merge e579f1f; Pages completed successfully."
+    },
+    "tools100ReadinessChecker": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "e3cd6f83f07e006aa365afccc94e713e7efa15b7",
+      "source": "scripts/check_tools100_readiness.py",
+      "scope": "Local nonsecret optional-file presence and shape only. Reports enabled names and required aliases, owners, runner capabilities and executable keys as Ready, Missing or Unknown for all 21 groups without returning configuration values or paths.",
+      "installedObservation": "Both optional installed files are absent, zero Tools100 names are enabled, 21 groups are reported, secrets are not read, network is not used and live acceptance is not checked. Exit status is nonzero because readiness is incomplete.",
+      "verification": "Eight focused fixtures cover absent, malformed, wrong-shape, partial, fully shaped, symlink, group-writable and CLI cases. Protected repository CI remains the delivery gate."
     },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
@@ -263,12 +271,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Add a nonsecret Tools100 readiness checker",
-    "why": "The 21-group matrix identifies every missing or unknown deployment input, and PR #71 now owns the reconciled selective setup path. The next independent source step is repeatable presence and shape reporting, not activation or a credential request.",
-    "doneWhen": "Current main contains a checker that reports enabled names and required alias, owner, runner-capability and executable-key presence as Ready, Missing or Unknown without reading secret values, contacting providers, installing helpers, mutating configuration or restarting the app.",
+    "title": "Stage the first operator-owned nonsecret Tools100 configuration",
+    "why": "The source checker is complete and current installed state is intentionally Missing. Further progress requires operator-selected roots and tool names outside the repository; provider grants, helper deployment and activation remain separate.",
+    "doneWhen": "A separately approved staging pass creates owner-only nonsecret optional files outside the repository, the checker reports their exact presence/shape without values, and no provider, helper, restart or live-effect acceptance is inferred.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "No source dependency remains. Missing aliases/grants/helper recipes block only their dependent live rows. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate explicit authorization."
+    "blockedBy": "Explicit installed-configuration staging authority plus operator-selected roots and enabled names. Provider credentials, helper installation, inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate authorization."
   },
   "findings": [
     {

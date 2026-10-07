@@ -48,8 +48,26 @@ All groups still require the default-off Tools100 registry to be enabled in a se
 4. **Effect acceptance — Missing by design.** Enabling a definition never authorizes its exact model request, mutation, process job, UDP send or provider write. Those remain lifecycle approvals plus any external grant named above.
 5. **Physical/native evidence — Unknown.** Notifications, Wake-on-LAN, OSC, Art-Net, Resolume, Home Assistant and installed desktop behavior need their own scoped acceptance.
 
+## Nonsecret readiness checker
+
+`scripts/check_tools100_readiness.py` implements the source-only preflight. It safely
+reads `toolpack.json` and `tool-roots.json`, optionally reads only an explicitly named
+local nonsecret runner-config snapshot, and reports enabled names plus alias, owner,
+runner-capability and executable-key presence/shape for all 21 groups. Output never
+contains configuration values or paths. Secrets remain `not_read`, network remains
+`not_used`, and live acceptance remains `not_checked`.
+
+The current installed-data check reports both optional files **Missing**, zero enabled
+Tools100 names and 21 group rows. That is expected evidence of preserved installed
+state, not a request to create files. The command exits nonzero until every reported
+requirement is Ready; Unknown is intentionally not promoted to Ready.
+
 ## Next executable item
 
-The smallest independent source-only item after PR #71 merges is a **nonsecret readiness checker**: read the optional files without revealing values, report enabled tool names and the presence/shape of required aliases, owners, runner capabilities and executable keys, and emit only `Ready`, `Missing` or `Unknown`. It must never read secret values, contact providers, install helpers, mutate configuration or restart the app. This avoids asking for credentials generically and turns the matrix above into a repeatable preflight.
+No independent source dependency remains in this deployment-input slice. The next
+step is an explicitly approved operator-owned configuration staging pass: choose the
+nonsecret starter selection and admitted roots, create them outside the repository,
+run this checker, and keep provider grants, helper deployment, restart/activation and
+live acceptance as separate approvals and evidence lanes.
 
 Live/provider-dependent rows require exact inputs rather than broad permission: a named alias and owner allowlist; the minimum required provider scope; or a specific POSIX helper path/config/executable recipe. Missing rows do not block the ready local/advisory tools or the source-only checker.
