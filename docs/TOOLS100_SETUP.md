@@ -51,6 +51,23 @@ curl -s -H "X-API-Key: $(security find-generic-password -a "$USER" -s com.davell
 
 The key is read from your Keychain for that one command and is not printed.
 
+### Check readiness without switching anything on
+
+The source-only checker reads the two optional JSON files with the same owner-only,
+regular-file, no-symlink and 64 KiB boundaries as the launcher. It prints only tool
+names and `Ready`, `Missing` or `Unknown` presence/shape results; it never reads
+environment tokens, contacts a node or provider, changes a file, or proves live
+acceptance.
+
+```bash
+~/Code/DaveLLM/venv/bin/python ~/Code/DaveLLM/scripts/check_tools100_readiness.py
+```
+
+The command exits nonzero while any requirement is Missing or Unknown. To inspect an
+explicit local snapshot of a nonsecret POSIX helper configuration, add
+`--runner-config alias=/absolute/path.json`. The checker never follows the runner's
+SSH alias or reads the configured remote path automatically.
+
 ## Why not everything at once
 
 Every registered tool's description goes to the model on every step of a tool run, and the model's context has to hold them plus the conversation and the reply. Estimates from the schema sizes (characters divided by 3 to 4):
