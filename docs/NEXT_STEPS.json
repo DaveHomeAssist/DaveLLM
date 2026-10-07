@@ -88,7 +88,7 @@
       "reconciledBase": "dde5eb674f71fc30813821dfd71d2cce7e90e7ff",
       "scope": "Reconciled the accepted selective Tools100 launcher configuration and tool-schema context budgeting with current main. Preserved installed files and services; no activation, token, helper installation, provider call, inference, H9 or restart.",
       "review": "The two earlier inline findings were already fixed at 22a5bf3. One remaining fail-closed mismatch was repaired: invalid DAVE_TOOLPACK_CONFIG now registers no expansion tools instead of all 102, matching the PR contract.",
-      "verification": "Targeted launcher, toolpack and context-budget tests passed 174 locally. Protected PR CI remains the delivery gate."
+      "verification": "Targeted launcher, toolpack, context-budget and documentation tests passed 200 locally. Initial reconciled CI run 37578113061 exposed a Linux-only assertion race after the descendant had already exited: /proc/<pid>/stat disappeared between exists and read_text. The assertion now treats FileNotFoundError as successful termination; protected rerun CI remains the delivery gate."
     },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",

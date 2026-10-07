@@ -273,7 +273,11 @@ time.sleep(60)
         pid = int(descendant_pid.read_text())
         for _ in range(200):
             state = Path(f"/proc/{pid}/stat")
-            if not state.exists() or state.read_text().split()[2] == "Z":
+            try:
+                process_state = state.read_text().split()[2]
+            except FileNotFoundError:
+                break
+            if process_state == "Z":
                 break
             import time
             time.sleep(.01)
