@@ -504,7 +504,7 @@ import logging  # noqa: E402
 
 import httpx  # noqa: E402
 
-from test_notion_tools import TOKEN, _model_turns, _settled  # noqa: E402
+from test_notion_tools import TOKEN, _model_turns, _persistent_loop, _settled  # noqa: E402
 
 
 def test_r4_the_client_ignores_proxy_settings_and_never_follows_redirects(monkeypatch):
@@ -607,7 +607,12 @@ def test_r4_cursors_and_ids_from_responses_cannot_steer_requests():
     assert any("start_cursor=abc%26page_size%3D1000%23frag" in url for url in seen)
 
 
-def test_r4_the_token_never_reaches_logs_routes_events_or_the_transcript(router_factory, monkeypatch, caplog):
+@pytest.mark.parametrize("delayed_response", [False, True], ids=["immediate", "after-post"])
+def test_r4_the_token_never_reaches_logs_routes_events_or_the_transcript(
+    router_factory, monkeypatch, caplog, delayed_response,
+):
+    from threading import Event
+
     caplog.set_level(logging.DEBUG)
     fake = FakeNotion()
     page = fake.add_page("DaveLLM Adapter Test")
@@ -618,20 +623,44 @@ def test_r4_the_token_never_reaches_logs_routes_events_or_the_transcript(router_
     router, client, _ = router_factory(tools=True)
     auth = {"X-API-Key": "test-only-api-key"}
     bodies = []
-    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock:
+    with respx.mock(assert_all_mocked=True, assert_all_called=False) as mock, _persistent_loop(client):
         fake.mount(mock)
         mock.get("http://ollama.test:11434/api/tags").mock(return_value=httpx.Response(
             200, json={"models": [{"name": "inventory-model:latest", "model": "inventory-model:latest"}]}))
         client.get("/nodes/node-test/models", headers=auth)
         chat = mock.post("http://ollama.test:11434/api/chat")
-        chat.side_effect = _model_turns(
+        responses = _model_turns(
             ("notion.page.read", {"page": "adapter-test"}),
             ("notion.page.append", {"page": "adapter-test", "blocks": [{"type": "paragraph", "text": "x"}]}),
             (None, "done"),
         )
-        run_id = client.post("/tools/agent/runs", headers=auth, json={
-            "messages": [{"role": "user", "content": "go"}], "node_id": "node-test",
-            "model": "inventory-model:latest"}).json()["run_id"]
+        response_started, release_response, response_cancelled = Event(), Event(), Event()
+        turns = iter(responses)
+
+        async def after_post_response(request):
+            response_started.set()
+            try:
+                while not release_response.is_set():
+                    await asyncio.sleep(0.001)
+            except asyncio.CancelledError:
+                response_cancelled.set()
+                raise
+            return next(turns)
+
+        chat.side_effect = after_post_response if delayed_response else responses
+        try:
+            created = client.post("/tools/agent/runs", headers=auth, json={
+                "messages": [{"role": "user", "content": "go"}], "node_id": "node-test",
+                "model": "inventory-model:latest"})
+            assert created.status_code == 200
+            run_id = created.json()["run_id"]
+            if delayed_response:
+                # Hold the scripted reply until POST returns: request teardown must not cancel it.
+                assert response_started.wait(1), "The scripted model never started"
+                assert not response_cancelled.is_set(), "Request teardown cancelled the scripted model"
+                assert created.json()["status"] in {"created", "running"}
+        finally:
+            release_response.set()
         paused = _settled(client, run_id)
         pending = paused["snapshot"]["pending_call"]
         decided = client.post(f"/tools/agent/runs/{run_id}/decisions", headers=auth, json={
