@@ -98,10 +98,15 @@
     "tools100ReadinessChecker": {
       "checkedOn": "2026-10-07",
       "baselineRevision": "e3cd6f83f07e006aa365afccc94e713e7efa15b7",
+      "implementationRevision": "277c4ad802ec5107cdb04138ae3bf2fc5c3ebff0",
+      "mergeRevision": "203a42732afd90235b3289522f09ab7e36babb71",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/77",
+      "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37582104963",
+      "pagesDelivery": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37582950230",
       "source": "scripts/check_tools100_readiness.py",
       "scope": "Local nonsecret optional-file presence and shape only. Reports enabled names and required aliases, owners, runner capabilities and executable keys as Ready, Missing or Unknown for all 21 groups without returning configuration values or paths.",
       "installedObservation": "Both optional installed files are absent, zero Tools100 names are enabled, 21 groups are reported, secrets are not read, network is not used and live acceptance is not checked. Exit status is nonzero because readiness is incomplete.",
-      "verification": "Eight focused fixtures cover absent, malformed, wrong-shape, partial, fully shaped, symlink, group-writable and CLI cases. Protected repository CI remains the delivery gate."
+      "verification": "Eight focused fixtures cover absent, malformed, wrong-shape, partial, fully shaped, symlink, group-writable and CLI cases. Required PR checks passed. Post-merge CI 37582950916 exposed the second valid Linux procfs disappearance exception, ProcessLookupError, after the descendant had exited; the assertion now treats both FileNotFoundError and ProcessLookupError as successful termination. Protected follow-up CI remains the delivery gate."
     },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
