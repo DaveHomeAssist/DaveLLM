@@ -5,10 +5,10 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 installed rollout and composer picker in progress",
+  "head": "Tools100 starter and composer picker live",
   "lastActivity": "2026-10-07",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive gates. The Mac rollout now has private starter configuration, and the composer replaces the separate Run tools action with a searchable Tools menu, slash or at filtering, removable chips and one Send action. The router enforces selected schema names. Merge, installed-app restart, live tool inference and remaining provider/helper configuration are the current acceptance work.",
+  "statusReason": "All 100 approved tools are implemented behind additive gates. PR #79 is merged with protected Python 3.12/3.13/3.14 CI green. The installed Mac app now has private starter configuration and a searchable selected-tool menu with slash or at filtering, removable chips and one Send action. The router enforces selected schemas, and Walter qwen3-coder:30b completed a real calc.eval run with zero errors. Provider-specific grants, aliases and helper recipes remain separate configuration work.",
   "evidence": {
     "checkedOn": "2026-10-07",
     "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
@@ -276,12 +276,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Merge and live-accept the Tools picker in the installed Mac app",
-    "why": "The private starter configuration now exists and the focused browser acceptance passes. The remaining proof is protected delivery, canonical launcher restart, native picker visibility and a real selected-tool inference run.",
-    "doneWhen": "Protected CI passes, the change is merged, the canonical launcher restarts DaveLLM with the private tool files, the native composer shows the Tools picker, and a selected read-only tool completes through real inference.",
+    "title": "Configure the next needed Tools100 integration family",
+    "why": "The starter picker and selected-tool inference are live. The remaining families depend on real provider grants, aliases, allowlists or the POSIX helper and should be enabled according to operator need.",
+    "doneWhen": "One operator-chosen family has its real nonsecret aliases and existing credential route configured, appears in the native picker, and completes its bounded live acceptance without exposing secrets.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "No current product decision blocker. Provider credentials, aliases and helper recipes still gate their respective tool families."
+    "blockedBy": "Operator choice of the next integration family; each family's actual provider grant, alias or helper recipe still gates its own acceptance."
   },
   "findings": [
     {
