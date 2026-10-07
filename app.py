@@ -3989,12 +3989,46 @@ def _lifecycle_run(run_id: str, user_id: str):
     return result, binding
 
 
+def _lifecycle_terminal_explanation(snapshot: dict | None) -> dict | None:
+    """Explain an error-budget stop without changing the run or asking the model."""
+    if snapshot is None or snapshot["status"] != "error_budget":
+        return None
+    executed = set(snapshot["executed_call_ids"])
+    tool_errors = []
+    seen = set()
+    # Only executed calls, with their last recorded result, not supplied history.
+    for item in reversed(snapshot["transcript"]):
+        call_id = item.get("tool_call_id")
+        if item.get("role") != "tool" or not isinstance(call_id, str) or call_id not in executed or call_id in seen:
+            continue
+        seen.add(call_id)
+        try:
+            outcome = json.loads(item.get("content", ""))
+        except (TypeError, ValueError):
+            continue
+        if isinstance(outcome, dict) and isinstance(outcome.get("error"), str) and outcome["error"]:
+            tool_errors.append({
+                "call_id": call_id, "tool_name": item.get("name", "tool"),
+                "error": outcome["error"],
+            })
+    return {
+        "source": "harness",
+        "message": (
+            f"The run stopped after reaching its error limit ({snapshot['errors']}/{snapshot['budget']['errors']}). "
+            "No further model or tool calls were made. This is a harness report, not a model-generated answer."
+        ),
+        "tool_errors": list(reversed(tool_errors)),
+    }
+
+
 def _lifecycle_response(run_id: str, result, binding: HostRunBinding) -> dict:
+    snapshot = result.snapshot.to_dict() if result.snapshot else None
     return {
         "run_id": run_id,
         "status": result.status,
         "reason_code": result.reason_code,
-        "snapshot": result.snapshot.to_dict() if result.snapshot else None,
+        "snapshot": snapshot,
+        "terminal_explanation": _lifecycle_terminal_explanation(snapshot),
         "context": {
             "project_id": binding.project_id,
             "brain_revision": binding.brain_revision,

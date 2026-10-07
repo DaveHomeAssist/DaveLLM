@@ -3877,6 +3877,23 @@ function renderToolRun(run) {
             block.textContent = `${item.role}: ${content.slice(0, 2000)}`;
             return block;
         }));
+    const explanation = run.status === "error_budget" ? run.terminal_explanation : null;
+    if (explanation?.source === "harness") {
+        const report = document.createElement("section");
+        report.className = "info-banner";
+        const heading = document.createElement("strong");
+        heading.textContent = "Harness report";
+        const message = document.createElement("p");
+        message.textContent = explanation.message;
+        const errors = document.createElement("ul");
+        for (const outcome of explanation.tool_errors || []) {
+            const item = document.createElement("li");
+            item.textContent = `${outcome.tool_name} (${outcome.call_id}): ${outcome.error}`;
+            errors.appendChild(item);
+        }
+        report.append(heading, message, errors);
+        runLedgerTranscript.prepend(report);
+    }
     const pending = snapshot.pending_call;
     runLedgerApproval.classList.toggle("hidden", !pending);
     if (!pending) {

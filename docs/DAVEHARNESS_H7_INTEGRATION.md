@@ -26,4 +26,27 @@ The lifecycle facade uses its own host registry snapshot so `shell.exec` can opt
 
 ## Verification and rollback
 
+### T20 terminal explanation repair — October 7, 2026
+
+The live T20 case reached its two-error budget after `file.read_lines` returned
+`File not found` and `Access denied: path is not allowed`. The correct terminal
+stop left no final model answer. The host now adds `terminal_explanation` to
+lifecycle responses: a labelled harness report with the stop reason and ordered
+errors from executed tool calls. It is null outside `error_budget`. The ledger
+shows the report before the unchanged raw transcript and renders error text as
+text, not markup. Supplied history is not promoted into new execution evidence.
+
+Acceptance: a deterministic fake model requests both original bounded reads in
+disposable roots, with error budget 2. Assert both refusal results, one model
+step, two tool calls, unchanged stored transcript/budget/status, no file creation,
+stable repeated GET responses, and one terminal event. Renderer checks cover
+literal error text, repeated refresh, stale-run isolation, and removal on a
+successful run. No extra generation, retry, raised budget, permission bypass,
+synthetic assistant turn, or event-schema change is permitted. The generic
+DaveHarness state machine and frozen qualification contracts remain unchanged.
+
+The original failed live attempt remains failed. Fixture success is not installed
+desktop/browser acceptance or a new live-inference/H9 qualification. Source
+delivery does not restart the running backend.
+
 Tests use fake Ollama responses and disposable roots. The H7 gate covers auth, tools-off behavior, invalid inventory, unknown and conflicting runs, exact approval, BRAIN isolation, cursor replay, shell opt-in, process-group cancellation, full repository checks, and the actual desktop surface. Removing the additive lifecycle routes and ledger returns the host to the shipped legacy adapter; DaveHarness public imports remain stable through `1.x`.
