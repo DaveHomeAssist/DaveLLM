@@ -9,6 +9,116 @@ let approvalExpiry = null;
 let approvalBusy = false;
 let approvalTimer = null;
 const consoleModelInventory = new Map();
+const PANEL_WIDTH_KEY = "dave_panel_widths";
+let panelWidthPreferences = {};
+
+// Keep a usable chat column even when saved desktop widths meet a smaller screen.
+function consolePanelLayout(available, preferences = {}, visible = {}, wide = false) {
+    const minimum = { history: 220, inspector: 280 };
+    const limits = { history: 560, inspector: 960 };
+    const defaults = { history: wide ? 360 : 272, inspector: wide ? 560 : 340 };
+    const widths = {};
+    const names = ["history", "inspector"];
+    for (const name of names) {
+        const requested = Number.isFinite(preferences[name]) ? preferences[name] : defaults[name];
+        widths[name] = Math.round(Math.max(minimum[name], Math.min(limits[name], requested)));
+    }
+    const active = names.filter((name) => visible[name]);
+    const room = Math.max(0, available - 480 - active.length * 12);
+    const total = active.reduce((sum, name) => sum + widths[name], 0);
+    const shrinkable = active.reduce((sum, name) => sum + widths[name] - minimum[name], 0);
+    if (total > room && shrinkable > 0) {
+        const fraction = Math.min(1, (total - room) / shrinkable);
+        for (const name of active) widths[name] -= Math.ceil((widths[name] - minimum[name]) * fraction - 1e-9);
+    }
+    const maximum = {};
+    for (const name of names) {
+        const other = active.filter((item) => item !== name).reduce((sum, item) => sum + widths[item], 0);
+        maximum[name] = Math.max(minimum[name], Math.min(limits[name], room - other));
+    }
+    return { widths, minimum, maximum };
+}
+
+function updateConsolePanelWidths() {
+    const layout = document.getElementById("chatView");
+    if (!layout || layout.hidden || window.innerWidth <= 1024) return;
+    const inspector = !document.getElementById("inspectorPanel").hidden;
+    const history = historyVisible && (!inspector || window.innerWidth > 1280);
+    const result = consolePanelLayout(layout.clientWidth - 24, panelWidthPreferences,
+        { history, inspector }, window.innerWidth >= 2200);
+    for (const name of ["history", "inspector"]) {
+        layout.style.setProperty(`--${name}-width`, `${result.widths[name]}px`);
+        const handle = document.getElementById(`${name}Resize`);
+        handle.setAttribute("aria-valuemin", result.minimum[name]);
+        handle.setAttribute("aria-valuemax", result.maximum[name]);
+        handle.setAttribute("aria-valuenow", result.widths[name]);
+        handle.setAttribute("aria-valuetext", `${result.widths[name]} pixels`);
+    }
+}
+
+function saveConsolePanelWidths() {
+    try { localStorage.setItem(PANEL_WIDTH_KEY, JSON.stringify(panelWidthPreferences)); }
+    catch (_) { /* Resizing remains available when browser storage is blocked. */ }
+}
+
+function initConsolePanelResizing() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(PANEL_WIDTH_KEY) || "{}");
+        for (const name of ["history", "inspector"]) {
+            if (Number.isFinite(saved?.[name])) panelWidthPreferences[name] = saved[name];
+        }
+    } catch (_) { panelWidthPreferences = {}; }
+    for (const name of ["history", "inspector"]) {
+        const handle = document.getElementById(`${name}Resize`);
+        const direction = name === "history" ? 1 : -1;
+        let drag = null;
+        const resize = (value) => {
+            const minimum = Number(handle.getAttribute("aria-valuemin"));
+            const maximum = Number(handle.getAttribute("aria-valuemax"));
+            panelWidthPreferences[name] = Math.min(maximum, Math.max(minimum, value));
+            updateConsolePanelWidths();
+        };
+        const reset = () => {
+            delete panelWidthPreferences[name];
+            updateConsolePanelWidths();
+            saveConsolePanelWidths();
+        };
+        handle.addEventListener("dblclick", reset);
+        handle.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") { event.preventDefault(); reset(); return; }
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            let value = Number(handle.getAttribute("aria-valuenow"));
+            if (event.key === "Home") value = Number(handle.getAttribute("aria-valuemin"));
+            else if (event.key === "End") value = Number(handle.getAttribute("aria-valuemax"));
+            else value += (event.key === "ArrowRight" ? 1 : -1) * direction * (event.shiftKey ? 50 : 10);
+            resize(value);
+            saveConsolePanelWidths();
+        });
+        handle.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            updateConsolePanelWidths();
+            drag = { x: event.clientX, width: Number(handle.getAttribute("aria-valuenow")),
+                preferences: { ...panelWidthPreferences } };
+            handle.focus({ preventScroll: true });
+            handle.setPointerCapture(event.pointerId);
+        });
+        handle.addEventListener("pointermove", (event) => {
+            if (drag) resize(drag.width + direction * (event.clientX - drag.x));
+        });
+        handle.addEventListener("pointerup", () => { if (drag) { drag = null; saveConsolePanelWidths(); } });
+        handle.addEventListener("pointercancel", () => {
+            if (!drag) return;
+            panelWidthPreferences = drag.preferences;
+            drag = null;
+            updateConsolePanelWidths();
+        });
+        handle.addEventListener("lostpointercapture", () => { drag = null; });
+    }
+    new ResizeObserver(updateConsolePanelWidths).observe(document.getElementById("chatView"));
+    updateConsolePanelWidths();
+}
 
 function uiElement(tag, className = "", text = "") {
     const element = document.createElement(tag);
@@ -74,6 +184,7 @@ function showHistory(show = !historyVisible, activate = true) {
         document.getElementById("chatView").classList.remove("inspector-open");
         document.getElementById("inspectorToggle").setAttribute("aria-expanded", "false");
     }
+    updateConsolePanelWidths();
 }
 
 function showInspector(tab = inspectorTab, open = true, loadNote = true) {
@@ -90,6 +201,7 @@ function showInspector(tab = inspectorTab, open = true, loadNote = true) {
     if (open && window.innerWidth <= 1024) showHistory(false);
     if (open && tab === "notepad" && loadNote) openProjectNotepad();
     if (open) document.getElementById("inspectorClose").focus();
+    updateConsolePanelWidths();
 }
 
 function updateConsoleContext() {
@@ -567,6 +679,24 @@ function initConsoleShell() {
         button.addEventListener("click", () => { templateSelect.value = mode; updateAnticipationPreferences(); updateContextStrip(); }); grid.append(button);
     }
     modes.append(grid); document.querySelector(".chat-footer").append(modes);
+    // Short windows retain every context control behind a native disclosure.
+    const contextDisclosure = document.createElement("details");
+    contextDisclosure.id = "contextDisclosure";
+    contextDisclosure.append(uiElement("summary", "", "Context and mode"));
+    const contextBody = uiElement("div", "compact-context-body");
+    const contextStrip = document.getElementById("contextStrip");
+    contextStrip.before(contextDisclosure);
+    contextBody.append(document.getElementById("suggestedNext"), contextStrip);
+    const closeContext = uiElement("button", "text-btn", "Done");
+    closeContext.id = "closeCompactContext";
+    closeContext.type = "button";
+    closeContext.addEventListener("click", () => { contextDisclosure.open = false; contextDisclosure.querySelector("summary").focus(); });
+    contextBody.append(closeContext);
+    contextDisclosure.append(contextBody);
+    const shortWindow = window.matchMedia("(max-height: 500px)");
+    const fitContext = () => { contextDisclosure.open = !shortWindow.matches; };
+    shortWindow.addEventListener("change", fitContext);
+    fitContext();
     document.getElementById("topbarRuntime").addEventListener("click", () => document.getElementById("runtimeDialog").showModal());
     document.getElementById("searchToggle").addEventListener("click", () => { showHistory(true); renderSearchBox(); document.querySelector("#globalSearchBox input")?.focus(); });
     document.getElementById("inspectorInstructions").addEventListener("click", openInstructionsDialog);
@@ -587,5 +717,6 @@ function initConsoleShell() {
     approvalTimer = setInterval(tickApprovalClock, 1000);
     setInterval(() => { if (consoleView === "cluster" && !document.hidden && (apiKey || window.__DAVE_DESKTOP__)) refreshCluster(); }, 60000);
     showHistory(historyVisible);
+    initConsolePanelResizing();
     if (location.hash === "#cluster") setConsoleView("cluster");
 }
