@@ -5,12 +5,23 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools picker live with a smaller 32K model",
+  "head": "Compact tools and resizable workspace; project sidebar choice open",
   "lastActivity": "2026-10-07",
   "status": "amber",
   "statusReason": "All 100 approved tools are implemented behind additive gates. The installed app has a searchable selected-tool menu and private starter configuration. Walter now also has Qwen3.5 4B at 32768 context, fully GPU-resident in the observed run; a bounded calc.eval acceptance returned 108 with zero errors. Existing models remain installed and retain the 16384-token request default. Larger-window quality, H9, and provider-specific grants, aliases and helper recipes remain separate gates.",
   "evidence": {
     "checkedOn": "2026-10-07",
+    "compactWorkspace": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "95bc6bbfb905e93ce28ff8dea27ca7805bdb39a5",
+      "source": "docs/design/CONSOLE_IMPLEMENTATION.md",
+      "scope": "Preserve the accepted Tools entry point, make each tool one compact row with one-line details, add saved pointer/keyboard panel resizing and wider ultrawide defaults. Project sidebar behavior remains unchanged pending DL-UI-05.",
+      "runner": "Dominic, isolated Playwright Chromium container, one CPU and two GiB; synthetic APIs and no external networking",
+      "reviewRepair": "PR #83 discussion_r4207317204: compact context overlay now has a bottom bound and internal scrolling. Long-label fixtures verify that the last model control and Done remain reachable at short viewports; no controls are removed.",
+      "verification": "Six console tests and the synthetic browser matrix pass: light/dark at 1440x900, 375x812, 844x390, 320x256 and 3840x1080; no root overflow; reachable tool rows, filtering/selection, pointer/keyboard resizing, reset, reload persistence and width clamping. Short-window context controls remain accessible. Protected CI and installed-browser delivery are separate gates recorded at closeout.",
+      "repairsDuringVerification": "Removed the old landscape page-scroll exception; added a short-height context disclosure; fixed its summary hitbox overlapping header actions and replaced an undefined menu background token with the existing panel color. Initial PR #83 CI 37626340860 exposed a legacy source test requiring the removed overflow exception (Python 3.12: 1368 passed, one failed). Updated that assertion to require the locked shell and reachable compact controls; replacement CI remains the merge gate.",
+      "limits": "No inference, model changes, provider activation, backend restart, Notion writes or human acceptance. Previous blank-answer and provider-claim defects are outside this UI slice. Playwright is a dev-only regression dependency."
+    },
     "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
     "notionTestLifecycleRepair": {
       "checkedOn": "2026-10-07",
@@ -299,12 +310,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Configure the next needed Tools100 integration family",
-    "why": "The starter picker and selected-tool inference are live. The remaining families depend on real provider grants, aliases, allowlists or the POSIX helper and should be enabled according to operator need.",
-    "doneWhen": "One operator-chosen family has its real nonsecret aliases and existing credential route configured, appears in the native picker, and completes its bounded live acceptance without exposing secrets.",
+    "title": "Resolve project sidebar behavior and finish the UI checklist",
+    "why": "Compact tool rows and resizable workspace have an isolated implementation. The remaining requested sidebar item needs a choice between expandable project conversations and links to Project Home.",
+    "doneWhen": "DL-UI-05 is answered and the chosen navigation works with existing project attachment, filtering and conversation selection without losing drafts.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Operator choice of the next integration family; each family's actual provider grant, alias or helper recipe still gates its own acceptance."
+    "blockedBy": "DL-UI-05 remains unanswered; independent compact-row and resizing delivery is not blocked."
   },
   "findings": [
     {
@@ -807,6 +818,7 @@
     }
   ],
   "decisionsForDave": [
+    "DL-UI-05 [Open, 2026-10-07]: projects in the sidebar. A expandable projects containing their conversations (recommended, direct browsing); B project links opening Project Home (simpler navigation). No answer is recorded; existing sidebar behavior is preserved.",
     "D-006 [Open]: B diagnose /v1 first (recommended): Dominic Linux execution, Walter pinned qwen3-coder:30b, ten specified cases, at most 30 serial model dispatches / 512 completion tokens each, 20 minutes / 60,000 additional charged tokens, exact disposable-root writes only. Current CLI needs an offline-tested bounded driver first. C explicitly re-govern the native adapter after equivalent accounting/full-corpus/assertion/exit gates; A accept unqualified status under Dave's finish-line exception. Full 500-case renewal is separate: six hours, cumulative 1,000,000-token cap seeded at 379,556 plus diagnostic usage. Exact boundaries are in the October 5 H9 readiness review; no permission activated.",
     "DL-03 [Open, carried from 2026-10-02]: ratify the zero-approval outside-root edit case. Options: A retain preflight and explicitly re-baseline the case (recommended); B leave the historical comparison unresolved. This package changes no corpus or qualification assertion.",
     "DL-14 [Open, carried from 2026-10-02]: design-manifest and unused-control decisions. Options: A ratify the implemented console and scope removal of confirmed unused controls (recommended); B retain controls until product behavior is specified.",
@@ -960,6 +972,7 @@
     }
   ],
   "context": [
+    "2026-10-07 compact workspace uses the MUT-7 direct-current-instruction exception. Tools menu access is explicitly accepted; compact rows and ultrawide/resizing are the implementation slice. The project sidebar choice is pending, and blank checklist slots do not authorize invented work. The previous integration-family next step remains deferred: provider grants, aliases and bounded live acceptance still gate each family.",
     "2026-10-05 Tools100 uses the MUT-7 direct-current-instruction exception with Focus unchanged. All tools are source implementations, not claims of installed/native/provider acceptance. The earlier DL-05 next action is paused by Dave's tools-only scope; historical findings and unresolved D-006 remain preserved.",
     "2026-10-05 renewed project-completion scope applies the MUT-7 direct-instruction exception despite Focus=None. DL-04 was confirmed on current main and repaired without changing qualified tool definitions, version, configuration or installed services. Other findings remain historical until revalidated.",
     "2026-10-05 bounded live acceptance is complete on the unchanged installed runtime. The other installed models were inventoried, not all tested by inference. Preserve failed model attempts and native approval-card/H9 boundaries.",

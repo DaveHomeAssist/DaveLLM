@@ -339,7 +339,7 @@ def test_stream_notice_replaces_the_blank_bubble_and_is_not_reloaded_away():
     assert '.filter((item) => ["user", "assistant"].includes(item.role) && typeof item.content === "string")' in app_source
 
 
-def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_hatch():
+def test_frontend_scroll_contract_constrains_shell_and_preserves_compact_controls():
     repo = Path(__file__).resolve().parents[1]
     style_source = (repo / "static" / "style.css").read_text()
 
@@ -350,9 +350,9 @@ def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_h
     portrait_mobile_source = style_source.split("@media (max-width: 1024px)", 1)[1].split(
         "@media (min-width: 1025px)", 1
     )[0]
-    landscape_mobile_source = style_source.split(
-        "@media (max-width: 1024px) and (orientation: landscape)", 1
-    )[1].split("@media (max-width: 430px)", 1)[0]
+    compact_source = style_source.split("@media (max-height: 500px) {", 1)[1].split(
+        "@media (prefers-reduced-motion:", 1
+    )[0]
 
     assert "html {\n  height: 100%;\n}" in desktop_source
     assert "height: 100dvh;" in rule(desktop_source, "body")
@@ -368,8 +368,17 @@ def test_frontend_scroll_contract_constrains_shell_and_preserves_mobile_escape_h
     assert ".response { min-height: 0; }" in portrait_mobile_source
     assert "grid-row: 3; grid-column: 1" in portrait_mobile_source
     assert "height: var(--visual-height)" in portrait_mobile_source
-    assert "overflow: auto;" in landscape_mobile_source
-    assert "overflow: visible;" in landscape_mobile_source
+    # Short windows keep the locked shell; context moves into a disclosure and
+    # the tool list uses an opaque overlay instead of growing the document.
+    assert "overflow: auto;" not in compact_source
+    assert "overflow: visible;" not in compact_source
+    assert "display: list-item;" in rule(compact_source, "#contextDisclosure > summary")
+    assert "width: fit-content;" in rule(compact_source, "#contextDisclosure > summary")
+    assert "position: fixed;" in rule(compact_source, ".tool-picker:not(.hidden)")
+    assert "inset: 58px 12px 80px;" in rule(compact_source, "#contextDisclosure[open] .compact-context-body")
+    assert "overflow-y: auto;" in rule(compact_source, "#contextDisclosure[open] .compact-context-body")
+    assert "min-height: 0;" in rule(compact_source, ".tool-picker-list")
+    assert "background: var(--panel);" in rule(desktop_source, ".tool-picker")
 
 
 def test_chat_ui_rename_streaming_scroll_and_sidebar_contracts():

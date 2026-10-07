@@ -119,6 +119,7 @@
 
         </aside>
 
+        <div id="historyResize" class="panel-resize" role="separator" tabindex="0" aria-label="Resize conversations panel" aria-orientation="vertical" aria-controls="historyPanel" title="Drag or use arrow keys to resize. Enter or double-click resets."></div>
         <!-- MIDDLE COLUMN: Chat -->
         <section id="chatPanel" class="panel prompt mobile-active" data-mobile-panel="chat" data-heading-id="chatHeading" data-tab-id="mobileTabChat" aria-labelledby="chatHeading" tabindex="-1">
             <div class="panel-header">
@@ -189,6 +190,7 @@
                         <div class="tool-picker-header">
                             <label for="toolSearch">Choose tools</label>
                             <button id="clearToolsBtn" type="button" class="text-btn">Clear</button>
+                            <button id="closeToolsBtn" type="button" class="text-btn" aria-label="Close tool menu">Close</button>
                         </div>
                         <input id="toolSearch" type="search" placeholder="Search tools…" autocomplete="off" />
                         <div id="toolPickerList" class="tool-picker-list" role="listbox" aria-multiselectable="true"></div>
@@ -227,6 +229,7 @@
             </div>
         </section>
 
+<div id="inspectorResize" class="panel-resize" role="separator" tabindex="0" aria-label="Resize context inspector" aria-orientation="vertical" aria-controls="inspectorPanel" title="Drag or use arrow keys to resize. Enter or double-click resets."></div>
 <aside id="inspectorPanel" class="panel inspector" hidden aria-label="Context inspector">
 <div class="inspector-tabs"><button data-inspector="context" aria-pressed="true">Context</button><button data-inspector="run" aria-pressed="false">Run</button><button data-inspector="notepad" aria-pressed="false">Notepad</button><button id="inspectorClose" class="icon-btn" aria-label="Close inspector">×</button></div>
 <section id="inspectorContext">

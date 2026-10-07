@@ -3661,6 +3661,7 @@ function renderToolPicker(filter = "") {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "tool-picker-option";
+        button.dataset.toolName = name;
         button.setAttribute("role", "option");
         button.setAttribute("aria-selected", selectedToolNames.has(name) ? "true" : "false");
         const text = document.createElement("span");
@@ -3668,6 +3669,7 @@ function renderToolPicker(filter = "") {
         label.textContent = name;
         const detail = document.createElement("small");
         detail.textContent = metadata.description || metadata.permission || "Available tool";
+        button.title = `${name}: ${detail.textContent}`;
         text.append(label, detail);
         button.append(text);
         button.addEventListener("click", () => {
@@ -3678,6 +3680,7 @@ function renderToolPicker(filter = "") {
             }
             renderToolPicker(toolSearch.value);
             renderSelectedTools();
+            Array.from(toolPickerList.children).find((option) => option.dataset.toolName === name)?.focus({ preventScroll: true });
         });
         return button;
     }));
@@ -4055,6 +4058,26 @@ async function startToolRun() {
 }
 
 toolPickerToggle.addEventListener("click", () => setToolPickerOpen(toolPicker.classList.contains("hidden")));
+document.getElementById("closeToolsBtn").addEventListener("click", () => {
+    setToolPickerOpen(false);
+    toolPickerToggle.focus();
+});
+toolPicker.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+        event.stopPropagation();
+        setToolPickerOpen(false);
+        toolPickerToggle.focus();
+        return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || !toolPickerList.contains(event.target)) return;
+    const options = Array.from(toolPickerList.children);
+    const current = options.indexOf(document.activeElement);
+    let next = current + (event.key === "ArrowDown" ? 1 : -1);
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = options.length - 1;
+    event.preventDefault();
+    options[Math.max(0, Math.min(options.length - 1, next))]?.focus();
+});
 toolSearch.addEventListener("input", () => renderToolPicker(toolSearch.value));
 clearToolsBtn.addEventListener("click", () => {
     selectedToolNames.clear();

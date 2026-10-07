@@ -84,6 +84,13 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=high
 
+      - name: Compact workspace browser fixture
+        if: matrix.python == '3.14'
+        timeout-minutes: 5
+        run: |
+          npx playwright install --with-deps chromium
+          node tests/browser_workspace.cjs
+
       - name: Console keyboard and landmark fixtures
         if: matrix.python == '3.14'
         timeout-minutes: 2

@@ -2,6 +2,50 @@
 
 The runtime in `static/` implements the supplied DaveLLM Redesign handoff with the existing FastAPI and Electron contracts. `docs/` remains the documentation site, not the application deployment.
 
+## Compact workspace brief — October 7, 2026
+
+The operator has accepted the Tools menu entry point. The remaining layout problem
+is tall tool cards and fixed-width panels that waste ultrawide working space.
+Preserve the current visual system and all chat, tool selection, approval, project,
+and credential contracts. No backend or inference change belongs to this slice.
+
+- One row per tool, with a single-line name and a single-line description. Keep
+  the full accessible label and a tooltip; preserve filtering, selected chips,
+  slash/at shortcuts and exact selected-tool submission.
+- Desktop history and inspector dividers support pointer and keyboard resizing,
+  bounded so the chat remains usable. Save only numeric width preferences locally;
+  double-click or Enter restores the responsive default. Narrow screens retain
+  the existing overlay navigation without resize handles.
+- Ultrawide defaults provide more useful inspector space and a wider working
+  area while preserving readable prose. No document-level overflow in either
+  theme; messages, tool lists and long panels retain their own scrolling.
+- Project navigation in the sidebar remains an open choice: expandable projects
+  containing conversations (recommended) versus links opening Project Home.
+  Do not change project attachment or conversation filtering on an unanswered
+  interpretation of this choice.
+
+Acceptance: isolated browser fixtures cover tool filtering/selection, pointer
+and keyboard resizing, reset/persistence/clamping, hidden panels, both themes,
+and 1440×900, 375×812, 844×390, 320×256 and 3840×1080 layouts. Fixtures use
+synthetic API data, never live conversations, credentials, inference or Notion.
+Source, fixture, installed-browser and human acceptance remain separate evidence.
+
+Verification on Dominic: six console unit tests and the full synthetic Chromium
+matrix pass, including exact selected-tool submission, slash selection, opaque
+menu overlays and the ultrawide three-panel layout. Initial checks exposed the
+old landscape page-scroll exception and a short-window summary hitbox overlap;
+both are repaired and covered. Screenshots were inspected at desktop, minimum
+short-window and 32:9 sizes. Playwright 1.61.1 is a dev-only dependency so this
+fixture can gate protected CI; it adds nothing to the application runtime.
+The installed browser and protected delivery are verified separately at closeout.
+The first PR CI run found one legacy source test explicitly requiring the removed
+landscape page-scroll escape hatch (1,368 other tests passed on Python 3.12).
+That test now enforces the locked shell, compact disclosure and opaque tool
+overlay; actual geometry is covered by the new browser gate.
+PR review also identified long labels overflowing the compact context panel.
+It now has a bottom bound and internal scrolling; the browser fixture wraps all
+context labels and verifies that the model control and Done remain reachable.
+
 ## Preserved requirements
 
 - Conversation age groups remain color coded: green under 24 hours, amber 1–3 days, red 3–7 days, gray over 7 days. Labels and elapsed times accompany the colors. No alternate palette proposal was applied.
