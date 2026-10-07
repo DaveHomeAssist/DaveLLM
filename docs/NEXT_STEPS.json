@@ -12,6 +12,17 @@
   "evidence": {
     "checkedOn": "2026-10-07",
     "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
+    "notionTestLifecycleRepair": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "aa4e351253b62b7b7e87faa170663d7cf44d38ed",
+      "originalFailure": "PR #79 main CI 37587588343 at 2ae84c04620aa2da5353dc0cf44c49fd44c1b088: Python 3.12 Notion coverage failed test_r4_the_token_never_reaches_logs_routes_events_or_the_transcript with Run did not settle; 205 tests passed and one failed. Later green runs did not change the affected fixture.",
+      "problem": "The redaction test used a bare TestClient whose per-request event loop could cancel the background run before its approval pause. Neighboring lifecycle tests already retained a persistent portal without starting application lifespan services.",
+      "repair": "Reuse the existing _persistent_loop helper in the redaction test and parameterize immediate and gated mocked responses. The delayed case holds its reply until the POST returns, checks that request teardown did not cancel it, then executes the unchanged approval, completion and token/Bearer redaction assertions.",
+      "verification": "Dominic, isolated Python 3.12 container limited to one CPU and two GiB: both redaction cases and neighboring approve/reject lifecycle cases passed (4 tests, 3.10 seconds). A negative control replacing only _persistent_loop with nullcontext failed the delayed case with Request teardown cancelled the scripted model (0.89 seconds), confirming the regression detects the defect. Required exact-source CI delivery is recorded separately.",
+      "acceptance": "The test must reach approval and completed state after a model reply deliberately outlives its creating POST, with all existing secret-redaction assertions intact. No timeout increase or runtime change.",
+      "limits": "The historical CI cancellation stack was not captured, so its exact scheduling point remains unknown. All responses are scripted and Notion is mocked; no inference, provider access, installed configuration, service restart or new live acceptance is implied.",
+      "source": "tests/test_notion_adversarial.py"
+    },
     "modelContextConfiguration": {
       "checkedOn": "2026-10-07",
       "baselineRevision": "d6e797270f6617257dcce354d52ea2387022b013",
