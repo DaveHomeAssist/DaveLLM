@@ -263,7 +263,9 @@ def selected_specs(config: Mapping[str, Any]) -> tuple:
     Entries are exact names or a `prefix.*` family. A malformed selection, or an entry
     that matches nothing, registers no expansion tool rather than all of them.
     """
-    if config.get("invalid") or "enabled_tools" not in config:
+    if config.get("invalid"):
+        return ()
+    if "enabled_tools" not in config:
         return ALL_SPECS
     selection = config["enabled_tools"]
     if (not isinstance(selection, list) or len(selection) > TOOLPACK_SELECTION_LIMIT

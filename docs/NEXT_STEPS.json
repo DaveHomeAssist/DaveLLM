@@ -5,10 +5,10 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 source delivered; deployment inputs mapped without activation",
+  "head": "Tools100 selective loading reconciled; readiness checker is next",
   "lastActivity": "2026-10-07",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. PR #72 at 8e8bc3c closes three retained review gaps, PR #73 at 8283015 records protected delivery and PR #74 at b935ea0 records the safely stopped Duncan diagnostic. The 21 capability groups now have a source-grounded Ready/Missing/Unknown deployment-input matrix. The running app exposes 22 existing tools and no Tools100 definitions; no optional toolpack or root file is installed. Installed activation, provider aliases/grants, POSIX helper deployment and physical/native acceptance remain separate. PR #71 owns overlapping selective switch-on/setup work and remains untouched.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates. PR #71 has been reconciled with current main and now owns selective enabled_tools loading, private optional launcher files and tool-schema context budgeting. Its two prior review findings remain fixed, and malformed toolpack JSON now fails closed by registering no expansion tools. The 21 capability groups have a source-grounded Ready/Missing/Unknown deployment-input matrix. Installed activation, provider aliases/grants, POSIX helper deployment and physical/native acceptance remain separate.",
   "evidence": {
     "checkedOn": "2026-10-07",
     "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
@@ -80,6 +80,15 @@
       "installedObservation": "Authenticated /tools returned 22 existing qualified/extended tools and no Tools100 definitions. toolpack.json and tool-roots.json are absent. Dominic, Walter and Duncan report online through node status; this does not establish model or helper readiness.",
       "overlap": "PR #71 remains open at 22a5bf332927b46d01fa6dabc09f12da4d1663a2 and owns selective enabled_tools, secure optional-file loading and docs/TOOLS100_SETUP.md. This matrix changes none of those files.",
       "nextSourceItem": "After PR #71 reconciliation, add a nonsecret readiness checker that reports enabled names and required alias/owner/runner/executable key presence as Ready, Missing or Unknown without secret reads, effects, provider calls, installation or restart."
+    },
+    "pr71Reconciliation": {
+      "checkedOn": "2026-10-07",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/71",
+      "reviewedHead": "22a5bf332927b46d01fa6dabc09f12da4d1663a2",
+      "reconciledBase": "dde5eb674f71fc30813821dfd71d2cce7e90e7ff",
+      "scope": "Reconciled the accepted selective Tools100 launcher configuration and tool-schema context budgeting with current main. Preserved installed files and services; no activation, token, helper installation, provider call, inference, H9 or restart.",
+      "review": "The two earlier inline findings were already fixed at 22a5bf3. One remaining fail-closed mismatch was repaired: invalid DAVE_TOOLPACK_CONFIG now registers no expansion tools instead of all 102, matching the PR contract.",
+      "verification": "Targeted launcher, toolpack and context-budget tests passed 174 locally. Protected PR CI remains the delivery gate."
     },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
@@ -249,12 +258,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Reconcile PR #71, then add a nonsecret Tools100 readiness checker",
-    "why": "The 21-group matrix now identifies every missing or unknown deployment input without activating the installed app. PR #71 already owns selective tool loading and secure optional files; the next independent source step is a repeatable checker, not duplicate setup code or a credential request.",
-    "doneWhen": "Current main contains reconciled selective setup plus a checker that reports enabled names and required alias, owner, runner-capability and executable-key presence as Ready, Missing or Unknown without reading secret values, contacting providers, installing helpers, mutating configuration or restarting the app.",
+    "title": "Add a nonsecret Tools100 readiness checker",
+    "why": "The 21-group matrix identifies every missing or unknown deployment input, and PR #71 now owns the reconciled selective setup path. The next independent source step is repeatable presence and shape reporting, not activation or a credential request.",
+    "doneWhen": "Current main contains a checker that reports enabled names and required alias, owner, runner-capability and executable-key presence as Ready, Missing or Unknown without reading secret values, contacting providers, installing helpers, mutating configuration or restarting the app.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Reconcile rather than duplicate PR #71's overlapping setup files. Missing aliases/grants/helper recipes block only their dependent live rows. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate explicit authorization."
+    "blockedBy": "PR #71 must pass protected CI and merge before checker implementation begins. Missing aliases/grants/helper recipes block only their dependent live rows. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate explicit authorization."
   },
   "findings": [
     {

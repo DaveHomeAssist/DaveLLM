@@ -4,7 +4,7 @@ Checked October 7, 2026 against `main` at `b935ea09cb0832c5ca76233db93a16ac30c5c
 
 This is a source and nonsecret-presence inventory, not an activation guide or live acceptance record. The installed router currently exposes the existing 22 qualified/extended tools and no Tools100 definitions. Neither `toolpack.json` nor `tool-roots.json` exists in the DaveLLM data directory. Dominic, Walter and Duncan answer the authenticated node-status route as online, but that proves neither model reliability nor helper readiness. No provider call, model call, mutation, helper installation, service change or restart was performed.
 
-PR #71 is open at `22a5bf332927b46d01fa6dabc09f12da4d1663a2`. It owns selective `enabled_tools`, secure optional-file loading and `docs/TOOLS100_SETUP.md`. This record does not duplicate or modify that work. Current `main` still registers the complete Tools100 catalog whenever both existing flags are enabled.
+PR #71 was reviewed at `22a5bf332927b46d01fa6dabc09f12da4d1663a2` and has now been reconciled with current `main`. It owns selective `enabled_tools`, secure optional-file loading and `docs/TOOLS100_SETUP.md`; this record does not duplicate that work. Installed activation remains separate and has not occurred.
 
 ## Status meanings
 
@@ -42,7 +42,7 @@ All groups still require the default-off Tools100 registry to be enabled in a se
 
 ## Cross-cutting deployment prerequisites
 
-1. **Installed selection and roots — Missing.** Tools100 is not registered in the running app, and the optional nonsecret configuration/root files proposed by PR #71 are absent. Merge/reconcile PR #71 before any installed switch-on work; do not recreate its launcher or setup guide here.
+1. **Installed selection and roots — Missing.** Tools100 is not registered in the running app, and the optional nonsecret configuration/root files owned by PR #71 are absent. Merge PR #71 before any installed switch-on work; do not recreate its launcher or setup guide elsewhere.
 2. **POSIX helper — Missing.** No configured runner alias or deployed `scripts/tool_job_runner.py` plus private helper config is established. Dominic is the only inventoried remote POSIX candidate; choosing it still requires exact helper path, hostname, owners, roots, tools, capabilities, executables and recipes. The Mac is POSIX but is not a silent heavy-work fallback. Walter and Duncan remain unsupported for helper jobs.
 3. **Named provider aliases and grants — Missing/Unknown.** No Tools100 configuration exists, so repositories, Notion data sources, Google scopes/targets, Home Assistant entities/services, Vercel projects, notifications, service endpoints and OSC destinations are absent. Secret presence or scope was not read or inferred.
 4. **Effect acceptance — Missing by design.** Enabling a definition never authorizes its exact model request, mutation, process job, UDP send or provider write. Those remain lifecycle approvals plus any external grant named above.
@@ -50,6 +50,6 @@ All groups still require the default-off Tools100 registry to be enabled in a se
 
 ## Next executable item
 
-The smallest independent source-only item is a **nonsecret readiness checker** after PR #71 is reconciled: read the proposed optional files without revealing values, report enabled tool names and the presence/shape of required aliases, owners, runner capabilities and executable keys, and emit only `Ready`, `Missing` or `Unknown`. It must never read secret values, contact providers, install helpers, mutate configuration or restart the app. This avoids asking for credentials generically and turns the matrix above into a repeatable preflight.
+The smallest independent source-only item after PR #71 merges is a **nonsecret readiness checker**: read the optional files without revealing values, report enabled tool names and the presence/shape of required aliases, owners, runner capabilities and executable keys, and emit only `Ready`, `Missing` or `Unknown`. It must never read secret values, contact providers, install helpers, mutate configuration or restart the app. This avoids asking for credentials generically and turns the matrix above into a repeatable preflight.
 
 Live/provider-dependent rows require exact inputs rather than broad permission: a named alias and owner allowlist; the minimum required provider scope; or a specific POSIX helper path/config/executable recipe. Missing rows do not block the ready local/advisory tools or the source-only checker.

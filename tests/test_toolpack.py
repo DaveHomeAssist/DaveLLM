@@ -298,10 +298,18 @@ async def test_outer_deadline_cancels_owned_async_work(pack, monkeypatch):
 def test_enabled_tools_selects_exact_names_and_families():
     from davellm_toolpack import selected_specs
     assert selected_specs({}) == ALL_SPECS
-    assert selected_specs({"invalid": True}) == ALL_SPECS
+    assert selected_specs({"invalid": True}) == ()
     names = [s.name for s in selected_specs({"enabled_tools": ["git.*", "calc.eval"]})]
     assert names == [s.name for s in ALL_SPECS if s.name.startswith("git.") or s.name == "calc.eval"]
     assert {"git.worktrees", "git.write_preview", "git.commit", "git.push", "calc.eval"} == set(names)
+
+
+def test_invalid_toolpack_config_registers_no_expansion_tools(router_factory, monkeypatch):
+    monkeypatch.setenv("DAVE_ENABLE_TOOLPACK", "true")
+    monkeypatch.setenv("DAVE_TOOLPACK_CONFIG", "not-json")
+    router, _, _ = router_factory(tools=True)
+    for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
+        assert not (set(BY_NAME) & set(registry.public_catalog()))
 
 
 @pytest.mark.parametrize("selection", [
