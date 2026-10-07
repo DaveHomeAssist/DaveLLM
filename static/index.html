@@ -185,6 +185,15 @@
                 <div class="footer-inputs">
                     <label class="visually-hidden" for="promptInput">Message</label>
                     <textarea id="promptInput" placeholder="Ask anything. Enter sends; Shift+Enter adds a line." rows="2"></textarea>
+                    <section id="toolPicker" class="tool-picker hidden" aria-label="Choose tools">
+                        <div class="tool-picker-header">
+                            <label for="toolSearch">Choose tools</label>
+                            <button id="clearToolsBtn" type="button" class="text-btn">Clear</button>
+                        </div>
+                        <input id="toolSearch" type="search" placeholder="Search tools…" autocomplete="off" />
+                        <div id="toolPickerList" class="tool-picker-list" role="listbox" aria-multiselectable="true"></div>
+                    </section>
+                    <div id="selectedTools" class="selected-tools" aria-live="polite"></div>
                     <div id="attachmentTools" class="tool-row">
                         <label for="imageInput" class="image-upload-btn"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#image"></use></svg>Image</label>
                         <input id="imageInput" type="file" accept="image/*" hidden />
@@ -206,9 +215,11 @@
                         <span id="dictateStatus" class="image-status"></span>
                     </div>
                     <div class="composer-primary-actions">
-                        <button id="attachToolsToggle" type="button" class="attach-tools-toggle" aria-expanded="false" aria-controls="attachmentTools">Attach</button>
+                        <div class="composer-left-actions">
+                            <button id="attachToolsToggle" type="button" class="attach-tools-toggle" aria-expanded="false" aria-controls="attachmentTools">Attach</button>
+                            <button id="toolPickerToggle" type="button" class="secondary hidden" aria-expanded="false" aria-controls="toolPicker">Tools</button>
+                        </div>
                         <div class="actions">
-                            <button id="runToolsBtn" type="button" class="secondary hidden" aria-controls="runLedger">Run tools</button>
                             <button id="sendBtn" class="primary">Send</button>
                         </div>
                     </div>

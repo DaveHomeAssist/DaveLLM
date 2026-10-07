@@ -2268,6 +2268,7 @@ class HostRunBinding:
     brain_digest: Optional[str]
     context_budget: dict
     run_id: Optional[str] = None
+    selected_tools: tuple[str, ...] = ()
 
 
 HOST_RUN_BINDINGS: dict[str, HostRunBinding] = {}
@@ -2306,14 +2307,25 @@ async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dic
     binding = HOST_RUN_CONTEXT.get()
     if binding is None:
         raise RuntimeError("Run model binding is unavailable")
+    allowed = frozenset(binding.selected_tools)
+    if allowed:
+        schemas = [schema for schema in schemas if schema.get("function", {}).get("name") in allowed]
     # DL-TRANSPORT-01b: native /api/chat, so the run gets the router's num_ctx and keep_alive.
     with NODE_ACTIVITY.track(binding.node_url):  # DL-ROUTE-04
-        return await ollama_chat_bounded(
+        result = await ollama_chat_bounded(
             binding.node_url, binding.model, messages, tools=schemas, timeout=node_complete_timeout(),
             max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
             temperature=chat_temperature(binding.temperature),
             options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
         )
+    if allowed:
+        called = {
+            call.get("function", {}).get("name")
+            for call in result.get("message", {}).get("tool_calls", [])
+        }
+        if any(name not in allowed for name in called):
+            raise RuntimeError("Model called a tool that was not selected")
+    return result
 
 
 HARNESS = Harness(
@@ -2741,7 +2753,7 @@ def tool_call_only_notice(content: str, tool_calls: Sequence[dict]) -> dict | No
     return {
         "notice": (
             f"The model tried to use a tool{attempted} instead of replying. Plain chat can't run "
-            "tools, so no reply was saved. For lookups, use the Run tools button (web.search, web.read)."
+            "tools, so no reply was saved. Select a tool from the Tools menu and send again."
         ),
         "reason": TOOL_CALL_ONLY_REASON,
         "tools": tools,
@@ -3027,6 +3039,7 @@ class LifecycleRunRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0, le=2)
     step_limit: int = Field(default=8, ge=1, le=32)
     error_budget: int = Field(default=2, ge=1, le=8)
+    selected_tools: List[str] = Field(default_factory=list, max_length=124)
 
     @field_validator("messages")
     @classmethod
@@ -4014,10 +4027,22 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
         raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
     if req.model not in inventory:
         raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    registered_tools = HARNESS_REGISTRY.public_catalog()
+    unknown_tools = sorted(set(req.selected_tools) - set(registered_tools))
+    if unknown_tools:
+        raise HTTPException(400, f"Unknown selected tool(s): {', '.join(unknown_tools)}")
+    selected_tools = tuple(dict.fromkeys(req.selected_tools))
     messages = req.messages
     project_id = req.project_id
     context_budget: dict = {}
-    schema_tokens = tool_schema_tokens(HARNESS_REGISTRY)
+    if selected_tools:
+        selected_schemas = [
+            schema for schema in HARNESS_REGISTRY.model_schemas()
+            if schema.get("function", {}).get("name") in selected_tools
+        ]
+        schema_tokens = max(1, len(json.dumps(selected_schemas, ensure_ascii=False, separators=(",", ":"))) // 3)
+    else:
+        schema_tokens = tool_schema_tokens(HARNESS_REGISTRY)
     project = get_project(project_id, user_id) if project_id else {}
     conversation: dict = {}
     if req.conversation_id:
@@ -4053,7 +4078,7 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
     binding = HostRunBinding(
         user_id, node.url, req.model, req.max_tokens, req.temperature,
         project_id, context_budget.get("brain_revision"),
-        context_budget.get("brain_digest"), context_budget, run_id,
+        context_budget.get("brain_digest"), context_budget, run_id, selected_tools,
     )
     try:
         request = RunRequest.create(

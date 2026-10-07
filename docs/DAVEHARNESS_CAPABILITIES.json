@@ -918,6 +918,10 @@
         "max_length": 128,
         "required": false
       },
+      "selected_tools": {
+        "max_length": 124,
+        "required": false
+      },
       "step_limit": {
         "default": 8,
         "ge": 1,

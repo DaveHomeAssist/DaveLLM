@@ -83,6 +83,21 @@ def test_lifecycle_auth_tools_off_validation_and_completed_events(router_factory
     assert client.get(f"/tools/agent/runs/{run_id}", headers=AUTH).status_code == 410
 
 
+def test_lifecycle_selected_tools_filter_model_schemas(router_factory):
+    _, client, _ = router_factory(tools=True)
+    with respx.mock(assert_all_called=True) as mock:
+        inventory(client, mock)
+        assert new_run(client, selected_tools=["missing.tool"]).status_code == 400
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=httpx.Response(
+            200, json={"message": {"role": "assistant", "content": "Done."}, "done": True},
+        ))
+        created = new_run(client, selected_tools=["system.info"])
+        assert created.status_code == 200, created.text
+        settled(client, created.json()["run_id"])
+    payload = json.loads(route.calls.last.request.content)
+    assert [tool["function"]["name"] for tool in payload["tools"]] == ["system.info"]
+
+
 def test_brain_snapshot_survives_approval_and_later_edit(router_factory):
     router, client, _ = router_factory(tools=True)
     project = client.post("/projects", headers=AUTH, json={
