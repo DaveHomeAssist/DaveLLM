@@ -5,10 +5,10 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 source delivered; deployment inputs mapped without activation",
+  "head": "Tools100 selective loading reconciled; readiness checker is next",
   "lastActivity": "2026-10-07",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. PR #72 at 8e8bc3c closes three retained review gaps, PR #73 at 8283015 records protected delivery and PR #74 at b935ea0 records the safely stopped Duncan diagnostic. The 21 capability groups now have a source-grounded Ready/Missing/Unknown deployment-input matrix. The running app exposes 22 existing tools and no Tools100 definitions; no optional toolpack or root file is installed. Installed activation, provider aliases/grants, POSIX helper deployment and physical/native acceptance remain separate. PR #71 owns overlapping selective switch-on/setup work and remains untouched.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates. PR #71 has been reconciled with current main and now owns selective enabled_tools loading, private optional launcher files and tool-schema context budgeting. Its two prior review findings remain fixed, and malformed toolpack JSON now fails closed by registering no expansion tools. The 21 capability groups have a source-grounded Ready/Missing/Unknown deployment-input matrix. Installed activation, provider aliases/grants, POSIX helper deployment and physical/native acceptance remain separate.",
   "evidence": {
     "checkedOn": "2026-10-07",
     "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
@@ -80,6 +80,15 @@
       "installedObservation": "Authenticated /tools returned 22 existing qualified/extended tools and no Tools100 definitions. toolpack.json and tool-roots.json are absent. Dominic, Walter and Duncan report online through node status; this does not establish model or helper readiness.",
       "overlap": "PR #71 remains open at 22a5bf332927b46d01fa6dabc09f12da4d1663a2 and owns selective enabled_tools, secure optional-file loading and docs/TOOLS100_SETUP.md. This matrix changes none of those files.",
       "nextSourceItem": "After PR #71 reconciliation, add a nonsecret readiness checker that reports enabled names and required alias/owner/runner/executable key presence as Ready, Missing or Unknown without secret reads, effects, provider calls, installation or restart."
+    },
+    "pr71Reconciliation": {
+      "checkedOn": "2026-10-07",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/71",
+      "reviewedHead": "22a5bf332927b46d01fa6dabc09f12da4d1663a2",
+      "reconciledBase": "dde5eb674f71fc30813821dfd71d2cce7e90e7ff",
+      "scope": "Reconciled the accepted selective Tools100 launcher configuration and tool-schema context budgeting with current main. Preserved installed files and services; no activation, token, helper installation, provider call, inference, H9 or restart.",
+      "review": "The two earlier inline findings were already fixed at 22a5bf3. One remaining fail-closed mismatch was repaired: invalid DAVE_TOOLPACK_CONFIG now registers no expansion tools instead of all 102, matching the PR contract.",
+      "verification": "Targeted launcher, toolpack, context-budget and documentation tests passed 200 locally. Initial reconciled CI run 37578113061 exposed a Linux-only assertion race after the descendant had already exited: /proc/<pid>/stat disappeared between exists and read_text. The assertion now treats FileNotFoundError as successful termination; protected rerun CI remains the delivery gate."
     },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
@@ -249,12 +258,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Reconcile PR #71, then add a nonsecret Tools100 readiness checker",
-    "why": "The 21-group matrix now identifies every missing or unknown deployment input without activating the installed app. PR #71 already owns selective tool loading and secure optional files; the next independent source step is a repeatable checker, not duplicate setup code or a credential request.",
-    "doneWhen": "Current main contains reconciled selective setup plus a checker that reports enabled names and required alias, owner, runner-capability and executable-key presence as Ready, Missing or Unknown without reading secret values, contacting providers, installing helpers, mutating configuration or restarting the app.",
+    "title": "Add a nonsecret Tools100 readiness checker",
+    "why": "The 21-group matrix identifies every missing or unknown deployment input, and PR #71 now owns the reconciled selective setup path. The next independent source step is repeatable presence and shape reporting, not activation or a credential request.",
+    "doneWhen": "Current main contains a checker that reports enabled names and required alias, owner, runner-capability and executable-key presence as Ready, Missing or Unknown without reading secret values, contacting providers, installing helpers, mutating configuration or restarting the app.",
     "effort": "S",
     "owner": "either",
-    "blockedBy": "Reconcile rather than duplicate PR #71's overlapping setup files. Missing aliases/grants/helper recipes block only their dependent live rows. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate explicit authorization."
+    "blockedBy": "PR #71 must pass protected CI and merge before checker implementation begins. Missing aliases/grants/helper recipes block only their dependent live rows. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate explicit authorization."
   },
   "findings": [
     {
@@ -605,11 +614,49 @@
       "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
     },
     {
+      "id": "DL-15",
+      "type": "feature",
+      "sev": "P2",
+      "title": "Tools100 switch-on in the Mac app: launcher settings files and enabled_tools",
+      "detail": "The launcher now reads owner-only tool-roots.json and toolpack.json from the data folder so a Dock launch gets DAVE_TOOL_ROOTS and Tools100 settings; environment values win and bad files are skipped. DAVE_TOOLPACK_CONFIG gains enabled_tools (exact names or prefix.*), because every registered schema reaches the model on each agent step: the full pack is about 11,000 tokens of descriptions, about 13,700 to 18,300 with the launcher's other tools, against a 16,384 window. docs/TOOLS100_SETUP.md walks through roots, a 13-tool read-only starter, settings-only lanes and the token handling; tokens stay environment-only. Not installed or accepted on the Mac.",
+      "files": [
+        "scripts/macos/launch-davellm.sh",
+        "davellm_toolpack.py",
+        "docs/TOOLS100_SETUP.md",
+        "docs/examples/toolpack.starter.json",
+        "app.py (tool_schema_tokens, tool_run_message_tokens, tool_run_fit_error)"
+      ],
+      "evidence": "session",
+      "phase": 0,
+      "status": "implemented",
+      "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Budget counts tool calls; reply reserve must be positive",
+          "detail": "Codex review on PR #71: the message estimate read only content, so an assistant turn carrying its payload in tool_calls counted as about one token, and the legacy route accepted a zero or negative max_tokens that shrank the total. tool_run_message_tokens now adds every non-content message field as JSON at three characters per token, and AgentRunRequest.max_tokens requires at least 1 (422), as LifecycleRunRequest already did. Plain-chat prompt estimates are unchanged. Seven tests in tests/test_tool_context_budget.py; the new ones fail on the previous commit.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Tool runs budget for tool descriptions",
+          "detail": "Both tool-run routes now estimate the registered schemas (three characters per token) and refuse with 413 before any model call when schemas, messages and max_tokens exceed chat_num_ctx; lifecycle runs with a project reserve the schema tokens when assembling project context. Five tests in tests/test_tool_context_budget.py; pinned handler provenance and the capabilities manifest unchanged. This closes the gap noted in PR #71; later steps that append tool results are not re-checked.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Built with tests; installed acceptance pending",
+          "detail": "selected_specs and launcher contract tests added; launcher block exercised under zsh with private, group-writable, symlinked and environment-overridden files. Dave switches it on by creating the files and restarting.",
+          "evidence": "session"
+        }
+      ],
+      "evidenceNote": "PR #70; offline tests only"
+    },
+    {
       "id": "DL-EVAL-01",
       "type": "decision",
       "sev": "P2",
       "title": "Prompt Lab Library Tests against DaveLLM models need a stateless eval route",
-      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Milestone 1 (/eval/chat) merged in PR #69; the Prompt Lab runner (milestone 2) is not built and no live model has been called.",
+      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Milestone 1 (/eval/chat) merged in PR #69; the Prompt Lab runner (milestone 2) and the Prompt Lab half of milestone 4 are in DaveHomeAssist/prompt-lab#131. No live model has been called.",
       "files": [
         "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md",
         "app.py:4587",
@@ -620,6 +667,18 @@
       "phase": 1,
       "status": "open",
       "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Milestone 4 doc truth done; audit gate fixed on prompt-lab#131",
+          "detail": "prompt-lab#131 now also marks DECISIONS.md D-003 and the EXECUTION_PRD DaveLLM integration (DLM-1 to DLM-4) superseded, bumps source-map-js to 1.2.2 (GHSA-68fv-2mgg-jv7q blocked the audit gate on every branch) and refreshes project-progress from a complete 40-row backlog query. Notion: the SFT DaveLLM architecture page no longer lists /v1 routes or an optional API key, records native /api/chat and /eval/chat, and its live log, Next Action and Next Step are current; the PromptLab dependency-gate row records the advisory. All writes read back. Milestone 3 (live run) stays Dave-gated.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Milestone 2 built: Prompt Lab eval runner",
+          "detail": "DaveHomeAssist/prompt-lab#131 adds scripts/eval-davellm.mjs: the app's Enhance payload, PII gate, parseEnhancedPayload and checkTraits over /eval/chat, with format json, 10 cases and max_tokens 4096 by default; separate columns for invalid JSON, JSON without enhanced, truncated, empty and tool-call-only; the first-case stop rule; a JSON-constrained note in the report. 12 node --test cases against a fixture router; an end-to-end run through this router with a fake Ollama node sent the 2,230-character system prompt with format json and left DAVE_DATA_DIR byte-identical. Correction: the readiness review said a JSON reply without enhanced reached the raw-text fallback; parseEnhancedPayload rejects it, so the app gives it no verdict. Live run (milestone 3) stays Dave-gated.",
+          "evidence": "session"
+        },
         {
           "checkedOn": "2026-10-06",
           "title": "Readiness review of D-EVAL-04 A and D-EVAL-05 A",

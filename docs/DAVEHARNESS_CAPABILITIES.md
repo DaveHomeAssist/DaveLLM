@@ -1687,5 +1687,6 @@ Public constants each module defines, including the fixed refusal messages.
 | `TOOLPACK_MAX_RUNS` | `64` |
 | `TOOLPACK_OUTPUT_BYTES` | `49152` |
 | `TOOLPACK_RESPONSE_BYTES` | `524288` |
+| `TOOLPACK_SELECTION_LIMIT` | `200` |
 | `TOOLPACK_TIMEOUT_SECONDS` | `60` |
 | `TOOLPACK_VERSION` | `tools100.v1` |

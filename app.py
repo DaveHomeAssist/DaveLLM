@@ -2970,7 +2970,7 @@ class AgentRunRequest(BaseModel):
     messages: List[Dict]
     node_id: str
     model: str
-    max_tokens: int = 2048
+    max_tokens: int = Field(default=2048, ge=1)
     temperature: float = 0.7
     step_limit: int = DEFAULT_STEP_LIMIT
     error_budget: int = DEFAULT_ERROR_BUDGET
@@ -3863,6 +3863,47 @@ async def execute_tool_endpoint(tool_req: ToolRequest, _auth=Depends(require_api
     return result.model_dump()
 
 
+def tool_schema_tokens(registry: ToolRegistry) -> int:
+    """Estimated prompt tokens for the tool descriptions every agent step sends (DL-15).
+
+    JSON schemas tokenize densely, so this counts three characters per token rather
+    than the four `estimate_tokens` uses for prose.
+    """
+    text = json.dumps(registry.model_schemas(), ensure_ascii=False, separators=(",", ":"))
+    return max(1, len(text) // 3)
+
+
+def tool_run_message_tokens(messages: List[Dict]) -> int:
+    """Estimated tokens for a tool run's messages: the text, plus every other field as JSON.
+
+    Assistant turns can carry their payload in `tool_calls` with empty content, so those
+    fields count at the schema rate rather than not at all.
+    """
+    extra = (
+        len(json.dumps(fields, ensure_ascii=False, separators=(",", ":"), default=str)) // 3
+        for fields in ({k: v for k, v in message.items() if k not in ("role", "content")} for message in messages)
+        if fields
+    )
+    return estimate_prompt_tokens(messages, estimate_tokens) + sum(extra)
+
+
+def tool_run_fit_error(model_id: str, messages: List[Dict], schema_tokens: int, max_tokens: int) -> Optional[str]:
+    """Why a tool run's first step cannot fit the window the router asks Ollama for, or None.
+
+    Ollama trims an oversized prompt from the start, where the tool descriptions sit, so
+    refusing here beats a run whose model never sees its tools.
+    """
+    window = chat_num_ctx(model_id)
+    message_tokens = tool_run_message_tokens(messages)
+    if schema_tokens + message_tokens + max_tokens <= window:
+        return None
+    return (
+        f"Tool run does not fit the {window}-token context window: about {schema_tokens} tokens of tool "
+        f"descriptions, {message_tokens} of messages and {max_tokens} reserved for the reply. "
+        "Turn on fewer tools (enabled_tools), shorten the messages or lower max_tokens."
+    )
+
+
 @app.post("/tools/agent/run")
 async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key)):
     """Run the bounded Ollama executor loop and return its complete transcript."""
@@ -3874,6 +3915,9 @@ async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key
         raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
     if req.model not in inventory:
         raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    fit_error = tool_run_fit_error(req.model, req.messages, tool_schema_tokens(TOOL_REGISTRY), req.max_tokens)
+    if fit_error:
+        raise HTTPException(413, fit_error)
 
     unknown_approvals = sorted(set(req.approved_tools) - set(TOOL_REGISTRY.public_catalog()))
     if unknown_approvals:
@@ -3973,6 +4017,7 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
     messages = req.messages
     project_id = req.project_id
     context_budget: dict = {}
+    schema_tokens = tool_schema_tokens(HARNESS_REGISTRY)
     project = get_project(project_id, user_id) if project_id else {}
     conversation: dict = {}
     if req.conversation_id:
@@ -3994,12 +4039,16 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
         try:
             messages, context_budget = build_project_messages_for_node(
                 project_id=project_id, project=project, model_id=req.model,
-                output_reserve=req.max_tokens, query=query,
+                # Every step also carries the tool descriptions, so project context leaves room for them.
+                output_reserve=req.max_tokens + schema_tokens, query=query,
                 system_prompt=system_prompt, history=history,
                 capture_brain=True, window=chat_num_ctx(req.model),
             )
         except ProjectContextError as exc:
             raise context_http_error(exc)
+    fit_error = tool_run_fit_error(req.model, messages, schema_tokens, req.max_tokens)
+    if fit_error:
+        raise HTTPException(413, fit_error)
     run_id = f"run_{uuid.uuid4().hex}"
     binding = HostRunBinding(
         user_id, node.url, req.model, req.max_tokens, req.temperature,

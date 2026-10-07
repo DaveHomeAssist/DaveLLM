@@ -252,6 +252,37 @@ def preflight(name, host, configuration_digest, arguments, _context):
         return "Call configuration or arguments are not available"
 
 
+TOOLPACK_SELECTION_LIMIT = 200
+
+
+def selected_specs(config: Mapping[str, Any]) -> tuple:
+    """The specs named by the optional `enabled_tools` config key; all of them when it is absent.
+
+    Every registered schema reaches the model on each agent step, and the full pack is
+    about 11,000 tokens, so a selection keeps tool runs inside a small model's context.
+    Entries are exact names or a `prefix.*` family. A malformed selection, or an entry
+    that matches nothing, registers no expansion tool rather than all of them.
+    """
+    if config.get("invalid"):
+        return ()
+    if "enabled_tools" not in config:
+        return ALL_SPECS
+    selection = config["enabled_tools"]
+    if (not isinstance(selection, list) or len(selection) > TOOLPACK_SELECTION_LIMIT
+            or not all(isinstance(entry, str) and entry for entry in selection)):
+        return ()
+    chosen: set[str] = set()
+    for entry in selection:
+        if entry.endswith(".*"):
+            matches = {s.name for s in ALL_SPECS if s.name.startswith(entry[:-1])}
+        else:
+            matches = {entry} & set(BY_NAME)
+        if not matches:
+            return ()
+        chosen |= matches
+    return tuple(s for s in ALL_SPECS if s.name in chosen)
+
+
 def definitions(host: ToolpackHost) -> list[ToolDefinition]:
     configuration = host.configuration_digest()
     return [ToolDefinition(name=s.name, description=s.description, parameters=s.schema,
@@ -260,4 +291,4 @@ def definitions(host: ToolpackHost) -> list[ToolDefinition]:
                            cancellation="bounded", async_handler=True, handler_version=TOOLPACK_VERSION + ":" + configuration,
                            preflight=partial(preflight, s.name, host, configuration) if s.approval else None,
                            preflight_version=TOOLPACK_VERSION + ":" + configuration if s.approval else "")
-            for s in ALL_SPECS]
+            for s in selected_specs(host.config)]

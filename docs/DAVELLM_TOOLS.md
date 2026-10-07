@@ -19,7 +19,7 @@ The separately enabled [Tools100 expansion](TOOLS100.md) implements all 100 appr
 | `DAVE_NOTION_TOKEN` | unset | The internal Notion connection's secret. Read once at startup from the environment; never stored by the launcher, logged, or returned. |
 | `DAVE_NOTION_PAGES` | unset | JSON object of short page names to Notion page IDs or page URLs, such as `{"adapter-test": "https://www.notion.so/...-<32 hex>"}`. Names are 1–40 lowercase letters, digits, or hyphens; at most 20 pages. |
 | `DAVE_ENABLE_TOOLPACK` | `false` | Register 100 expansion tools and two read-only companions; requires `DAVE_ENABLE_TOOLS`. |
-| `DAVE_TOOLPACK_CONFIG` | `{}` | Bounded nonsecret operator JSON for named targets, source owners, runner capabilities and allowlists. See [Tools100 configuration](TOOLS100.md#configuration). |
+| `DAVE_TOOLPACK_CONFIG` | `{}` | Bounded nonsecret operator JSON for named targets, source owners, runner capabilities and allowlists; `enabled_tools` limits which expansion tools register. See [Tools100 configuration](TOOLS100.md#configuration). |
 | `DAVE_ENABLE_TOOL_INFERENCE` | `false` | Separate opt-in for exact-approved secondary model calls; at most three per lifecycle run. Does not authorize H9. |
 | `DAVE_ENABLE_TOOL_JOBS` | `false` | Separate opt-in for fixed operator-configured SSH jobs. No agents or caller commands. |
 
@@ -30,6 +30,8 @@ export DAVE_ENABLE_EXTENDED_TOOLS=true
 ```
 
 Leave `DAVE_ENABLE_EXTENDED_TOOLS` off while qualifying a target model, so H9 results stay comparable with the six-tool baseline.
+
+The macOS launcher reads `DAVE_TOOL_ROOTS` and the Tools100 settings from owner-only files in the data folder, so a Dock launch gets them too. See [Switching on tools in the Mac app](TOOLS100_SETUP.md).
 
 ## Qualified built-in tools
 
