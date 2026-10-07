@@ -275,7 +275,7 @@ time.sleep(60)
             state = Path(f"/proc/{pid}/stat")
             try:
                 process_state = state.read_text().split()[2]
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
                 break
             if process_state == "Z":
                 break
