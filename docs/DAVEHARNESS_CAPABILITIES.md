@@ -1347,6 +1347,7 @@ Body of `POST /tools/agent/runs`. Validators in `app.py` add checks not listed h
 | `temperature` | no | `0.7` | ge `0`, le `2` |
 | `step_limit` | no | `8` | ge `1`, le `32` |
 | `error_budget` | no | `2` | ge `1`, le `8` |
+| `selected_tools` | no | — | max_length `124` |
 
 ### Decision request
 
