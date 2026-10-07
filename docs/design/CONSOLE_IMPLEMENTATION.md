@@ -38,6 +38,10 @@ both are repaired and covered. Screenshots were inspected at desktop, minimum
 short-window and 32:9 sizes. Playwright 1.61.1 is a dev-only dependency so this
 fixture can gate protected CI; it adds nothing to the application runtime.
 The installed browser and protected delivery are verified separately at closeout.
+The first PR CI run found one legacy source test explicitly requiring the removed
+landscape page-scroll escape hatch (1,368 other tests passed on Python 3.12).
+That test now enforces the locked shell, compact disclosure and opaque tool
+overlay; actual geometry is covered by the new browser gate.
 
 ## Preserved requirements
 
