@@ -11,6 +11,18 @@
   "statusReason": "All 100 approved tools are implemented behind additive gates. The installed app has a searchable selected-tool menu and private starter configuration. Walter now also has Qwen3.5 4B at 32768 context, fully GPU-resident in the observed run; a bounded calc.eval acceptance returned 108 with zero errors. Existing models remain installed and retain the 16384-token request default. Larger-window quality, H9, and provider-specific grants, aliases and helper recipes remain separate gates.",
   "evidence": {
     "checkedOn": "2026-10-07",
+    "toolTerminalExplanation": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "7726f028f030b25ed98ba27828ca28b9b47a6fef",
+      "scope": "T20 only: truthful host-generated terminal explanation after the unchanged error budget stops a tool run. Preserve both actual refusal results, raw transcript, state, budgets, access controls and metadata-only events.",
+      "source": "docs/DAVEHARNESS_H7_INTEGRATION.md",
+      "liveBaseline": "The remaining T04-T20 live tool batch had 12 passes and 5 criterion failures in single attempts. T20 correctly refused a missing file and an outside-root path, then stopped at error_budget=2 without a final model answer. The original failure remains recorded; T10/T11/T17/T18 are separate unresolved findings.",
+      "repair": "Add terminal_explanation only for error_budget lifecycle snapshots and display the labelled harness report before the raw ledger transcript. No model-generated answer is invented and no further call is made.",
+      "acceptance": "Deterministic T20 fixture: one fake model response, two bounded file reads, both refusals, budget and transcript unchanged, no missing file creation, stable GET replay and one terminal event. Renderer preserves literal error text without duplicates or stale-run contamination.",
+      "verification": "Dominic, isolated Python 3.12 container limited to one CPU/two GiB: both T20 replay variants failed on baseline because terminal_explanation was absent; the renderer negative control also failed. After repair, 55 lifecycle/state/provenance/manifest checks passed in 21.56 seconds and 21 JavaScript ledger/approval/console/Markdown checks passed. No live model or provider contacted.",
+      "nextAction": "Complete exact-head CI/review and source publication for T20. Installed/native acceptance remains a separate checkpoint; then address the distinct recorded model constraint/citation failures without erasing their first attempts.",
+      "limits": "No new live inference, H9, native/human acceptance, installed backend restart, credential persistence, provider effects or Notion write. Required exact-source delivery remains a separate gate. Existing project sidebar choice is unchanged."
+    },
     "compactWorkspace": {
       "checkedOn": "2026-10-07",
       "baselineRevision": "95bc6bbfb905e93ce28ff8dea27ca7805bdb39a5",
