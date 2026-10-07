@@ -5,13 +5,13 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 source delivered on main behind default-off gates; installed acceptance remains separate",
-  "lastActivity": "2026-10-05",
+  "head": "Tools100 review boundaries repaired on main; installed acceptance remains separate",
+  "lastActivity": "2026-10-07",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. A fresh one-CPU/two-GiB Dominic container passed the clean merged-source full suite: 1312 passed, one skipped, 90% DaveHarness coverage; 206 Notion tests passed at 97% branch coverage; offline qualification/load, strict types, JavaScript/Node/shell checks, npm tree and zero-vulnerability audit also passed. All required Python 3.12/3.13/3.14 PR and post-merge CI checks passed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate. DL-05 navigation source repair passed an isolated Electron fixture on Dominic; all three required PR checks passed and PR #62 merged at 92dc458; installed/native acceptance remains separate.",
+  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. PR #72 at 8e8bc3c closes three retained review gaps: configured command aborts terminate their descendant process group, untracked Git files are refused before preview or staging, and runner selection is owner-filtered with capability-only output. A capped Dominic container passed 223 focused toolpack checks with two skips; all required Python 3.12/3.13/3.14 PR and post-merge CI checks passed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate. DL-05 navigation source repair passed an isolated Electron fixture on Dominic; all three required PR checks passed and PR #62 merged at 92dc458; installed/native acceptance remains separate.",
   "evidence": {
-    "checkedOn": "2026-10-05",
-    "sourceRevision": "0dc9f68fa4946a09f2e64a953c3c4d2ac6025452",
+    "checkedOn": "2026-10-07",
+    "sourceRevision": "8e8bc3cb62cbd83aa9de7a56dcf036446734b8c5",
     "tools100": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
@@ -41,6 +41,24 @@
       "defaultFlags": "Toolpack, secondary inference and runner jobs are separately default off",
       "liveAcceptance": "Not run. Installed configuration and healthy services preserved. Provider credentials, target allowlists, runner recipes and POSIX helper installation are deployment inputs; Windows helper jobs fail closed.",
       "source": "docs/TOOLS100.md"
+    },
+    "tools100ReviewRepair": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "1314c9cfb3627d3a9808274552c3d6c6927c26d7",
+      "implementationRevision": "bbd4852b6405d3f60a11db3db975e9d0010bc531",
+      "mergeRevision": "8e8bc3cb62cbd83aa9de7a56dcf036446734b8c5",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/72",
+      "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37570959012",
+      "postMergeCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37571686927",
+      "scope": "Three PR #63 review findings only: descendant cleanup after runner abort, untracked-file preview/commit refusal without index mutation, and owner-filtered capability-only runner selection. No PR #71 edits, installed activation, inference, H9, provider effects, service changes or model mutations.",
+      "runner": "Dominic, disposable Python 3.12 container; one CPU and two GiB memory",
+      "verification": "Three focused regressions passed on Linux, including a real descendant process and unrelated process group. The complete toolpack, runner, catalog provenance and capability manifest set passed 223 tests with two skips. Required Python 3.12/3.13/3.14 PR and post-merge CI checks passed; Pages completed successfully.",
+      "reviewFindings": [
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169239",
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169248",
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169253"
+      ],
+      "installedRuntime": "Preserved; source repair does not prove installed or native acceptance."
     },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
