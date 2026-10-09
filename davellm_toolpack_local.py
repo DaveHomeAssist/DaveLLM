@@ -162,8 +162,20 @@ def _execute_local(name, args, host):
         group = {"glossary.lookup": "glossary", "midi.map.lookup": "midi", "av.inventory.lookup": "av_inventory", "runner.select": "runners"}[name]
         values = host.config.get(group, {})
         wanted = args.get("term", args.get("control", args.get("query", args.get("capability", "")))).casefold()
+        if name == "runner.select":
+            owner = host.binding().user_id
+            matches = []
+            for key, record in list(values.items())[:200]:
+                if not isinstance(record, dict) or owner not in record.get("users", []):
+                    continue
+                capabilities = [value for value in record.get("capabilities", [])
+                                if isinstance(value, str) and 1 <= len(value) <= 80][:50]
+                if any(wanted == value.casefold() for value in capabilities):
+                    matches.append({"name": key, "capabilities": capabilities})
+            limit = args.get("limit", 50)
+            return {"matches": matches[:limit], "observed_reachability": "Unknown", "truncated": len(matches) > limit}
         matches = [{"name": key, "record": record} for key, record in list(values.items())[:200]
-                   if wanted in key.casefold() or name == "runner.select" and wanted in record.get("capabilities", [])]
+                   if wanted in key.casefold()]
         return {"matches": matches[:args.get("limit", 50)], "observed_reachability": "Unknown", "truncated": len(matches) > args.get("limit", 50)}
     if name in ("memory.recall", "claude.memory.read", "rules.lookup", "machine.access.lookup", "comms.log.read", "nextsteps.read"):
         path = source_path(host, args["source"], args.get("path"))
@@ -204,6 +216,9 @@ def _execute_local(name, args, host):
             if not args["files"]:
                 raise ToolpackError("Preview requires named files")
             files = [check_file(value) for value in args["files"]]
+            tracked = repo.git("ls-files", "--error-unmatch", "--", *files)
+            if tracked.returncode or tracked.truncated:
+                raise ToolpackError("Preview requires tracked named files")
             patch = repo.output("diff", *DIFF_SAFETY, "--", *files)
             if patch.truncated:
                 raise ToolpackError("Diff exceeds the approval preview budget")

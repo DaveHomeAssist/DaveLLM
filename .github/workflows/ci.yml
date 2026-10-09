@@ -84,5 +84,20 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=high
 
+      - name: Compact workspace browser fixture
+        if: matrix.python == '3.14'
+        timeout-minutes: 5
+        run: |
+          npx playwright install --with-deps chromium
+          node tests/browser_workspace.cjs
+
+      - name: Console keyboard and landmark fixtures
+        if: matrix.python == '3.14'
+        timeout-minutes: 2
+        run: |
+          node --check tests/browser_navigation.cjs
+          git fetch --no-tags --depth=1 origin 179a79c0459a77976249bbf1f7a3672496726dcc
+          xvfb-run -a node_modules/.bin/electron --no-sandbox tests/browser_navigation.cjs
+
       - name: Whitespace check
         run: git diff --check

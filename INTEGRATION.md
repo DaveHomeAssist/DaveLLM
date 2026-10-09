@@ -112,6 +112,28 @@ Pre-send size check (DL-ROUTE-05). The composer calls it about 600 ms after typi
 
 `prompt_token_limit` is `null` when the node has no profile limit for the model, and `over_limit` is then `false`. `reads_new_message_only` is `true` when the node still holds the conversation's cached prefix (the same rule as the stream's waiting status below), and `prompt_tokens` then counts only the draft. The check is read-only: it creates or changes no conversation, calls no model, and does not count as in flight. Earlier turns past the 10-message history window count as the summary placeholder, which can be up to 150 tokens shorter than the model summary the stream writes. It probes `GET /api/ps` (2 s limit) only when the cached prefix could apply. Errors match the stream: an unloaded inventory returns `409`, an unavailable model `400`, an unknown node `404`, and a different project on an attached conversation `409`. The limit stays advisory: sending is never blocked or rerouted.
 
+### `POST /eval/chat`
+
+```json
+{
+  "node_id": "<configured-node-id>",
+  "model": "<model-id-from-that-node>",
+  "messages": [
+    {"role": "system", "content": "<the caller's own system prompt>"},
+    {"role": "user", "content": "<case input>"}
+  ],
+  "max_tokens": 4096,
+  "temperature": 0.4,
+  "format": "json"
+}
+```
+
+DL-EVAL-01. A stateless completion for evaluation harnesses such as Prompt Lab's Library Tests. The node receives exactly the caller's `messages` (1 to 64, roles `system`, `user` or `assistant`): no DaveLLM persona, project, session layer or history is added. Same `X-API-Key` guard and rate limit as `/chat`, and the same inventory errors (`404` unknown node, `409` unloaded inventory, `400` unavailable model). `format` accepts only `"json"` and becomes Ollama's top-level `format` field; omit it for an unconstrained reply. `max_tokens` defaults to 4,096 and `temperature` to the `/chat` null default.
+
+The reply is `{response, node, node_id, model, done_reason, stats, latency_ms}`, where `response` is the raw model content and `stats` has the `/chat/stream` speed fields. A reply with blank content and a tool call adds `notice`, `reason: "tool_call_only"` and `tools`, and `response` stays empty. Node failures map to `503` (connect), `504` (timeout) and `502` (node error, invalid body, or a transport failure mid-reply).
+
+Nothing is written: no conversation, embedding, cost log, performance row, title, artifact, budget charge or model-health entry, so eval load cannot change routing advice or cost totals. The call does count on the in-memory node activity so other users' waiting status sees it.
+
 ### `POST /chat/stream`
 
 Progress events (DL-UX-01). The stream opens with a status event, before the node has answered:
@@ -184,7 +206,7 @@ DaveHarness `0.4.0` added policy, fingerprints, and budgets. Version `0.5.0` add
 
 ### `POST /tools/agent/run`
 
-Accepts a message array, inventory-backed node and model, step ceiling, error budget, and the existing per-run approved tool-name list. FastAPI sends the current registered JSON schemas on every Ollama request. Existing request fields are unchanged. The response contains `status`, `transcript`, `final_answer`, `steps`, `errors`, `status_message`, and any `pending_tool_call`, plus additive `run_id` and pending-call fields. The default ceiling is eight. Mutating and execution tools stop at `approval_required` unless already named in `approved_tools` for that run.
+Accepts a message array, inventory-backed node and model, step ceiling, error budget, and the existing per-run approved tool-name list. FastAPI sends the current registered JSON schemas on every Ollama request. Existing request fields are unchanged, except that `max_tokens` must be at least 1 (`422` otherwise), as on lifecycle runs. When the schemas, the messages (tool calls and other message fields included) and `max_tokens` together exceed the context window the router asks Ollama for, this route and `POST /tools/agent/runs` answer `413` before calling the model; the detail names each part and suggests fewer tools, shorter messages or a lower `max_tokens`. Lifecycle runs with a project also reserve the schema tokens when they assemble project context. The response contains `status`, `transcript`, `final_answer`, `steps`, `errors`, `status_message`, and any `pending_tool_call`, plus additive `run_id` and pending-call fields. The default ceiling is eight. Mutating and execution tools stop at `approval_required` unless already named in `approved_tools` for that run.
 
 An approval-required call is schema-validated before it is exposed as pending. Its in-process record contains the call ID, tool name, canonical arguments, SHA-256 digest, transcript revision, single-use nonce, creation time, and expiry time. The public pending object omits the nonce. Its default time-to-live is 300 seconds.
 

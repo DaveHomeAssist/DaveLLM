@@ -5,13 +5,80 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Tools100 source delivered on main behind default-off gates; installed acceptance remains separate",
-  "lastActivity": "2026-10-05",
+  "head": "Compact tools and resizable workspace; project sidebar choice open",
+  "lastActivity": "2026-10-09",
   "status": "amber",
-  "statusReason": "All 100 approved tools are implemented behind additive default-off gates and merged to main in PR #63 at 0dc9f68. A fresh one-CPU/two-GiB Dominic container passed the clean merged-source full suite: 1312 passed, one skipped, 90% DaveHarness coverage; 206 Notion tests passed at 97% branch coverage; offline qualification/load, strict types, JavaScript/Node/shell checks, npm tree and zero-vulnerability audit also passed. All required Python 3.12/3.13/3.14 PR and post-merge CI checks passed. Installed desktop/services/configuration and frozen UI work are preserved. Provider grants, helper deployment, Windows job isolation and physical/native acceptance remain separate.",
+  "statusReason": "All 100 approved tools are implemented behind additive gates. The installed app has a searchable selected-tool menu and private starter configuration. Walter now also has Qwen3.5 4B at 32768 context, fully GPU-resident in the observed run; a bounded calc.eval acceptance returned 108 with zero errors. Existing models remain installed and retain the 16384-token request default. Larger-window quality, H9, and provider-specific grants, aliases and helper recipes remain separate gates.",
   "evidence": {
-    "checkedOn": "2026-10-05",
-    "sourceRevision": "0dc9f68fa4946a09f2e64a953c3c4d2ac6025452",
+    "checkedOn": "2026-10-09",
+    "sourceExcerptIdentity": {
+      "checkedOn": "2026-10-09",
+      "baselineRevision": "b34e69b7c132ce9d3b49d79d66ee852a86c666ba",
+      "scope": "Add absolute line/text pairs to file.read_lines and unambiguous md.section results, preserving existing text, admission, permissions and bounded pagination.",
+      "source": "docs/SOURCE_EXCERPTS.md",
+      "acceptance": "Offline real-file offset, blank/Unicode/CRLF, Setext, empty/ambiguous and byte-budget fixtures; citation/three-bullet controls reject saved failure patterns without rewriting answers.",
+      "verification": "Walter Windows Python 3.12: all nine new fixtures fail on the unchanged baseline with missing numbered_lines; patched focused run has 151 passes, nine platform skips and five failures in 61.51 seconds. All five failures reproduce on baseline (CRLF byte boundary, unsupported utime, directory/FIFO error classifications). macOS manifest check passes unchanged. Required exact-head Linux CI and source publication remain delivery gates; no live inference or installed activation in this slice.",
+      "liveEvidence": "The completed four-case prompt pilot at baseline b34e69b had two passes and two full-prompt failures. T10 fixed the excessive-call constraint but retained source-fidelity errors; T11 returned two bullets and relative citations. T17/T18 passed once. Original 12 Pass / 5 Fail batch remains unchanged.",
+      "nextAction": "Deliver bounded source/offline evidence; keep installed activation and live answer-quality acceptance separate. Do not retry the consumed pilot.",
+      "limits": "Numbered lines and structural assertions do not guarantee semantic faithfulness or a live-model improvement. No runtime answer repair, retry, new model/settings, H9, Notion write or unrelated UI."
+    },
+    "toolRunLimits": {
+      "checkedOn": "2026-10-09",
+      "baselineRevision": "325571108af1348af899a143a89822caae9ec313",
+      "scope": "Optional per-run wall deadline and per-model-request estimated input-token admission, preserving existing defaults.",
+      "source": "docs/TOOL_RUN_LIMITS.md",
+      "acceptance": "Fake-provider fixtures for initial and accumulated-input refusal, selected schema accounting, deadline cancellation, step/output caps and default compatibility. Exact-head CI, native activation and the approved bounded pilot remain separate evidence gates.",
+      "verification": "Walter, disposable Windows Python 3.12 environment: 47 focused guard/lifecycle/provenance/platform-manifest checks passed in 29.34 seconds. All three guard negative controls fail on baseline 3255711. One legacy shell pwd fixture also fails unchanged on that Windows baseline and is deferred to Linux CI; no unrelated shell change. The portable manifest was regenerated on macOS. No live model request was made by these fixtures.",
+      "nextAction": "Guard source merged and installed as b34e69b (PR85); candidate CI 37895226109 and merge CI 37896023725 passed all three Python versions. The bounded pilot completed once in 84.713 seconds using 10 model requests and 4070 generated tokens. All owned requests terminated and the reservation was released. Review the retained T10/T11 model-quality failures; no pilot retry is authorized.",
+      "limits": "No new model settings, retries, H9 or blanket tool qualification. Retain original live failures; a new pilot is not a reliability rate."
+    },
+    "toolTerminalExplanation": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "7726f028f030b25ed98ba27828ca28b9b47a6fef",
+      "scope": "T20 only: truthful host-generated terminal explanation after the unchanged error budget stops a tool run. Preserve both actual refusal results, raw transcript, state, budgets, access controls and metadata-only events.",
+      "source": "docs/DAVEHARNESS_H7_INTEGRATION.md",
+      "liveBaseline": "The remaining T04-T20 live tool batch had 12 passes and 5 criterion failures in single attempts. T20 correctly refused a missing file and an outside-root path, then stopped at error_budget=2 without a final model answer. The original failure remains recorded; T10/T11/T17/T18 are separate unresolved findings.",
+      "repair": "Add terminal_explanation only for error_budget lifecycle snapshots and display the labelled harness report before the raw ledger transcript. No model-generated answer is invented and no further call is made.",
+      "acceptance": "Deterministic T20 fixture: one fake model response, two bounded file reads, both refusals, budget and transcript unchanged, no missing file creation, stable GET replay and one terminal event. Renderer preserves literal error text without duplicates or stale-run contamination.",
+      "verification": "Dominic, isolated Python 3.12 container limited to one CPU/two GiB: both T20 replay variants failed on baseline because terminal_explanation was absent; the renderer negative control also failed. After repair, 55 lifecycle/state/provenance/manifest checks passed in 21.56 seconds and 21 JavaScript ledger/approval/console/Markdown checks passed. No live model or provider contacted.",
+      "nextAction": "Complete exact-head CI/review and source publication for T20. Installed/native acceptance remains a separate checkpoint; then address the distinct recorded model constraint/citation failures without erasing their first attempts.",
+      "limits": "No new live inference, H9, native/human acceptance, installed backend restart, credential persistence, provider effects or Notion write. Required exact-source delivery remains a separate gate. Existing project sidebar choice is unchanged."
+    },
+    "compactWorkspace": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "95bc6bbfb905e93ce28ff8dea27ca7805bdb39a5",
+      "source": "docs/design/CONSOLE_IMPLEMENTATION.md",
+      "scope": "Preserve the accepted Tools entry point, make each tool one compact row with one-line details, add saved pointer/keyboard panel resizing and wider ultrawide defaults. Project sidebar behavior remains unchanged pending DL-UI-05.",
+      "runner": "Dominic, isolated Playwright Chromium container, one CPU and two GiB; synthetic APIs and no external networking",
+      "reviewRepair": "PR #83 discussion_r4207317204: compact context overlay now has a bottom bound and internal scrolling. Long-label fixtures verify that the last model control and Done remain reachable at short viewports; no controls are removed.",
+      "verification": "Six console tests and the synthetic browser matrix pass: light/dark at 1440x900, 375x812, 844x390, 320x256 and 3840x1080; no root overflow; reachable tool rows, filtering/selection, pointer/keyboard resizing, reset, reload persistence and width clamping. Short-window context controls remain accessible. Protected CI and installed-browser delivery are separate gates recorded at closeout.",
+      "repairsDuringVerification": "Removed the old landscape page-scroll exception; added a short-height context disclosure; fixed its summary hitbox overlapping header actions and replaced an undefined menu background token with the existing panel color. Initial PR #83 CI 37626340860 exposed a legacy source test requiring the removed overflow exception (Python 3.12: 1368 passed, one failed). Updated that assertion to require the locked shell and reachable compact controls; replacement CI remains the merge gate.",
+      "limits": "No inference, model changes, provider activation, backend restart, Notion writes or human acceptance. Previous blank-answer and provider-claim defects are outside this UI slice. Playwright is a dev-only regression dependency."
+    },
+    "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
+    "notionTestLifecycleRepair": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "aa4e351253b62b7b7e87faa170663d7cf44d38ed",
+      "originalFailure": "PR #79 main CI 37587588343 at 2ae84c04620aa2da5353dc0cf44c49fd44c1b088: Python 3.12 Notion coverage failed test_r4_the_token_never_reaches_logs_routes_events_or_the_transcript with Run did not settle; 205 tests passed and one failed. Later green runs did not change the affected fixture.",
+      "problem": "The redaction test used a bare TestClient whose per-request event loop could cancel the background run before its approval pause. Neighboring lifecycle tests already retained a persistent portal without starting application lifespan services.",
+      "repair": "Reuse the existing _persistent_loop helper in the redaction test and parameterize immediate and gated mocked responses. The delayed case holds its reply until the POST returns, checks that request teardown did not cancel it, then executes the unchanged approval, completion and token/Bearer redaction assertions.",
+      "verification": "Dominic, isolated Python 3.12 container limited to one CPU and two GiB: both redaction cases and neighboring approve/reject lifecycle cases passed (4 tests, 3.10 seconds). A negative control replacing only _persistent_loop with nullcontext failed the delayed case with Request teardown cancelled the scripted model (0.89 seconds), confirming the regression detects the defect. Required exact-source CI delivery is recorded separately.",
+      "acceptance": "The test must reach approval and completed state after a model reply deliberately outlives its creating POST, with all existing secret-redaction assertions intact. No timeout increase or runtime change.",
+      "limits": "The historical CI cancellation stack was not captured, so its exact scheduling point remains unknown. All responses are scripted and Notion is mocked; no inference, provider access, installed configuration, service restart or new live acceptance is implied.",
+      "source": "tests/test_notion_adversarial.py"
+    },
+    "modelContextConfiguration": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "d6e797270f6617257dcce354d52ea2387022b013",
+      "authorization": "Configure the recommended Walter Qwen3.5 4B candidate at 32K, preserving existing models and unrelated services.",
+      "configuration": "Owner-only model-context.json: max_context 32768, default_context 16384, models qwen3.5:4b 32768. Normal installed launcher restart verified the three corresponding environment values in the new backend. No credentials stored in the file.",
+      "model": "qwen3.5:4b, Q4_K_M, 4.2B, completion/vision/tools/thinking metadata; installed on Walter without deleting any model.",
+      "liveAcceptance": "run_41c0207daed6450580b9dd65ea9f2ef0 completed: 2 model steps, 1 successful calc.eval call, 0 errors, final answer 108. Prompt supplied exact arguments, 512 output tokens per step, 3-step ceiling and a 180-second client cancellation boundary. Ollama reported context_length 32768 and size=size_vram=4098894068 bytes; NVIDIA telemetry reported 2349 MiB free afterward.",
+      "browser": "Authenticated browser model chooser includes the new model and chat header shows Walter ONLINE qwen3.5:4b.",
+      "sourceVerification": "24 focused launcher tests pass, including environment precedence, malformed/oversized/untrusted input rejection and preserved defaults; bash/zsh syntax and diff whitespace pass. Protected source delivery is verified separately from installed acceptance.",
+      "limitations": "Small exact-argument tool smoke only; no full-window recall, 256K performance, vision acceptance or H9 claim. No node service restart or paging change. Initial test harness hit macOS Bash's empty-array/nounset behavior; portable fixture output was corrected without weakening assertions.",
+      "source": "docs/MODEL_CONTEXT_SETUP.md"
+    },
     "tools100": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
@@ -42,12 +109,78 @@
       "liveAcceptance": "Not run. Installed configuration and healthy services preserved. Provider credentials, target allowlists, runner recipes and POSIX helper installation are deployment inputs; Windows helper jobs fail closed.",
       "source": "docs/TOOLS100.md"
     },
+    "tools100ReviewRepair": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "1314c9cfb3627d3a9808274552c3d6c6927c26d7",
+      "implementationRevision": "bbd4852b6405d3f60a11db3db975e9d0010bc531",
+      "mergeRevision": "8e8bc3cb62cbd83aa9de7a56dcf036446734b8c5",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/72",
+      "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37570959012",
+      "postMergeCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37571686927",
+      "scope": "Three PR #63 review findings only: descendant cleanup after runner abort, untracked-file preview/commit refusal without index mutation, and owner-filtered capability-only runner selection. No PR #71 edits, installed activation, inference, H9, provider effects, service changes or model mutations.",
+      "runner": "Dominic, disposable Python 3.12 container; one CPU and two GiB memory",
+      "verification": "Three focused regressions passed on Linux, including a real descendant process and unrelated process group. The complete toolpack, runner, catalog provenance and capability manifest set passed 223 tests with two skips. Required Python 3.12/3.13/3.14 PR and post-merge CI checks passed; Pages completed successfully.",
+      "reviewFindings": [
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169239",
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169248",
+        "https://github.com/DaveHomeAssist/DaveLLM/pull/63#discussion_r4191169253"
+      ],
+      "installedRuntime": "Preserved; source repair does not prove installed or native acceptance."
+    },
+    "duncanDiagnostic": {
+      "checkedOn": "2026-10-07",
+      "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
+      "authorization": "Maximum five total serial gpt-oss:20b requests, 128 output tokens and 180 seconds each; CPU num_gpu 0 and num_ctx 4096 first; stop tuning on CPU failure; request-local keep_alive 0; no persistent settings, restart, repull, upgrade, other model, H9, Notion write or paid call.",
+      "historicalConsumption": "Zero requests. The controller dispatch ledger did not include BUS-CHOICES-DUNCAN-001, the daily record described it as queued, and the prior Tools100 closeout recorded Duncan as untouched.",
+      "requestCount": 1,
+      "remainingBudgetNotExercised": 4,
+      "result": "Stopped on the required CPU baseline. Ollama launched llama-server with -c 4096 and -ngl 0, then returned HTTP 500 after CPU_REPACK allocation of 10152345600 bytes failed. GPU 4, GPU 8, GPU 16 and the final actual-context DaveLLM request were skipped; no retry or budget reset occurred.",
+      "caps": "Request body set num_predict 128, num_ctx 4096, num_gpu 0, keep_alive 0 and stream false; curl enforced a 180-second deadline. The failure returned in 2.9 seconds before generation.",
+      "capacity": "Duncan had about 37 GiB free RAM, gpt-oss:20b installed, no loaded model and no llama-server before dispatch. Current Ollama reported no usable GPU for this runner build.",
+      "release": "After failure, both local and remote /api/ps returned no loaded models and only the pre-existing Ollama service process remained. No configuration, service, model or file was changed."
+    },
+    "tools100DeploymentReadiness": {
+      "checkedOn": "2026-10-07",
+      "sourceRevision": "b935ea09cb0832c5ca76233db93a16ac30c5c3da",
+      "source": "docs/TOOLS100_READINESS.md",
+      "scope": "Twenty-one capability groups mapped to actual named nodes, aliases, owners, grants, runner recipes, executables and POSIX helper prerequisites. Read-only source and nonsecret presence/status only; no activation, installation, provider call, inference, helper deployment, service change or restart.",
+      "installedObservation": "Authenticated /tools returned 22 existing qualified/extended tools and no Tools100 definitions. toolpack.json and tool-roots.json are absent. Dominic, Walter and Duncan report online through node status; this does not establish model or helper readiness.",
+      "overlap": "PR #71 remains open at 22a5bf332927b46d01fa6dabc09f12da4d1663a2 and owns selective enabled_tools, secure optional-file loading and docs/TOOLS100_SETUP.md. This matrix changes none of those files.",
+      "nextSourceItem": "After PR #71 reconciliation, add a nonsecret readiness checker that reports enabled names and required alias/owner/runner/executable key presence as Ready, Missing or Unknown without secret reads, effects, provider calls, installation or restart."
+    },
+    "pr71Reconciliation": {
+      "checkedOn": "2026-10-07",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/71",
+      "reviewedHead": "22a5bf332927b46d01fa6dabc09f12da4d1663a2",
+      "reconciledBase": "dde5eb674f71fc30813821dfd71d2cce7e90e7ff",
+      "deliveredHead": "7ff229ff3b6f196768589a2e0cd5655f78ce1ff6",
+      "mergeRevision": "e579f1f0a5c41186d4e4fc0e73bb20217bcf6a45",
+      "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37578476440",
+      "postMergeCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37579174210",
+      "pagesDelivery": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37579173744",
+      "scope": "Reconciled the accepted selective Tools100 launcher configuration and tool-schema context budgeting with current main. Preserved installed files and services; no activation, token, helper installation, provider call, inference, H9 or restart.",
+      "review": "The two earlier inline findings were already fixed at 22a5bf3. One remaining fail-closed mismatch was repaired: invalid DAVE_TOOLPACK_CONFIG now registers no expansion tools instead of all 102, matching the PR contract.",
+      "verification": "Targeted launcher, toolpack, context-budget and documentation tests passed 200 locally. Initial reconciled CI run 37578113061 exposed a Linux-only assertion race after the descendant had already exited: /proc/<pid>/stat disappeared between exists and read_text. The assertion now treats FileNotFoundError as successful termination. Required Python 3.12/3.13/3.14 checks passed on PR head 7ff229f and merge e579f1f; Pages completed successfully."
+    },
+    "tools100ReadinessChecker": {
+      "checkedOn": "2026-10-07",
+      "baselineRevision": "e3cd6f83f07e006aa365afccc94e713e7efa15b7",
+      "implementationRevision": "277c4ad802ec5107cdb04138ae3bf2fc5c3ebff0",
+      "mergeRevision": "203a42732afd90235b3289522f09ab7e36babb71",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/77",
+      "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37582104963",
+      "pagesDelivery": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37582950230",
+      "source": "scripts/check_tools100_readiness.py",
+      "scope": "Local nonsecret optional-file presence and shape only. Reports enabled names and required aliases, owners, runner capabilities and executable keys as Ready, Missing or Unknown for all 21 groups without returning configuration values or paths.",
+      "installedObservation": "Both optional installed files are absent, zero Tools100 names are enabled, 21 groups are reported, secrets are not read, network is not used and live acceptance is not checked. Exit status is nonzero because readiness is incomplete.",
+      "verification": "Eight focused fixtures cover absent, malformed, wrong-shape, partial, fully shaped, symlink, group-writable and CLI cases. Required PR checks passed. Post-merge CI 37582950916 exposed the second valid Linux procfs disappearance exception, ProcessLookupError, after the descendant had exited; the assertion now treats both FileNotFoundError and ProcessLookupError as successful termination. Protected follow-up CI remains the delivery gate."
+    },
     "historicalPreflight": {
       "checkedOn": "2026-10-04",
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate.",
+    "scope": "Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; all three required PR checks passed and its source merged; installed/native acceptance remains separate.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -153,20 +286,49 @@
       "docs/NOTION_ADAPTER_LIVE_ACCEPTANCE.md",
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
       "docs/DAVEHARNESS_H9_RESULTS.md",
+      "docs/DAVEHARNESS_H9_READINESS_REVIEW.md",
+      "docs/DAVEHARNESS_PREFLIGHT.md",
       "docs/DAVELLM_TOOLS.md"
     ],
     "baselineCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37178075989",
     "baselineRevision": "7f4fb396c746b0f95ff14b5891f7f2febc13e4d4",
     "validation": {
-      "python": "3.13.16 (session runner; CI covers 3.12, 3.13 and 3.14)",
-      "pytest": "1031 passed, 1 skipped",
-      "nodeTestsPassed": 15,
-      "browserCheck": "headless Chromium against a local fake Ollama node: size line neutral and amber, Stop during a stream, Enter blocked mid-stream, tool run card closes by button and Esc, no page scroll at 1440x900, no horizontal scroll at 375x812",
+      "python": "3.14.3",
+      "notionTestsPassed": 206,
+      "notionBranchCoveragePercent": 97,
+      "nodeTestsPassed": 9,
+      "offlineQualificationPassed": true,
+      "offlineEvaluations": 24,
+      "offlineLiveModels": false,
+      "loadPassed": true,
       "strictTypes": "17 source files passed",
       "compilation": "passed",
       "syntax": "JavaScript and shell passed",
       "npmAudit": "zero vulnerabilities",
-      "deliveryGate": "Required Python 3.12/3.13/3.14 CI checks must pass on main. Source delivery is established by GitHub main containing this revision."
+      "capabilityManifest": "current",
+      "deliveryGate": "Full local suite and all required Python 3.12/3.13/3.14 CI checks must pass before merge. Source delivery is established by GitHub main containing this implementation revision."
+    },
+    "consoleNavigation": {
+      "checkedOn": "2026-10-06",
+      "baselineRevision": "179a79c0459a77976249bbf1f7a3672496726dcc",
+      "implementationRevision": "685d478d43a10dc343e60c1f1728c9199e104ec6",
+      "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/62",
+      "source": "docs/design/CONSOLE_IMPLEMENTATION.md",
+      "scope": "DL-05 only: semantic landmarks, active-view skip link and view-change focus. No hash/Back/title routing, dialogs, live-region changes, app restart, backend write, repeated Notion acceptance, inference, H9 or agents.",
+      "runner": "Dominic isolated Playwright Ubuntu container with Electron 44 and Xvfb; GitHub Actions Ubuntu Python 3.12/3.13/3.14",
+      "regressions": "Pinned baseline reproduces four defects; candidate passed 24 combinations of four views, two themes and three viewports with trusted Enter/Tab input and Chromium accessibility tree on Dominic. No external requests, backend writes or inference.",
+      "deliveryGate": "Required PR CI 37418633159 passed on exact head 685d478, including the Python 3.14 Electron fixture. PR #62 merged to main at 92dc458019a8c1c3aeb8950ab5d7a65b1848fc7e. Installed runtime and screen-reader behavior remain unverified.",
+      "retainedFailures": [
+        "Initial fixture run 37398025121 failed before candidate checks: pinned-baseline Projects keyboard activation timed out, with zero unexpected/external requests. Fixture correction supplies Electron's separate Enter char event and verifies native/DOM focus and trusted keypress delivery; no application assertion or scope is relaxed.",
+        "CI run 37398623096 failed at the test-fixture Enter delivery assertion before candidate checks. Awaitable Chromium Input.dispatchKeyEvent repair passed the exact fixture on Dominic; updated PR CI is pending.",
+        "CI 37418008233 passed all earlier gates but still delivered no keyboard events to the renderer in the GitHub Xvfb session. Explicit Chromium Page.bringToFront before input passed on Dominic and in CI 37418633159 without weakening the trusted-key assertion.",
+        "Documentation follow-up PR #67 CI 37419336747 reproduced intermittent no-key delivery on GitHub Xvfb despite focus assertions and prior exact-head success. The fixture now disables background throttling and refocuses/retries only when zero native events arrive; trusted-key and candidate assertions remain required.",
+        "Post-merge CI 37420745328 on main a394711 completed all 24 candidate navigation cases, then timed out in fixture teardown while waiting for its HTTP server to close. The follow-up closes fixture connections after initiating server shutdown; protected CI is the delivery gate."
+      ],
+      "installedRuntime": "Existing native app, backend, owner checkout and configuration are preserved. The source repair is not installed or activated by documentation publication.",
+      "mergeRevision": "92dc458019a8c1c3aeb8950ab5d7a65b1848fc7e",
+      "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37418633159",
+      "sourceRevision": "92dc458019a8c1c3aeb8950ab5d7a65b1848fc7e"
     }
   },
   "shipped": [
@@ -181,12 +343,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Configure Tools100 deployment inputs before installed acceptance",
-    "why": "Source delivery is complete. Provider credentials/allowlists, named targets, POSIX runner recipes and helper installation remain explicit deployment inputs; preserve the installed app until a separate rollout is scoped.",
-    "doneWhen": "Named provider and POSIX runner readiness are recorded, missing integrations fail closed, and a separately authorized installed-runtime acceptance plan preserves inference, H9, account writes, notifications, wake/restarts/model mutations and service changes unless explicitly granted.",
-    "effort": "L",
+    "title": "Resolve project sidebar behavior and finish the UI checklist",
+    "why": "Compact tool rows and resizable workspace have an isolated implementation. The remaining requested sidebar item needs a choice between expandable project conversations and links to Project Home.",
+    "doneWhen": "DL-UI-05 is answered and the chosen navigation works with existing project attachment, filtering and conversation selection without losing drafts.",
+    "effort": "S",
     "owner": "either",
-    "blockedBy": "Source delivery is not blocked. Missing provider credentials/allowlists, remote recipe/executable configuration and helper installation block their live lanes only. Inference, H9, account writes, notifications, wake/restarts/model mutations and installed service changes require separate explicit authorization."
+    "blockedBy": "DL-UI-05 remains unanswered; independent compact-row and resizing delivery is not blocked."
   },
   "findings": [
     {
@@ -303,14 +465,14 @@
       "id": "DL-05",
       "type": "a11y",
       "sev": "P2",
-      "title": "Views lack <main>; skip link dead off Chat; focus stays on rail",
-      "detail": "Historical finding from 2026-10-02; not reverified by this package. axe: landmark-one-main on Projects/Cluster/Settings, main nested in a region on Chat; #chatPanel is hidden elsewhere; no focus move on view switch.",
+      "title": "Implemented: named main, active skip target and view-change focus",
+      "detail": "Source repair 792b75e provides named top-level main landmarks, active-view skip targets and view-change focus. Pinned baseline defects and 24 candidate navigation cases passed in isolated Electron on Dominic on 2026-10-06. All three required PR checks passed and PR #62 merged to main at 92dc458. Installed/native screen-reader acceptance remains separate.",
       "files": [
         "static/index.html:74",
         "static/console.js:34",
         "static/index.html:12"
       ],
-      "evidence": "doc",
+      "evidence": "code-read",
       "phase": 2,
       "history": [
         {
@@ -320,8 +482,8 @@
           "evidence": "observed"
         }
       ],
-      "status": "open",
-      "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
+      "status": "resolved",
+      "evidenceNote": "2026-10-06 source merged in PR #62 after exact-head CI 37418633159 passed; installed/native and screen-reader acceptance separate"
     },
     {
       "id": "DL-06",
@@ -537,31 +699,45 @@
       "evidenceNote": "Historical audit 2026-10-02; not reverified by this package"
     },
     {
-      "id": "DL-EVAL-01",
-      "type": "decision",
+      "id": "DL-15",
+      "type": "feature",
       "sev": "P2",
-      "title": "Prompt Lab Library Tests against DaveLLM models need a stateless eval route",
-      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Not implemented; no live model called.",
+      "title": "Tools100 switch-on in the Mac app: launcher settings files and enabled_tools",
+      "detail": "The launcher now reads owner-only tool-roots.json and toolpack.json from the data folder so a Dock launch gets DAVE_TOOL_ROOTS and Tools100 settings; environment values win and bad files are skipped. DAVE_TOOLPACK_CONFIG gains enabled_tools (exact names or prefix.*), because every registered schema reaches the model on each agent step: the full pack is about 11,000 tokens of descriptions, about 13,700 to 18,300 with the launcher's other tools, against a 16,384 window. docs/TOOLS100_SETUP.md walks through roots, a 13-tool read-only starter, settings-only lanes and the token handling; tokens stay environment-only. Not installed or accepted on the Mac.",
       "files": [
-        "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md",
-        "app.py:4587",
-        "app.py:2492"
+        "scripts/macos/launch-davellm.sh",
+        "davellm_toolpack.py",
+        "docs/TOOLS100_SETUP.md",
+        "docs/examples/toolpack.starter.json",
+        "app.py (tool_schema_tokens, tool_run_message_tokens, tool_run_fit_error)"
       ],
       "evidence": "session",
-      "phase": 1,
-      "status": "open",
+      "phase": 0,
+      "status": "implemented",
       "history": [
         {
           "checkedOn": "2026-10-06",
-          "title": "Prompt Lab eval harness researched; brief and spike only",
-          "detail": "Decisions D-EVAL-01..03 accepted by Dave 2026-10-06 (Enhance-only tests, stateless /eval/chat, no logging). D-EVAL-04 (first live run size) and D-EVAL-05 (JSON mode) open.",
+          "title": "Budget counts tool calls; reply reserve must be positive",
+          "detail": "Codex review on PR #71: the message estimate read only content, so an assistant turn carrying its payload in tool_calls counted as about one token, and the legacy route accepted a zero or negative max_tokens that shrank the total. tool_run_message_tokens now adds every non-content message field as JSON at three characters per token, and AgentRunRequest.max_tokens requires at least 1 (422), as LifecycleRunRequest already did. Plain-chat prompt estimates are unchanged. Seven tests in tests/test_tool_context_budget.py; the new ones fail on the previous commit.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Tool runs budget for tool descriptions",
+          "detail": "Both tool-run routes now estimate the registered schemas (three characters per token) and refuse with 413 before any model call when schemas, messages and max_tokens exceed chat_num_ctx; lifecycle runs with a project reserve the schema tokens when assembling project context. Five tests in tests/test_tool_context_budget.py; pinned handler provenance and the capabilities manifest unchanged. This closes the gap noted in PR #71; later steps that append tool results are not re-checked.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Built with tests; installed acceptance pending",
+          "detail": "selected_specs and launcher contract tests added; launcher block exercised under zsh with private, group-writable, symlinked and environment-overridden files. Dave switches it on by creating the files and restarting.",
           "evidence": "session"
         }
       ],
-      "evidenceNote": "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md; scratch spike against a fake router, nothing committed"
+      "evidenceNote": "PR #70; offline tests only"
     },
     {
-      "id": "DL-15",
+      "id": "DL-16",
       "type": "bug",
       "sev": "P2",
       "title": "Resolved: Send never showed Stop; oversized prompts surfaced only after sending; tool run card could not close",
@@ -585,6 +761,55 @@
       ],
       "status": "implemented",
       "evidenceNote": "Automated and headless browser tests on this revision; desktop app acceptance by Dave pending."
+    },
+    {
+      "id": "DL-EVAL-01",
+      "type": "decision",
+      "sev": "P2",
+      "title": "Prompt Lab Library Tests against DaveLLM models need a stateless eval route",
+      "detail": "Research brief docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md (2026-10-06). /chat injects the DaveLLM persona and persists conversation, cost, embedding and performance rows, so a clean multi-model evaluation needs POST /eval/chat (no writes, caller-supplied system message) plus a Prompt Lab script that imports the app's own checkTraits and parseEnhancedPayload. A fake-router spike proved the pass/fail, missed-phrase, banned-phrase, invalid-JSON and latency accounting. Milestone 1 (/eval/chat) merged in PR #69; the Prompt Lab runner (milestone 2) and the Prompt Lab half of milestone 4 are in DaveHomeAssist/prompt-lab#131. No live model has been called.",
+      "files": [
+        "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md",
+        "app.py:4587",
+        "app.py:4804",
+        "app.py:2492"
+      ],
+      "evidence": "session",
+      "phase": 1,
+      "status": "open",
+      "history": [
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Milestone 4 doc truth done; audit gate fixed on prompt-lab#131",
+          "detail": "prompt-lab#131 now also marks DECISIONS.md D-003 and the EXECUTION_PRD DaveLLM integration (DLM-1 to DLM-4) superseded, bumps source-map-js to 1.2.2 (GHSA-68fv-2mgg-jv7q blocked the audit gate on every branch) and refreshes project-progress from a complete 40-row backlog query. Notion: the SFT DaveLLM architecture page no longer lists /v1 routes or an optional API key, records native /api/chat and /eval/chat, and its live log, Next Action and Next Step are current; the PromptLab dependency-gate row records the advisory. All writes read back. Milestone 3 (live run) stays Dave-gated.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Milestone 2 built: Prompt Lab eval runner",
+          "detail": "DaveHomeAssist/prompt-lab#131 adds scripts/eval-davellm.mjs: the app's Enhance payload, PII gate, parseEnhancedPayload and checkTraits over /eval/chat, with format json, 10 cases and max_tokens 4096 by default; separate columns for invalid JSON, JSON without enhanced, truncated, empty and tool-call-only; the first-case stop rule; a JSON-constrained note in the report. 12 node --test cases against a fixture router; an end-to-end run through this router with a fake Ollama node sent the 2,230-character system prompt with format json and left DAVE_DATA_DIR byte-identical. Correction: the readiness review said a JSON reply without enhanced reached the raw-text fallback; parseEnhancedPayload rejects it, so the app gives it no verdict. Live run (milestone 3) stays Dave-gated.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Readiness review of D-EVAL-04 A and D-EVAL-05 A",
+          "detail": "PR #69 merged with checks green on Python 3.12, 3.13 and 3.14; full pytest 1,318 passed, 3 skipped. The router side of both decisions is ready. Not ready: the runner that sends format json by default and counts invalid JSON is unbuilt, and the live run stays Dave-gated. Runner requirements added to the brief: format json default, invalid JSON split by done_reason, a column for valid JSON without an enhanced field, and a report note that the app's Ollama adapter sends no format. Risk recorded: gpt-oss reasoning tokens count against max_tokens.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Milestone 1 built: stateless POST /eval/chat",
+          "detail": "D-EVAL-04 A and D-EVAL-05 A accepted by Dave 2026-10-06. /eval/chat added with format passthrough, contract tests (persists nothing, NODE_ACTIVITY counted, inventory and node errors) and an INTEGRATION.md entry. Milestone 2 (Prompt Lab runner) next; live run per D-EVAL-04 A.",
+          "evidence": "session"
+        },
+        {
+          "checkedOn": "2026-10-06",
+          "title": "Prompt Lab eval harness researched; brief and spike only",
+          "detail": "Decisions D-EVAL-01..03 accepted by Dave 2026-10-06 (Enhance-only tests, stateless /eval/chat, no logging). D-EVAL-04 (first live run size) and D-EVAL-05 (JSON mode) open.",
+          "evidence": "session"
+        }
+      ],
+      "evidenceNote": "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md; scratch spike against a fake router, nothing committed"
     }
   ],
   "phases": [
@@ -652,6 +877,7 @@
     }
   ],
   "decisionsForDave": [
+    "DL-UI-05 [Open, 2026-10-07]: projects in the sidebar. A expandable projects containing their conversations (recommended, direct browsing); B project links opening Project Home (simpler navigation). No answer is recorded; existing sidebar behavior is preserved.",
     "D-006 [Open]: B diagnose /v1 first (recommended): Dominic Linux execution, Walter pinned qwen3-coder:30b, ten specified cases, at most 30 serial model dispatches / 512 completion tokens each, 20 minutes / 60,000 additional charged tokens, exact disposable-root writes only. Current CLI needs an offline-tested bounded driver first. C explicitly re-govern the native adapter after equivalent accounting/full-corpus/assertion/exit gates; A accept unqualified status under Dave's finish-line exception. Full 500-case renewal is separate: six hours, cumulative 1,000,000-token cap seeded at 379,556 plus diagnostic usage. Exact boundaries are in the October 5 H9 readiness review; no permission activated.",
     "DL-03 [Open, carried from 2026-10-02]: ratify the zero-approval outside-root edit case. Options: A retain preflight and explicitly re-baseline the case (recommended); B leave the historical comparison unresolved. This package changes no corpus or qualification assertion.",
     "DL-14 [Open, carried from 2026-10-02]: design-manifest and unused-control decisions. Options: A ratify the implemented console and scope removal of confirmed unused controls (recommended); B retain controls until product behavior is specified.",
@@ -662,11 +888,15 @@
     "DL-UI-02 [Open, 2026-10-05]: desktop notifications when a reply finishes. Options: A only while the window is hidden or unfocused, with a Settings toggle on by default (recommended); B always; C none.",
     "DL-UI-03 [Open, 2026-10-05]: sending during a reply. Options: A refuse and keep the draft (built, recommended); B stop the current reply and send; C queue until the reply ends.",
     "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today.",
-    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector.",
-    "D-EVAL-04 [Open]: first live Library Test run. Options: A walter only, two models, 10 cases, one pass, app max_tokens 4096 (recommended); B add duncan gpt-oss:120b; C cap max_tokens at 1500 for speed. No live run is authorized by this record.",
-    "D-EVAL-05 [Open]: JSON mode for /eval/chat. Options: A send format json by default and report invalid-JSON counts (recommended); B never constrain; C run both."
+    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector."
   ],
   "decisionHistory": [
+    {
+      "id": "D-MODEL-32K",
+      "status": "accepted",
+      "date": "2026-10-07",
+      "decision": "Configure Qwen3.5 4B on Walter at 32K; keep existing models and their context defaults. A bounded read-only tool smoke passed, but long-context quality remains unqualified."
+    },
     {
       "id": "D-EVAL-03",
       "status": "accepted",
@@ -684,6 +914,12 @@
       "status": "accepted",
       "date": "2026-10-06",
       "decision": "Library Tests stay Enhance-only in v1; running the saved prompt itself is a later milestone."
+    },
+    {
+      "id": "DL-16",
+      "status": "accepted",
+      "date": "2026-10-05",
+      "decision": "Build the Stop button state and the advisory pre-send size check, plus a closable tool run card. Not chosen: trimming project context to the node limit, and refreshing the sidebar preview on send."
     },
     {
       "id": "Tools100 scope 2026-10-05",
@@ -711,12 +947,6 @@
       "decision": "Finish the existing Notion adapter first, before adding connectors for other services or model providers. That initial selection alone approved no live writes or inference; the later explicit bounded grant is recorded separately. H9 remains excluded."
     },
     {
-      "id": "DL-15",
-      "status": "accepted",
-      "date": "2026-10-05",
-      "decision": "Build the Stop button state and the advisory pre-send size check, plus a closable tool run card. Not chosen: trimming project context to the node limit, and refreshing the sidebar preview on send."
-    },
-    {
       "id": "D-002",
       "status": "accepted",
       "date": "2026-10-03",
@@ -734,6 +964,18 @@
       "status": "prepared; access unverified",
       "date": "2026-10-02",
       "decision": "A designated adapter test page already exists; do not create another page based on the superseded board setup question."
+    },
+    {
+      "id": "D-EVAL-04",
+      "status": "accepted",
+      "date": "2026-10-06",
+      "decision": "A: first live run on walter only, two models (8B-class and 20B-class), 10 cases, one pass, max_tokens 4096. This sets the run's shape; the live run (milestone 3) stays Dave-gated and this record authorizes no live inference."
+    },
+    {
+      "id": "D-EVAL-05",
+      "status": "accepted",
+      "date": "2026-10-06",
+      "decision": "A: send format json by default and report invalid-JSON counts. The Prompt Lab runner sends it; /eval/chat leaves format out unless the caller asks."
     }
   ],
   "files": [
@@ -795,6 +1037,7 @@
     }
   ],
   "context": [
+    "2026-10-07 compact workspace uses the MUT-7 direct-current-instruction exception. Tools menu access is explicitly accepted; compact rows and ultrawide/resizing are the implementation slice. The project sidebar choice is pending, and blank checklist slots do not authorize invented work. The previous integration-family next step remains deferred: provider grants, aliases and bounded live acceptance still gate each family.",
     "2026-10-05 Tools100 uses the MUT-7 direct-current-instruction exception with Focus unchanged. All tools are source implementations, not claims of installed/native/provider acceptance. The earlier DL-05 next action is paused by Dave's tools-only scope; historical findings and unresolved D-006 remain preserved.",
     "2026-10-05 renewed project-completion scope applies the MUT-7 direct-instruction exception despite Focus=None. DL-04 was confirmed on current main and repaired without changing qualified tool definitions, version, configuration or installed services. Other findings remain historical until revalidated.",
     "2026-10-05 bounded live acceptance is complete on the unchanged installed runtime. The other installed models were inventoried, not all tested by inference. Preserve failed model attempts and native approval-card/H9 boundaries.",
@@ -840,16 +1083,16 @@
       "url": "https://github.com/DaveHomeAssist/DaveLLM/commit/bdbf91eb2dd405d28cdbd68ef7635bfdcc336642"
     }
   ],
-  "kickoffPrompt": "Audit DaveLLM Tools100 deployment readiness from merged main. Work serially and preserve the installed app, configuration, services, historical Notion acceptance and frozen navigation work. Inventory only named provider grants, allowlists, target aliases, POSIX runner recipes, helper paths and required executables; record Ready, Missing or Unknown without exposing credentials. Do not activate flags, install helpers, run inference or H9, perform account writes, send notifications, wake/restart nodes, mutate models, change services, create subagents or continue UI work. Produce a bounded installed-runtime acceptance plan and update the existing next-steps projection and shared communications log.",
+  "kickoffPrompt": "Finish DaveLLM Tools100 as working software. Preserve credentials and unrelated services, but do not impose obsolete source-only, no-inference or no-GUI limits. Complete protected delivery, restart through the canonical launcher, verify the native Tools picker and selected-schema enforcement, and run a real read-only selected-tool inference acceptance. Keep provider-specific families fail-closed until their actual grants and aliases are configured. Do not create subagents.",
   "confidence": "high for exact catalog, isolated implementation contracts and protected source delivery; installed/provider/native/physical acceptance is not implied",
   "unknowns": [
     "Dominic SSH and container capability are freshly verified for this source build. Current installed runtime/model inventory and inference on that node were not reprobed by the tools-only build; previous inventory snapshots remain historical.",
     "Tools100 runtime target configuration, provider credentials/grants, recipes, executable installations and POSIX helper deployment are not established by source tests. Windows job-object isolation is not implemented; Windows helper calls fail closed.",
-    "Model reliability beyond the bounded smoke; Duncan gpt-oss:20b GPU context allocation failed, and other inventoried models were not all exercised.",
+    "Duncan gpt-oss:20b is not currently viable on the required path: the October 7 request-local CPU-only 4K baseline failed allocating a 10152345600-byte CPU repack buffer, and Ollama reported no usable GPU for its current runner build. No higher profile or actual-context request was attempted after the required stop.",
     "H9 structured-write compatibility and the remaining fixed corpus; passing native bounded acceptance is not governing qualification.",
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
     "Dave's acceptance of the 2026-10-05 chat UI fixes in the Electron app; the reply-link handler in desktop/main.js loads only after the app restarts.",
-    "Local dave-llm main (6aad6d6) holds two unpushed commits and is 18 behind origin/main; reconciliation awaits Dave."
+    "Historical checkout divergence at 6aad6d6 is superseded: the model-context work started from clean canonical main d6e7972 matching origin/main."
   ]
 }

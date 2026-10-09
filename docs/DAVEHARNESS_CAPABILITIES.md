@@ -1347,6 +1347,9 @@ Body of `POST /tools/agent/runs`. Validators in `app.py` add checks not listed h
 | `temperature` | no | `0.7` | ge `0`, le `2` |
 | `step_limit` | no | `8` | ge `1`, le `32` |
 | `error_budget` | no | `2` | ge `1`, le `8` |
+| `selected_tools` | no | — | max_length `124` |
+| `max_input_tokens` | no | `null` | ge `1`, le `262144` |
+| `total_wall_seconds` | no | `300.0` | ge `0.1`, le `300.0` |
 
 ### Decision request
 
@@ -1687,5 +1690,6 @@ Public constants each module defines, including the fixed refusal messages.
 | `TOOLPACK_MAX_RUNS` | `64` |
 | `TOOLPACK_OUTPUT_BYTES` | `49152` |
 | `TOOLPACK_RESPONSE_BYTES` | `524288` |
+| `TOOLPACK_SELECTION_LIMIT` | `200` |
 | `TOOLPACK_TIMEOUT_SECONDS` | `60` |
 | `TOOLPACK_VERSION` | `tools100.v1` |

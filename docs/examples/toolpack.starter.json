@@ -1,0 +1,17 @@
+{
+  "enabled_tools": [
+    "ollama.ps",
+    "node.diagnose",
+    "node.ctx_check",
+    "route.suggest",
+    "git.worktrees",
+    "git.write_preview",
+    "agent.claim.check",
+    "code.symbols",
+    "calc.eval",
+    "time.convert",
+    "json.validate",
+    "secret.scan",
+    "prompt.lint"
+  ]
+}

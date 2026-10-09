@@ -422,6 +422,7 @@
       "TOOLPACK_MAX_RUNS": 64,
       "TOOLPACK_OUTPUT_BYTES": 49152,
       "TOOLPACK_RESPONSE_BYTES": 524288,
+      "TOOLPACK_SELECTION_LIMIT": 200,
       "TOOLPACK_TIMEOUT_SECONDS": 60,
       "TOOLPACK_VERSION": "tools100.v1"
     },
@@ -893,6 +894,12 @@
         "le": 8,
         "required": false
       },
+      "max_input_tokens": {
+        "default": null,
+        "ge": 1,
+        "le": 262144,
+        "required": false
+      },
       "max_tokens": {
         "default": 2048,
         "ge": 1,
@@ -917,6 +924,10 @@
         "max_length": 128,
         "required": false
       },
+      "selected_tools": {
+        "max_length": 124,
+        "required": false
+      },
       "step_limit": {
         "default": 8,
         "ge": 1,
@@ -927,6 +938,12 @@
         "default": 0.7,
         "ge": 0,
         "le": 2,
+        "required": false
+      },
+      "total_wall_seconds": {
+        "default": 300.0,
+        "ge": 0.1,
+        "le": 300.0,
         "required": false
       }
     },

@@ -17,12 +17,17 @@ const nodes = [{ id: 'fixture', name: 'Fixture GPU', url: 'http://fixture.invali
 const model = 'gpt-oss:120b-long-model-name';
 let sent = null;
 let decided = null;
+let toolRunBody = null;
 let runStatus = 'approval_required';
 const pending = { call_id: 'call_design', tool_name: 'file.edit', permission: 'write_files', arguments: { path: 'example.txt', old_text: 'before', new_text: 'after', expected_count: 1 }, digest: 'fixture-digest', definition_fingerprint: 'fixture-definition', nonce: 'fixture-nonce', expires_at: new Date(now + 300000).toISOString() };
 const run = () => ({ run_id: 'run_design', status: runStatus, reason_code: runStatus, snapshot: { steps: 2, pending_call: runStatus === 'approval_required' ? pending : null, transcript: [] } });
 (async () => {
     fs.mkdirSync(output, { recursive: true });
-    const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
+    const browser = await chromium.launch({
+        executablePath: process.env.CHROME_BIN || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        headless: process.env.CONSOLE_VISIBLE !== 'true',
+        slowMo: process.env.CONSOLE_VISIBLE === 'true' ? 180 : 0,
+    });
     const errors = [];
     try {
         const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -43,7 +48,8 @@ const run = () => ({ run_id: 'run_design', status: runStatus, reason_code: runSt
                 sent = route.request().postDataJSON();
                 return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"token":"Fixture reply","done":false}\n\ndata: {"done":true}\n\n' });
             }
-            if (path === '/tools/agent/runs' && route.request().method() === 'POST') return json(run());
+            if (path === '/tools') return json({ tools: { 'file.edit': { description: 'Edit an existing file', permission: 'write_files' } } });
+            if (path === '/tools/agent/runs' && route.request().method() === 'POST') { toolRunBody = route.request().postDataJSON(); return json(run()); }
             if (path === '/tools/agent/runs/run_design') return json(run());
             if (path.endsWith('/run_design/events')) return route.fulfill({ contentType: 'text/event-stream', body: '' });
             if (path.endsWith('/run_design/decisions')) { decided = route.request().postDataJSON(); runStatus = 'approval_rejected'; return json(run()); }
@@ -111,8 +117,11 @@ const run = () => ({ run_id: 'run_design', status: runStatus, reason_code: runSt
         await page.locator('#projectHomeClose').click();
         await page.locator('[data-view="chat"]').click();
         await page.locator('#promptInput').fill('Review the next edit.');
-        await page.locator('#runToolsBtn').click();
+        await page.locator('#toolPickerToggle').click();
+        await page.getByRole('option', { name: /file\.edit/ }).click();
+        await page.locator('#sendBtn').click();
         await page.getByRole('heading', { name: 'Approval required' }).waitFor();
+        assert.deepEqual(toolRunBody.selected_tools, ['file.edit']);
         assert.equal(await page.locator('#sendBtn').isDisabled(), true);
         assert.match(await page.locator('#approvalCountdown').innerText(), /Expires in/);
         await page.screenshot({ path: `${output}/approval-desktop.png` });

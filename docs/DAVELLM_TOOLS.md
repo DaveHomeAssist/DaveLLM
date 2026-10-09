@@ -19,7 +19,7 @@ The separately enabled [Tools100 expansion](TOOLS100.md) implements all 100 appr
 | `DAVE_NOTION_TOKEN` | unset | The internal Notion connection's secret. Read once at startup from the environment; never stored by the launcher, logged, or returned. |
 | `DAVE_NOTION_PAGES` | unset | JSON object of short page names to Notion page IDs or page URLs, such as `{"adapter-test": "https://www.notion.so/...-<32 hex>"}`. Names are 1–40 lowercase letters, digits, or hyphens; at most 20 pages. |
 | `DAVE_ENABLE_TOOLPACK` | `false` | Register 100 expansion tools and two read-only companions; requires `DAVE_ENABLE_TOOLS`. |
-| `DAVE_TOOLPACK_CONFIG` | `{}` | Bounded nonsecret operator JSON for named targets, source owners, runner capabilities and allowlists. See [Tools100 configuration](TOOLS100.md#configuration). |
+| `DAVE_TOOLPACK_CONFIG` | `{}` | Bounded nonsecret operator JSON for named targets, source owners, runner capabilities and allowlists; `enabled_tools` limits which expansion tools register. See [Tools100 configuration](TOOLS100.md#configuration). |
 | `DAVE_ENABLE_TOOL_INFERENCE` | `false` | Separate opt-in for exact-approved secondary model calls; at most three per lifecycle run. Does not authorize H9. |
 | `DAVE_ENABLE_TOOL_JOBS` | `false` | Separate opt-in for fixed operator-configured SSH jobs. No agents or caller commands. |
 
@@ -30,6 +30,8 @@ export DAVE_ENABLE_EXTENDED_TOOLS=true
 ```
 
 Leave `DAVE_ENABLE_EXTENDED_TOOLS` off while qualifying a target model, so H9 results stay comparable with the six-tool baseline.
+
+The macOS launcher reads `DAVE_TOOL_ROOTS` and the Tools100 settings from owner-only files in the data folder, so a Dock launch gets them too. See [Switching on tools in the Mac app](TOOLS100_SETUP.md).
 
 ## Qualified built-in tools
 
@@ -88,6 +90,8 @@ The result also counts `files_scanned`, `skipped_large` (over 1 MiB), `skipped_b
 
 The result has `path`, `start_line`, `lines`, `line_count`, `total_lines`, `next_start_line` (`null` at the end of the file), and `truncated`. Lines split on LF, and a trailing CR is removed. A start past the end returns no lines and the real `total_lines`. Lines longer than 2,000 characters are cut and listed in `cut_lines`. Binary and non-UTF-8 files are refused, never decoded with replacement characters.
 
+`numbered_lines` additionally pairs every returned string with its absolute one-based file line: `{"line": 73, "text": ""}` includes a blank source line. Its text exactly matches the corresponding `lines` entry, including any already-marked clipping. Both representations count toward the same 48 KiB result limit; use `next_start_line` if the page is shorter. Numbering is source identity, not proof that an answer's claim is supported. See [source excerpt acceptance and limits](SOURCE_EXCERPTS.md).
+
 ## Markdown tools
 
 `md.outline` and `md.section` navigate long Markdown files by heading instead of by page. They read through the same path rules, protected paths, symlink-swap protection, UTF-8 check, and 10 MiB size limit as `file.read_lines`. Both use one heading parser, `parse_headings` in `davellm_markdown.py`, so they always agree on where headings and sections are. It is a small line-by-line reader with no regular expressions and no Markdown dependency.
@@ -144,6 +148,8 @@ When `max_headings` or the result budget ends the list early, `truncated` is `tr
 - With no such heading, it runs to the end of the file.
 
 **Result.** `path`, `ambiguous: false`, `heading`, `level`, `line`, `breadcrumb` (the ancestor headings, then this one), `include_subsections`, `content_start_line` and `content_end_line` (the whole section's range, or `null` for an empty section), `lines`, `line_count`, `truncated`, and `next_start_line`.
+
+Successful unambiguous sections also return `numbered_lines`, using the same absolute line/text pairs as `file.read_lines`. Blank lines and fences keep their file numbers; numbering never restarts at one for a section. An empty section has `numbered_lines: []`; ambiguous results contain only heading candidates as before. Existing `lines` strings remain unchanged.
 
 **Limits and continuation.** At most 400 lines are returned, and fewer when the result budget is reached first. Lines longer than 2,000 characters are cut and listed in `cut_lines`, as in `file.read_lines`, and also set `truncated`. When the section continues past the returned lines, `next_start_line` is the next line to read. Call `file.read_lines` with that `start_line` and stop at `content_end_line`; `md.section` has no paging of its own.
 

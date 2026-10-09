@@ -1097,7 +1097,7 @@ async def test_summary_uses_native_chat_and_falls_back(router_factory):
 TOOL_CALL = {"function": {"name": "browser.run", "arguments": {"query": "weather in Philadelphia"}}}
 TOOL_NOTICE = (
     "The model tried to use a tool (browser.run) instead of replying. Plain chat can't run "
-    "tools, so no reply was saved. For lookups, use the Run tools button (web.search, web.read)."
+    "tools, so no reply was saved. Select a tool from the Tools menu and send again."
 )
 
 
@@ -1309,7 +1309,7 @@ def test_tool_call_only_notice_echoes_only_plain_tool_names(router_factory):
     unnamed = notice("", [{"function": {"arguments": {}}}])
     assert unnamed["tools"] == []
     assert unnamed["notice"].startswith("The model tried to use a tool instead of replying.")
-    assert unnamed["notice"].endswith("use the Run tools button (web.search, web.read).")
+    assert unnamed["notice"].endswith("Select a tool from the Tools menu and send again.")
 
 
 # DL-CTX-01 / DL-KEEP-01 --------------------------------------------------------------------------

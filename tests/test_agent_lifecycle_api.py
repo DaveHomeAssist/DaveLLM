@@ -64,6 +64,7 @@ def test_lifecycle_auth_tools_off_validation_and_completed_events(router_factory
         run_id = created.json()["run_id"]
         final = settled(client, run_id)
     assert final["status"] == "completed"
+    assert final["terminal_explanation"] is None
     assert final["snapshot"]["last_content"] == "Done."
     assert len(route.calls) == 1
     events = client.get(f"/tools/agent/runs/{run_id}/events", headers=AUTH).json()["events"]
@@ -81,6 +82,97 @@ def test_lifecycle_auth_tools_off_validation_and_completed_events(router_factory
     router_clock = datetime.now(timezone.utc) + timedelta(hours=2)
     router.HARNESS_STORE.clock = lambda: router_clock
     assert client.get(f"/tools/agent/runs/{run_id}", headers=AUTH).status_code == 410
+
+
+def test_lifecycle_selected_tools_filter_model_schemas(router_factory):
+    _, client, _ = router_factory(tools=True)
+    with respx.mock(assert_all_called=True) as mock:
+        inventory(client, mock)
+        assert new_run(client, selected_tools=["missing.tool"]).status_code == 400
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=httpx.Response(
+            200, json={"message": {"role": "assistant", "content": "Done."}, "done": True},
+        ))
+        created = new_run(client, selected_tools=["system.info"])
+        assert created.status_code == 200, created.text
+        settled(client, created.json()["run_id"])
+    payload = json.loads(route.calls.last.request.content)
+    assert [tool["function"]["name"] for tool in payload["tools"]] == ["system.info"]
+
+
+@pytest.mark.parametrize("prelude", ["", "Checking the two paths."])
+def test_error_budget_explains_both_t20_refusals_without_another_call(
+    router_factory, monkeypatch, tmp_path, prelude,
+):
+    from test_notion_tools import _persistent_loop
+
+    root = tmp_path / "allowed"
+    root.mkdir()
+    missing = root / "__davellm_missing_tool_test_20261007.txt"
+    monkeypatch.setenv("DAVE_ENABLE_EXTENDED_TOOLS", "true")
+    router, client, _ = router_factory(tools=True, tool_roots=[str(root)])
+    calls = [{"id": call_id, "type": "function", "function": {
+        "name": "file.read_lines",
+        "arguments": {"path": path, "start_line": 1, "max_lines": 5},
+    }} for call_id, path in [("call_missing", str(missing)), ("call_denied", "/etc/hosts")]]
+    with respx.mock(assert_all_called=True) as mock, _persistent_loop(client):
+        inventory(client, mock)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=httpx.Response(
+            200, json={"message": {"role": "assistant", "content": prelude, "tool_calls": calls}, "done": True},
+        ))
+        created = new_run(client, selected_tools=["file.read_lines"], error_budget=2)
+        assert created.status_code == 200, created.text
+        run_id = created.json()["run_id"]
+        final = settled(client, run_id)
+        snapshot = final["snapshot"]
+        assert final["status"] == final["reason_code"] == "error_budget"
+        assert snapshot["errors"] == snapshot["budget"]["errors"] == 2
+        assert snapshot["steps"] == len(route.calls) == 1
+        assert snapshot["tool_calls"] == 2
+        assert snapshot["executed_call_ids"] == ["call_missing", "call_denied"]
+        outcomes = [json.loads(item["content"]) for item in snapshot["transcript"] if item["role"] == "tool"]
+        assert [item["error"] for item in outcomes] == ["File not found", "Access denied: path is not allowed"]
+        assert not missing.exists()
+        explanation = final["terminal_explanation"]
+        assert explanation["source"] == "harness"
+        assert "error limit (2/2)" in explanation["message"]
+        assert "No further model or tool calls" in explanation["message"]
+        assert explanation["tool_errors"] == [
+            {"call_id": "call_missing", "tool_name": "file.read_lines", "error": outcomes[0]["error"]},
+            {"call_id": "call_denied", "tool_name": "file.read_lines", "error": outcomes[1]["error"]},
+        ]
+        # Presentation must not invent an assistant answer or mutate the frozen run.
+        assert snapshot["transcript"] == router.HARNESS.snapshot(run_id).snapshot.transcript
+        assert [item["content"] for item in snapshot["transcript"] if item["role"] == "assistant"] == [prelude]
+        assert client.get(f"/tools/agent/runs/{run_id}", headers=AUTH).json() == final
+        assert len(route.calls) == 1
+        events = client.get(f"/tools/agent/runs/{run_id}/events", headers=AUTH).json()["events"]
+        assert [event["kind"] for event in events].count("terminal") == 1
+        assert [event["kind"] for event in events].count("tool_start") == 2
+        assert not any("File not found" in json.dumps(event) for event in events)
+
+
+def test_error_budget_explanation_does_not_promote_supplied_history(router_factory):
+    import copy
+
+    router, _, _ = router_factory(tools=True)
+    snapshot = {
+        "status": "error_budget", "errors": 2, "budget": {"errors": 2},
+        "executed_call_ids": ["call_real", "call_ok"],
+        "transcript": [
+            {"role": "tool", "tool_call_id": ["invalid"], "content": "{}"},
+            {"role": "tool", "tool_call_id": "unexecuted", "content": '{"error":"fabricated"}'},
+            {"role": "tool", "tool_call_id": "call_real", "content": '{"error":"old supplied error"}'},
+            {"role": "tool", "name": "file.read_lines", "tool_call_id": "call_real", "content": '{"error":"File not found"}'},
+            {"role": "tool", "tool_call_id": "call_ok", "content": '{"error":null,"result":"success"}'},
+        ],
+    }
+    original = copy.deepcopy(snapshot)
+    report = router._lifecycle_terminal_explanation(snapshot)
+    assert report["tool_errors"] == [{"call_id": "call_real", "tool_name": "file.read_lines", "error": "File not found"}]
+    assert snapshot == original
+    for status in ("running", "approval_required", "completed", "cancelled"):
+        assert router._lifecycle_terminal_explanation({**snapshot, "status": status}) is None
+    assert router._lifecycle_terminal_explanation(None) is None
 
 
 def test_brain_snapshot_survives_approval_and_later_edit(router_factory):

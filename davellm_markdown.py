@@ -34,7 +34,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from davellm_files import (
     NOT_TEXT, READ_MAX_FILE_BYTES, READ_MAX_LINE_CHARS, READ_MAX_LINES, FileToolError, _fitting,
-    _option, decode_text, deepest_root, read_admitted_bytes, relative_display, split_lines,
+    _numbered_lines, _option, decode_text, deepest_root, read_admitted_bytes, relative_display, split_lines,
 )
 
 
@@ -330,10 +330,11 @@ def markdown_section(
         "content_start_line": start if body else None, "content_end_line": end if body else None,
         "lines": [], "line_count": 0, "truncated": True, "next_start_line": start, "cut_lines": [],
     }
-    kept = _fitting(shown, envelope)
+    numbered = _numbered_lines(shown, start, envelope)
+    kept = len(numbered)
     cut = [start + offset for offset, line in enumerate(window[:kept]) if len(line) > READ_MAX_LINE_CHARS]
     result = {
-        **envelope, "lines": shown[:kept], "line_count": kept,
+        **envelope, "lines": shown[:kept], "line_count": kept, "numbered_lines": numbered,
         "truncated": kept < len(body) or bool(cut),
         "next_start_line": start + kept if kept < len(body) else None,
     }

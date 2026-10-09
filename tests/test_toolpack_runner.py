@@ -1,6 +1,7 @@
 """Disposable runner fixtures; no real Docker, media, network, push or account effect."""
 import json
 import os
+import signal
 import shutil
 import sqlite3
 import subprocess
@@ -15,6 +16,7 @@ from test_toolpack import pack
 from davellm_toolpack import ToolpackError, digest
 from davellm_toolpack_catalog import SPECS
 from davellm_toolpack_jobs import execute_job
+from davellm_toolpack_local import execute_local
 from davellm_toolpack_runner import JobRunner
 
 
@@ -200,6 +202,92 @@ def test_git_commit_real_disposable_repo_and_claim_preservation(runner):
     result = job.execute("git.commit", args)
     assert result["outcome"] == "verified" and git("log", "-1", "--format=%s").decode().strip() == "Approved fixture"
     assert not claim.exists()
+
+
+def test_git_preview_and_commit_reject_untracked_without_staging(pack, runner):
+    _, host, _, local_root = pack
+    job, runner_root = runner
+    repo = runner_root / "untracked-repo"
+    repo.mkdir()
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(repo), *args], stderr=subprocess.DEVNULL)
+    git("init")
+    git("config", "user.name", "Fixture")
+    git("config", "user.email", "fixture@example.invalid")
+    (repo / "tracked.txt").write_text("tracked\n")
+    git("add", "tracked.txt")
+    git("commit", "-m", "base")
+    (repo / "new.txt").write_text("untracked\n")
+    job.config["sources"]["repo"] = {"path": str(repo), "users": ["fixture"]}
+
+    assert local_root == runner_root
+    with pytest.raises(ToolpackError, match="tracked"):
+        execute_local("git.write_preview", {"repository": str(repo), "files": ["new.txt"]}, host)
+    with pytest.raises(ToolpackError, match="tracked"):
+        job.execute("git.commit", {"runner": "fixture", "repository": "repo", "files": ["new.txt"],
+                                   "message": "Must refuse", "expected_digest": digest("")})
+    assert git("diff", "--cached", "--name-only") == b""
+    assert git("status", "--short").decode().splitlines() == ["?? new.txt"]
+
+
+def test_runner_select_filters_owner_and_returns_capabilities_only(pack):
+    _, host, _, _ = pack
+    host.config["runners"] = {
+        "mine": {"users": ["default"], "capabilities": ["python", "pytest"],
+                 "ssh_alias": "private-alias", "script": "/private/helper.py", "tools": ["test.run"]},
+        "theirs": {"users": ["other"], "capabilities": ["python"],
+                   "ssh_alias": "foreign-alias", "script": "/foreign/helper.py", "tools": ["test.run"]},
+    }
+    result = execute_local("runner.select", {"capability": "python"}, host)
+    assert result["matches"] == [{"name": "mine", "capabilities": ["python", "pytest"]}]
+    assert "alias" not in json.dumps(result) and "helper" not in json.dumps(result) and "other" not in json.dumps(result)
+
+
+def test_command_abort_kills_descendants_but_not_unrelated_process(runner):
+    if os.name != "posix" or not Path("/proc").exists():
+        pytest.skip("POSIX process-group fixture requires /proc")
+    job, root = runner
+    descendant_pid = root / "descendant.pid"
+    child = (
+        "import os,pathlib,time; "
+        f"pathlib.Path({str(descendant_pid)!r}).write_text(str(os.getpid())); "
+        "time.sleep(60)"
+    )
+    parent = f"""import os
+import subprocess
+import sys
+import time
+subprocess.Popen([sys.executable, "-c", {child!r}])
+for _ in range(200):
+    if os.path.exists({str(descendant_pid)!r}):
+        break
+    time.sleep(.01)
+sys.stdout.buffer.write(b"x" * 70000)
+sys.stdout.flush()
+time.sleep(60)
+"""
+    unrelated = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
+    try:
+        with pytest.raises(ToolpackError, match="output exceeded"):
+            job.command([sys.executable, "-c", parent])
+        pid = int(descendant_pid.read_text())
+        for _ in range(200):
+            state = Path(f"/proc/{pid}/stat")
+            try:
+                process_state = state.read_text().split()[2]
+            except (FileNotFoundError, ProcessLookupError):
+                break
+            if process_state == "Z":
+                break
+            import time
+            time.sleep(.01)
+        else:
+            pytest.fail("descendant survived the aborted configured command")
+        assert unrelated.poll() is None
+    finally:
+        if unrelated.poll() is None:
+            os.killpg(unrelated.pid, signal.SIGKILL)
+            unrelated.wait()
 
 
 def test_push_exact_ref_and_env_only_auth_without_real_network(runner, monkeypatch):

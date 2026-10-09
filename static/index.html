@@ -9,7 +9,7 @@
 </head>
 
 <body data-view="chat">
-    <a class="skip-link" href="#chatPanel">Skip to chat</a>
+    <a class="skip-link" href="#chatView">Skip to main content</a>
 
 <nav class="app-nav" aria-label="Main navigation">
     <a class="nav-brand" href="index.html" aria-label="DaveLLM home">
@@ -71,7 +71,7 @@
     </header>
 
     <!-- THREE COLUMN LAYOUT -->
-    <div id="chatView" class="layout" role="region" aria-label="Chat workspace">
+    <main id="chatView" class="layout" aria-labelledby="chatHeading" tabindex="-1">
 
         <!-- LEFT COLUMN: Conversations -->
         <aside id="historyPanel" class="panel conversations" data-mobile-panel="history" data-heading-id="historyHeading" data-tab-id="mobileTabHistory" aria-labelledby="historyHeading">
@@ -119,8 +119,9 @@
 
         </aside>
 
+        <div id="historyResize" class="panel-resize" role="separator" tabindex="0" aria-label="Resize conversations panel" aria-orientation="vertical" aria-controls="historyPanel" title="Drag or use arrow keys to resize. Enter or double-click resets."></div>
         <!-- MIDDLE COLUMN: Chat -->
-        <main id="chatPanel" class="panel prompt mobile-active" data-mobile-panel="chat" data-heading-id="chatHeading" data-tab-id="mobileTabChat" aria-labelledby="chatHeading" tabindex="-1">
+        <section id="chatPanel" class="panel prompt mobile-active" data-mobile-panel="chat" data-heading-id="chatHeading" data-tab-id="mobileTabChat" aria-labelledby="chatHeading" tabindex="-1">
             <div class="panel-header">
                 <h2 id="chatHeading">Chat</h2>
                 <div class="chat-panel-actions">
@@ -187,6 +188,16 @@
                 <div class="footer-inputs">
                     <label class="visually-hidden" for="promptInput">Message</label>
                     <textarea id="promptInput" placeholder="Ask anything. Enter sends; Shift+Enter adds a line." rows="2"></textarea>
+                    <section id="toolPicker" class="tool-picker hidden" aria-label="Choose tools">
+                        <div class="tool-picker-header">
+                            <label for="toolSearch">Choose tools</label>
+                            <button id="clearToolsBtn" type="button" class="text-btn">Clear</button>
+                            <button id="closeToolsBtn" type="button" class="text-btn" aria-label="Close tool menu">Close</button>
+                        </div>
+                        <input id="toolSearch" type="search" placeholder="Search tools…" autocomplete="off" />
+                        <div id="toolPickerList" class="tool-picker-list" role="listbox" aria-multiselectable="true"></div>
+                    </section>
+                    <div id="selectedTools" class="selected-tools" aria-live="polite"></div>
                     <div id="attachmentTools" class="tool-row">
                         <label for="imageInput" class="image-upload-btn"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#image"></use></svg>Image</label>
                         <input id="imageInput" type="file" accept="image/*" hidden />
@@ -208,16 +219,19 @@
                         <span id="dictateStatus" class="image-status"></span>
                     </div>
                     <div class="composer-primary-actions">
-                        <button id="attachToolsToggle" type="button" class="attach-tools-toggle" aria-expanded="false" aria-controls="attachmentTools">Attach</button>
+                        <div class="composer-left-actions">
+                            <button id="attachToolsToggle" type="button" class="attach-tools-toggle" aria-expanded="false" aria-controls="attachmentTools">Attach</button>
+                            <button id="toolPickerToggle" type="button" class="secondary hidden" aria-expanded="false" aria-controls="toolPicker">Tools</button>
+                        </div>
                         <div class="actions">
-                            <button id="runToolsBtn" type="button" class="secondary hidden" aria-controls="runLedger">Run tools</button>
                             <button id="sendBtn" class="primary" aria-label="Send message">Send</button>
                         </div>
                     </div>
                 </div>
             </div>
-        </main>
+        </section>
 
+<div id="inspectorResize" class="panel-resize" role="separator" tabindex="0" aria-label="Resize context inspector" aria-orientation="vertical" aria-controls="inspectorPanel" title="Drag or use arrow keys to resize. Enter or double-click resets."></div>
 <aside id="inspectorPanel" class="panel inspector" hidden aria-label="Context inspector">
 <div class="inspector-tabs"><button data-inspector="context" aria-pressed="true">Context</button><button data-inspector="run" aria-pressed="false">Run</button><button data-inspector="notepad" aria-pressed="false">Notepad</button><button id="inspectorClose" class="icon-btn" aria-label="Close inspector">×</button></div>
 <section id="inspectorContext">
@@ -236,8 +250,8 @@
     </section>
 <section id="inspectorRun" hidden><p>Run details appear here after you start a tool run.</p></section>
 <section id="inspectorNotepad" hidden></section></aside>
-    </div>
-<section id="clusterView" class="subject-view" hidden>        <!-- RIGHT COLUMN: Nodes -->
+    </main>
+<main id="clusterView" class="subject-view" aria-labelledby="runtimeHeading" tabindex="-1" hidden>        <!-- RIGHT COLUMN: Nodes -->
         <aside id="runtimePanel" class="panel nodes" data-mobile-panel="runtime" data-heading-id="runtimeHeading" data-tab-id="mobileTabRuntime" aria-labelledby="runtimeHeading">
             <div class="panel-header">
                 <h2 id="runtimeHeading">Cluster</h2><span id="clusterChecked" role="status">Not checked</span>
@@ -286,7 +300,7 @@
     </article>
     </section>
     </aside>
-</section>
+</main>
 
     <dialog id="projectHomeDialog" class="project-home-dialog" aria-labelledby="projectHomeHeading">
         <div class="project-home-ambient" aria-hidden="true"><span></span><span></span></div>
@@ -440,9 +454,9 @@
     </dialog>
 
 
-<section id="projectsView" class="subject-view" hidden><div class="section-heading"><div><h2>Projects</h2><p>Instructions, references, artifacts, and BRAIN.</p></div><button id="newProjectButton" class="primary">New project</button></div><div id="projectCards" class="project-cards"></div></section>
-<section id="settingsView" class="subject-view" hidden>
-    <h2>Settings</h2>
+<main id="projectsView" class="subject-view" aria-labelledby="projectsHeading" tabindex="-1" hidden><div class="section-heading"><div><h2 id="projectsHeading">Projects</h2><p>Instructions, references, artifacts, and BRAIN.</p></div><button id="newProjectButton" class="primary">New project</button></div><div id="projectCards" class="project-cards"></div></main>
+<main id="settingsView" class="subject-view" aria-labelledby="settingsHeading" tabindex="-1" hidden>
+    <h2 id="settingsHeading">Settings</h2>
     <div class="settings-grid">
     <article class="card">
     <h3>Appearance</h3>
@@ -461,7 +475,7 @@
     </div>
     </article>
     </div>
-    </section>
+    </main>
 <dialog id="runtimeDialog" class="sheet"><div class="section-heading"><h2>Send to</h2><button data-close-dialog="runtimeDialog">Done</button></div><div id="runtimeSelectors"></div><p>Applies to your next message. Earlier replies keep their original content.</p></dialog>
 <dialog id="projectPickerDialog" class="sheet"><div class="section-heading"><h2>Project for this chat</h2><button data-close-dialog="projectPickerDialog">Done</button></div><select id="chatProjectPicker" aria-label="Attach project to chat"></select><p>Changes the instructions and context for future messages only.</p><div id="chatProjectStatus" role="status"></div><button id="applyChatProject" class="primary">Apply project</button></dialog>
 <dialog id="templateDialog" class="sheet"><div class="section-heading"><h2>Starting mode</h2><button data-close-dialog="templateDialog">Done</button></div><div id="templateControls"></div></dialog>

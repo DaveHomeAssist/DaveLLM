@@ -220,7 +220,14 @@ const responseBox = document.getElementById("responseBox");
 const memoryBox = document.getElementById("memoryBox");
 const promptInput = document.getElementById("promptInput");
 const sendBtn = document.getElementById("sendBtn");
-const runToolsBtn = document.getElementById("runToolsBtn");
+const toolPickerToggle = document.getElementById("toolPickerToggle");
+const toolPicker = document.getElementById("toolPicker");
+const toolSearch = document.getElementById("toolSearch");
+const toolPickerList = document.getElementById("toolPickerList");
+const selectedToolsBox = document.getElementById("selectedTools");
+const clearToolsBtn = document.getElementById("clearToolsBtn");
+let availableTools = {};
+let selectedToolNames = new Set();
 const runLedger = document.getElementById("runLedger");
 const runLedgerStatus = document.getElementById("runLedgerStatus");
 const runLedgerReason = document.getElementById("runLedgerReason");
@@ -3717,6 +3724,68 @@ async function toolRunRequest(path, options = {}) {
     return response.json();
 }
 
+function renderToolPicker(filter = "") {
+    const needle = filter.trim().toLowerCase();
+    const entries = Object.entries(availableTools).filter(([name, metadata]) => {
+        const haystack = `${name} ${metadata.description || ""}`.toLowerCase();
+        return !needle || haystack.includes(needle);
+    });
+    toolPickerList.replaceChildren(...entries.map(([name, metadata]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "tool-picker-option";
+        button.dataset.toolName = name;
+        button.setAttribute("role", "option");
+        button.setAttribute("aria-selected", selectedToolNames.has(name) ? "true" : "false");
+        const text = document.createElement("span");
+        const label = document.createElement("strong");
+        label.textContent = name;
+        const detail = document.createElement("small");
+        detail.textContent = metadata.description || metadata.permission || "Available tool";
+        button.title = `${name}: ${detail.textContent}`;
+        text.append(label, detail);
+        button.append(text);
+        button.addEventListener("click", () => {
+            if (selectedToolNames.has(name)) selectedToolNames.delete(name);
+            else {
+                selectedToolNames.add(name);
+                if (/^[/@][^\s]*$/.test(promptInput.value)) promptInput.value = "";
+            }
+            renderToolPicker(toolSearch.value);
+            renderSelectedTools();
+            Array.from(toolPickerList.children).find((option) => option.dataset.toolName === name)?.focus({ preventScroll: true });
+        });
+        return button;
+    }));
+}
+
+function renderSelectedTools() {
+    selectedToolsBox.replaceChildren(...[...selectedToolNames].sort().map((name) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "selected-tool-chip";
+        chip.textContent = `${name} ×`;
+        chip.title = `Remove ${name}`;
+        chip.addEventListener("click", () => {
+            selectedToolNames.delete(name);
+            renderSelectedTools();
+            renderToolPicker(toolSearch.value);
+        });
+        return chip;
+    }));
+    toolPickerToggle.textContent = selectedToolNames.size ? `Tools (${selectedToolNames.size})` : "Tools";
+}
+
+function setToolPickerOpen(open, filter = "") {
+    toolPicker.classList.toggle("hidden", !open);
+    toolPickerToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+        toolSearch.value = filter;
+        renderToolPicker(filter);
+        toolSearch.focus();
+    }
+}
+
 // A readable before/after view of a pending file.edit or Notion write, so an approval
 // covers the exact change. Text nodes only: the model supplies every string shown here.
 function approvalPreview(pending) {
@@ -3883,8 +3952,7 @@ function closeToolRun() {
     delete runLedgerApproval.dataset.runId;
     runLedgerStatus.textContent = "Ready";
     runLedgerStop.disabled = false;
-    if (!runToolsBtn.classList.contains("hidden")) runToolsBtn.focus();
-    else promptInput.focus();
+    promptInput.focus();
 }
 
 function showToolRunNotice(message) {
@@ -3919,6 +3987,23 @@ function renderToolRun(run) {
             block.textContent = `${item.role}: ${content.slice(0, 2000)}`;
             return block;
         }));
+    const explanation = run.status === "error_budget" ? run.terminal_explanation : null;
+    if (explanation?.source === "harness") {
+        const report = document.createElement("section");
+        report.className = "info-banner";
+        const heading = document.createElement("strong");
+        heading.textContent = "Harness report";
+        const message = document.createElement("p");
+        message.textContent = explanation.message;
+        const errors = document.createElement("ul");
+        for (const outcome of explanation.tool_errors || []) {
+            const item = document.createElement("li");
+            item.textContent = `${outcome.tool_name} (${outcome.call_id}): ${outcome.error}`;
+            errors.appendChild(item);
+        }
+        report.append(heading, message, errors);
+        runLedgerTranscript.prepend(report);
+    }
     const pending = snapshot.pending_call;
     runLedgerApproval.classList.toggle("hidden", !pending);
     if (!pending) {
@@ -4067,18 +4152,20 @@ async function startToolRun() {
         showToolRunNotice("Enter a message and select a node and model first.");
         return;
     }
-    runToolsBtn.disabled = true;
+    sendBtn.disabled = true;
     try {
         const history = (currentConversation()?.messages || [])
             .filter((item) => ["user", "assistant"].includes(item.role) && typeof item.content === "string")
             .slice(-24).map((item) => ({ role: item.role, content: item.content }));
+        const selection = [...selectedToolNames].sort();
         const run = await toolRunRequest("/tools/agent/runs", {
             method: "POST",
             body: JSON.stringify({
                 messages: [...history, { role: "user", content: prompt }],
                 node_id: state.selectedNode, model: modelSelect.value,
                 project_id: currentConversation()?.project_id || null,
-                conversation_id: state.sessionId || null
+                conversation_id: state.sessionId || null,
+                selected_tools: selection
             })
         });
         toolRunStreamAbort?.abort();
@@ -4091,17 +4178,43 @@ async function startToolRun() {
     } catch (error) {
         showToolRunNotice(error.message);
     } finally {
-        runToolsBtn.disabled = approvalBusy;
+        sendBtn.disabled = approvalBusy;
     }
 }
 
-runToolsBtn.addEventListener("click", startToolRun);
 runLedgerClose?.addEventListener("click", closeToolRun);
 runLedger.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && toolRunClosable) {
         event.preventDefault();
         closeToolRun();
     }
+});
+toolPickerToggle.addEventListener("click", () => setToolPickerOpen(toolPicker.classList.contains("hidden")));
+document.getElementById("closeToolsBtn").addEventListener("click", () => {
+    setToolPickerOpen(false);
+    toolPickerToggle.focus();
+});
+toolPicker.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+        event.stopPropagation();
+        setToolPickerOpen(false);
+        toolPickerToggle.focus();
+        return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || !toolPickerList.contains(event.target)) return;
+    const options = Array.from(toolPickerList.children);
+    const current = options.indexOf(document.activeElement);
+    let next = current + (event.key === "ArrowDown" ? 1 : -1);
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = options.length - 1;
+    event.preventDefault();
+    options[Math.max(0, Math.min(options.length - 1, next))]?.focus();
+});
+toolSearch.addEventListener("input", () => renderToolPicker(toolSearch.value));
+clearToolsBtn.addEventListener("click", () => {
+    selectedToolNames.clear();
+    renderSelectedTools();
+    renderToolPicker(toolSearch.value);
 });
 runLedgerRetry.addEventListener("click", () => {
     if (activeToolRunId) {
@@ -4125,6 +4238,8 @@ runLedgerStop.addEventListener("click", async () => {
 sendBtn.onclick = () => {
     if (state.streaming && state.abortController) {
         state.abortController.abort();
+    } else if (selectedToolNames.size) {
+        startToolRun();
     } else {
         sendMessage();
     }
@@ -4160,10 +4275,13 @@ modelSelect.addEventListener("change", () => {
 promptInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
+        if (selectedToolNames.size) startToolRun();
+        else sendMessage();
     }
 });
 promptInput.addEventListener("input", () => {
+    const command = promptInput.value.match(/^[/@]([^\s]*)$/);
+    if (command && Object.keys(availableTools).length) setToolPickerOpen(true, command[1]);
     resizeComposer();
     persistSessionDraft();
     renderPredictions();
@@ -4634,8 +4752,14 @@ async function init() {
     }
     initRoutingControls();
     fetch(routerEndpoint("/tools"), { headers: authHeaders() })
-        .then((response) => { runToolsBtn.classList.toggle("hidden", !response.ok); })
-        .catch(() => { runToolsBtn.classList.add("hidden"); });
+        .then(async (response) => {
+            if (!response.ok) throw new Error("Tools unavailable");
+            availableTools = (await response.json()).tools || {};
+            toolPickerToggle.classList.toggle("hidden", !Object.keys(availableTools).length);
+            renderToolPicker();
+            renderSelectedTools();
+        })
+        .catch(() => { toolPickerToggle.classList.add("hidden"); });
     initDictation();
     loadStats();
     updateStatsDisplay();

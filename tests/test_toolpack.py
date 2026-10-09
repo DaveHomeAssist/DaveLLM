@@ -293,3 +293,48 @@ async def test_outer_deadline_cancels_owned_async_work(pack, monkeypatch):
     monkeypatch.setattr("davellm_toolpack.TOOLPACK_TIMEOUT_SECONDS", 2.01)
     result = await asyncio.wait_for(execute("node.diagnose", host, host.configuration_digest(), {"node": "node-test"}), 1)
     assert result.status == "error" and cancelled.is_set()
+
+
+def test_enabled_tools_selects_exact_names_and_families():
+    from davellm_toolpack import selected_specs
+    assert selected_specs({}) == ALL_SPECS
+    assert selected_specs({"invalid": True}) == ()
+    names = [s.name for s in selected_specs({"enabled_tools": ["git.*", "calc.eval"]})]
+    assert names == [s.name for s in ALL_SPECS if s.name.startswith("git.") or s.name == "calc.eval"]
+    assert {"git.worktrees", "git.write_preview", "git.commit", "git.push", "calc.eval"} == set(names)
+
+
+def test_invalid_toolpack_config_registers_no_expansion_tools(router_factory, monkeypatch):
+    monkeypatch.setenv("DAVE_ENABLE_TOOLPACK", "true")
+    monkeypatch.setenv("DAVE_TOOLPACK_CONFIG", "not-json")
+    router, _, _ = router_factory(tools=True)
+    for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
+        assert not (set(BY_NAME) & set(registry.public_catalog()))
+
+
+@pytest.mark.parametrize("selection", [
+    "git.*", ["git.*", 3], [""], ["no.such.tool"], ["nothing.*"], ["calc.eval"] * 201,
+])
+def test_malformed_or_unmatched_selection_registers_no_expansion_tool(selection):
+    from davellm_toolpack import selected_specs
+    assert selected_specs({"enabled_tools": selection}) == ()
+
+
+def test_router_registers_only_the_selected_expansion_tools(router_factory, monkeypatch):
+    monkeypatch.setenv("DAVE_ENABLE_TOOLPACK", "true")
+    monkeypatch.setenv("DAVE_TOOLPACK_CONFIG", json.dumps({"enabled_tools": ["calc.eval", "time.convert"]}))
+    router, _, _ = router_factory(tools=True)
+    for registry in (router.TOOL_REGISTRY, router.HARNESS_REGISTRY):
+        catalog = set(registry.public_catalog())
+        assert set(BY_NAME) & catalog == {"calc.eval", "time.convert"}
+        assert {"system.info", "file.read", "web.fetch"} <= catalog
+
+
+def test_starter_example_selects_only_read_only_tools():
+    from pathlib import Path
+    from davellm_toolpack import selected_specs
+    starter = json.loads((Path(__file__).resolve().parents[1] / "docs" / "examples" / "toolpack.starter.json").read_text())
+    selected = selected_specs(starter)
+    assert [s.name for s in selected] == [s.name for s in ALL_SPECS if s.name in starter["enabled_tools"]]
+    assert len(selected) == len(starter["enabled_tools"]) == 13
+    assert not any(s.approval for s in selected)

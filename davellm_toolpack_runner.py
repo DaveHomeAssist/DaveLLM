@@ -63,7 +63,9 @@ class JobRunner:
         # The outer CLI watchdog bounds this helper, its readers and all children.
         process = subprocess.Popen(argv, cwd=cwd, env={"PATH": "/usr/bin:/bin", "LANG": "C"},
                                    stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,
-                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                   start_new_session=True)
+        completed = False
         try:
             if input_data is not None:
                 process.stdin.write(input_data)
@@ -73,10 +75,15 @@ class JobRunner:
                 raise ToolpackError("Command output exceeded the budget")
             if process.wait(timeout=15):
                 raise ToolpackError("Configured command failed")
+            completed = True
             return data
         finally:
+            if not completed:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
             if process.poll() is None:
-                process.kill()
                 process.wait()
 
     def text(self, path, limit=65536):
@@ -312,6 +319,9 @@ class JobRunner:
                 if not args["files"] or len(set(args["files"])) != len(args["files"]):
                     raise ToolpackError("Commit needs distinct named files")
                 files = [check_file(value) for value in args["files"]]
+                tracked = repo.git("ls-files", "--error-unmatch", "--", *files)
+                if tracked.returncode or tracked.truncated:
+                    raise ToolpackError("Commit requires tracked named files; the index is unchanged")
                 for value in files:
                     content = self.text(self.resolve(str(repo.top / value)))
                     if _SENSITIVE.search(content):

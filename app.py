@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 import httpx
 import uuid
 from contextvars import ContextVar
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from daveharness import (
     ApprovalDecision,
@@ -2268,6 +2268,9 @@ class HostRunBinding:
     brain_digest: Optional[str]
     context_budget: dict
     run_id: Optional[str] = None
+    selected_tools: tuple[str, ...] = ()
+    max_input_tokens: Optional[int] = None
+    model_usage: list[dict] = field(default_factory=list, compare=False)
 
 
 HOST_RUN_BINDINGS: dict[str, HostRunBinding] = {}
@@ -2306,14 +2309,48 @@ async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dic
     binding = HOST_RUN_CONTEXT.get()
     if binding is None:
         raise RuntimeError("Run model binding is unavailable")
+    allowed = frozenset(binding.selected_tools)
+    if allowed:
+        schemas = [schema for schema in schemas if schema.get("function", {}).get("name") in allowed]
+    schema_tokens = max(1, len(json.dumps(schemas, ensure_ascii=False, separators=(",", ":"))) // 3)
+    input_tokens = schema_tokens + tool_run_message_tokens(messages)
+    usage = {"estimated_input_tokens": input_tokens, "request_sent": False,
+             "status": "input_limit", "prompt_tokens": None, "generated_tokens": None,
+             "duration_ms": 0.0}
+    binding.model_usage.append(usage)
+    if binding.max_input_tokens is not None and input_tokens > binding.max_input_tokens:
+        raise RuntimeError("Model input exceeds the run admission limit")
     # DL-TRANSPORT-01b: native /api/chat, so the run gets the router's num_ctx and keep_alive.
-    with NODE_ACTIVITY.track(binding.node_url):  # DL-ROUTE-04
-        return await ollama_chat_bounded(
-            binding.node_url, binding.model, messages, tools=schemas, timeout=node_complete_timeout(),
-            max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
-            temperature=chat_temperature(binding.temperature),
-            options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
-        )
+    started = time.monotonic()
+    usage.update(request_sent=True, status="running")
+    try:
+        with NODE_ACTIVITY.track(binding.node_url):  # DL-ROUTE-04
+            result = await ollama_chat_bounded(
+                binding.node_url, binding.model, messages, tools=schemas, timeout=node_complete_timeout(),
+                max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
+                temperature=chat_temperature(binding.temperature),
+                options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
+            )
+        usage["status"] = "completed"
+        for target, source in (("prompt_tokens", "prompt_eval_count"), ("generated_tokens", "eval_count")):
+            value = result.get(source)
+            usage[target] = value if type(value) is int and value >= 0 else None
+    except asyncio.CancelledError:
+        usage["status"] = "cancelled"
+        raise
+    except Exception:
+        usage["status"] = "error"
+        raise
+    finally:
+        usage["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
+    if allowed:
+        called = {
+            call.get("function", {}).get("name")
+            for call in result.get("message", {}).get("tool_calls", [])
+        }
+        if any(name not in allowed for name in called):
+            raise RuntimeError("Model called a tool that was not selected")
+    return result
 
 
 HARNESS = Harness(
@@ -2777,7 +2814,7 @@ def tool_call_only_notice(content: str, tool_calls: Sequence[dict]) -> dict | No
     return {
         "notice": (
             f"The model tried to use a tool{attempted} instead of replying. Plain chat can't run "
-            "tools, so no reply was saved. For lookups, use the Run tools button (web.search, web.read)."
+            "tools, so no reply was saved. Select a tool from the Tools menu and send again."
         ),
         "reason": TOOL_CALL_ONLY_REASON,
         "tools": tools,
@@ -3021,7 +3058,7 @@ class AgentRunRequest(BaseModel):
     messages: List[Dict]
     node_id: str
     model: str
-    max_tokens: int = 2048
+    max_tokens: int = Field(default=2048, ge=1)
     temperature: float = 0.7
     step_limit: int = DEFAULT_STEP_LIMIT
     error_budget: int = DEFAULT_ERROR_BUDGET
@@ -3078,6 +3115,9 @@ class LifecycleRunRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0, le=2)
     step_limit: int = Field(default=8, ge=1, le=32)
     error_budget: int = Field(default=2, ge=1, le=8)
+    selected_tools: List[str] = Field(default_factory=list, max_length=124)
+    max_input_tokens: Optional[int] = Field(default=None, ge=1, le=262_144, strict=True)
+    total_wall_seconds: float = Field(default=300.0, ge=0.1, le=300.0, allow_inf_nan=False, strict=True)
 
     @field_validator("messages")
     @classmethod
@@ -3914,6 +3954,47 @@ async def execute_tool_endpoint(tool_req: ToolRequest, _auth=Depends(require_api
     return result.model_dump()
 
 
+def tool_schema_tokens(registry: ToolRegistry) -> int:
+    """Estimated prompt tokens for the tool descriptions every agent step sends (DL-15).
+
+    JSON schemas tokenize densely, so this counts three characters per token rather
+    than the four `estimate_tokens` uses for prose.
+    """
+    text = json.dumps(registry.model_schemas(), ensure_ascii=False, separators=(",", ":"))
+    return max(1, len(text) // 3)
+
+
+def tool_run_message_tokens(messages: List[Dict]) -> int:
+    """Estimated tokens for a tool run's messages: the text, plus every other field as JSON.
+
+    Assistant turns can carry their payload in `tool_calls` with empty content, so those
+    fields count at the schema rate rather than not at all.
+    """
+    extra = (
+        len(json.dumps(fields, ensure_ascii=False, separators=(",", ":"), default=str)) // 3
+        for fields in ({k: v for k, v in message.items() if k not in ("role", "content")} for message in messages)
+        if fields
+    )
+    return estimate_prompt_tokens(messages, estimate_tokens) + sum(extra)
+
+
+def tool_run_fit_error(model_id: str, messages: List[Dict], schema_tokens: int, max_tokens: int) -> Optional[str]:
+    """Why a tool run's first step cannot fit the window the router asks Ollama for, or None.
+
+    Ollama trims an oversized prompt from the start, where the tool descriptions sit, so
+    refusing here beats a run whose model never sees its tools.
+    """
+    window = chat_num_ctx(model_id)
+    message_tokens = tool_run_message_tokens(messages)
+    if schema_tokens + message_tokens + max_tokens <= window:
+        return None
+    return (
+        f"Tool run does not fit the {window}-token context window: about {schema_tokens} tokens of tool "
+        f"descriptions, {message_tokens} of messages and {max_tokens} reserved for the reply. "
+        "Turn on fewer tools (enabled_tools), shorten the messages or lower max_tokens."
+    )
+
+
 @app.post("/tools/agent/run")
 async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key)):
     """Run the bounded Ollama executor loop and return its complete transcript."""
@@ -3925,6 +4006,9 @@ async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key
         raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
     if req.model not in inventory:
         raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    fit_error = tool_run_fit_error(req.model, req.messages, tool_schema_tokens(TOOL_REGISTRY), req.max_tokens)
+    if fit_error:
+        raise HTTPException(413, fit_error)
 
     unknown_approvals = sorted(set(req.approved_tools) - set(TOOL_REGISTRY.public_catalog()))
     if unknown_approvals:
@@ -3983,12 +4067,58 @@ def _lifecycle_run(run_id: str, user_id: str):
     return result, binding
 
 
+def _lifecycle_terminal_explanation(snapshot: dict | None) -> dict | None:
+    """Explain an error-budget stop without changing the run or asking the model."""
+    if snapshot is None or snapshot["status"] != "error_budget":
+        return None
+    executed = set(snapshot["executed_call_ids"])
+    tool_errors = []
+    seen = set()
+    # Only executed calls, with their last recorded result, not supplied history.
+    for item in reversed(snapshot["transcript"]):
+        call_id = item.get("tool_call_id")
+        if item.get("role") != "tool" or not isinstance(call_id, str) or call_id not in executed or call_id in seen:
+            continue
+        seen.add(call_id)
+        try:
+            outcome = json.loads(item.get("content", ""))
+        except (TypeError, ValueError):
+            continue
+        if isinstance(outcome, dict) and isinstance(outcome.get("error"), str) and outcome["error"]:
+            tool_errors.append({
+                "call_id": call_id, "tool_name": item.get("name", "tool"),
+                "error": outcome["error"],
+            })
+    return {
+        "source": "harness",
+        "message": (
+            f"The run stopped after reaching its error limit ({snapshot['errors']}/{snapshot['budget']['errors']}). "
+            "No further model or tool calls were made. This is a harness report, not a model-generated answer."
+        ),
+        "tool_errors": list(reversed(tool_errors)),
+    }
+
+
 def _lifecycle_response(run_id: str, result, binding: HostRunBinding) -> dict:
+    snapshot = result.snapshot.to_dict() if result.snapshot else None
+    explanation = _lifecycle_terminal_explanation(snapshot)
+    if (result.status in TERMINAL_RUN_STATUSES and binding.model_usage
+            and binding.model_usage[-1]["status"] == "input_limit"):
+        explanation = {
+            "source": "harness", "reason_code": "input_limit",
+            "message": "The run stopped before a model request exceeded its estimated input-token limit. "
+                       "This is a harness report, not a model-generated answer.",
+            "tool_errors": [],
+        }
     return {
         "run_id": run_id,
         "status": result.status,
         "reason_code": result.reason_code,
-        "snapshot": result.snapshot.to_dict() if result.snapshot else None,
+        "snapshot": snapshot,
+        "terminal_explanation": explanation,
+        "limits": {"max_input_tokens": binding.max_input_tokens,
+                   "total_wall_seconds": snapshot["budget"]["total_wall_seconds"] if snapshot else None},
+        "model_usage": [dict(item) for item in binding.model_usage],
         "context": {
             "project_id": binding.project_id,
             "brain_revision": binding.brain_revision,
@@ -4021,9 +4151,22 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
         raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
     if req.model not in inventory:
         raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    registered_tools = HARNESS_REGISTRY.public_catalog()
+    unknown_tools = sorted(set(req.selected_tools) - set(registered_tools))
+    if unknown_tools:
+        raise HTTPException(400, f"Unknown selected tool(s): {', '.join(unknown_tools)}")
+    selected_tools = tuple(dict.fromkeys(req.selected_tools))
     messages = req.messages
     project_id = req.project_id
     context_budget: dict = {}
+    if selected_tools:
+        selected_schemas = [
+            schema for schema in HARNESS_REGISTRY.model_schemas()
+            if schema.get("function", {}).get("name") in selected_tools
+        ]
+        schema_tokens = max(1, len(json.dumps(selected_schemas, ensure_ascii=False, separators=(",", ":"))) // 3)
+    else:
+        schema_tokens = tool_schema_tokens(HARNESS_REGISTRY)
     project = get_project(project_id, user_id) if project_id else {}
     conversation: dict = {}
     if req.conversation_id:
@@ -4045,23 +4188,31 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
         try:
             messages, context_budget = build_project_messages_for_node(
                 project_id=project_id, project=project, model_id=req.model,
-                output_reserve=req.max_tokens, query=query,
+                # Every step also carries the tool descriptions, so project context leaves room for them.
+                output_reserve=req.max_tokens + schema_tokens, query=query,
                 system_prompt=system_prompt, history=history,
                 capture_brain=True, window=chat_num_ctx(req.model),
             )
         except ProjectContextError as exc:
             raise context_http_error(exc)
+    fit_error = tool_run_fit_error(req.model, messages, schema_tokens, req.max_tokens)
+    if fit_error:
+        raise HTTPException(413, fit_error)
+    if req.max_input_tokens is not None and schema_tokens + tool_run_message_tokens(messages) > req.max_input_tokens:
+        raise HTTPException(413, "Tool run exceeds its estimated input-token limit")
     run_id = f"run_{uuid.uuid4().hex}"
     binding = HostRunBinding(
         user_id, node.url, req.model, req.max_tokens, req.temperature,
         project_id, context_budget.get("brain_revision"),
-        context_budget.get("brain_digest"), context_budget, run_id,
+        context_budget.get("brain_digest"), context_budget, run_id, selected_tools,
+        max_input_tokens=req.max_input_tokens,
     )
     try:
         request = RunRequest.create(
             messages, run_id=run_id, model_id=req.model,
-            budget=RunBudget(model_steps=req.step_limit, errors=req.error_budget),
-            deadline_at=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            budget=RunBudget(model_steps=req.step_limit, errors=req.error_budget,
+                             total_wall_seconds=req.total_wall_seconds),
+            deadline_at=(datetime.now(timezone.utc) + timedelta(seconds=req.total_wall_seconds)).isoformat(),
             allowed_permissions=tuple(sorted({
                 item["permission"] for item in HARNESS_REGISTRY.public_catalog().values()
             })),
@@ -4908,6 +5059,73 @@ async def chat_size_check(req: ChatSizeCheckRequest, user_id: str = Depends(get_
         "model": req.model,
     }
 
+class EvalChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str = Field(max_length=100_000)
+
+class EvalChatRequest(BaseModel):
+    node_id: str
+    model: str
+    messages: List[EvalChatMessage] = Field(min_length=1, max_length=64)
+    max_tokens: Optional[int] = Field(default=4096, ge=1, le=32_768)
+    temperature: Optional[float] = Field(default=None, ge=0, le=2)
+    format: Optional[Literal["json"]] = None
+
+@app.post("/eval/chat")
+def eval_chat(req: EvalChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):
+    """DL-EVAL-01: one stateless completion for an evaluation harness such as Prompt Lab's Library Tests.
+
+    The caller supplies every message, including its own system prompt, so no DaveLLM persona,
+    project, session layer or history is added. Nothing is persisted: no conversation, embedding,
+    cost or performance row, title, artifact, budget charge or model-health entry. The call still
+    counts on NODE_ACTIVITY so other users' waiting status sees it in the node's queue.
+    """
+    if request:
+        check_rate_limit(request.client.host)
+    node = get_node_by_id(req.node_id)
+    inventory = MODEL_INVENTORY.get(node.id)
+    if inventory is None:
+        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
+    if req.model not in inventory:
+        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    messages = [message.model_dump() for message in req.messages]
+    try:
+        start = time.perf_counter()
+        with NODE_ACTIVITY.track(node.url):
+            result = ollama_chat(
+                node.url, req.model, messages, stream=False, timeout=node_complete_timeout(),
+                total_timeout=NODE_TOTAL_TIMEOUT,
+                num_predict=req.max_tokens, temperature=chat_temperature(req.temperature),
+                options=chat_node_options(node, req.model),
+                keep_alive=chat_keep_alive(None),
+                format=req.format,
+            )
+        latency_ms = round((time.perf_counter() - start) * 1000, 1)
+    except httpx.TimeoutException:
+        raise HTTPException(504, f"Node '{node.name}' timed out")
+    except httpx.ConnectError:
+        raise HTTPException(503, f"Cannot connect to node '{node.name}' at {node.url}")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(502, f"Node error: {e.response.text if e.response else str(e)}")
+    except httpx.TransportError as e:
+        # Dropped or malformed exchanges mid-reply (RemoteProtocolError, ReadError, WriteError).
+        raise HTTPException(502, f"Node '{node.name}' transport failed: {type(e).__name__}")
+    except OllamaResponseError as e:
+        raise HTTPException(502, f"Invalid response from node: {str(e)}")
+
+    body = {
+        "response": result.content,
+        "node": node.name,
+        "node_id": node.id,
+        "model": req.model,
+        "done_reason": result.done_reason,
+        "stats": stream_stats(result.metrics, None),
+        "latency_ms": latency_ms,
+    }
+    notice = tool_call_only_notice(result.content, result.tool_calls)
+    if notice is not None:
+        body.update(notice)
+    return body
 
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):

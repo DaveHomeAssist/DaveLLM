@@ -1,11 +1,106 @@
+import json
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO / "scripts" / "macos" / "launch-davellm.sh"
 INSTALLER = REPO / "scripts" / "macos" / "install-launcher.sh"
 WHISPER_INSTALLER = REPO / "scripts" / "macos" / "install-whisper-runtime.sh"
+
+
+def run_context_settings(
+    tmp_path: Path, contents: str | None, *, trusted: bool = True,
+    overrides: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    jq = shutil.which("jq")
+    if jq is None:
+        pytest.skip("launcher validation requires jq")
+    if contents is not None:
+        (tmp_path / "model-context.json").write_text(contents)
+    launcher = LAUNCHER.read_text()
+    section = launcher.split("# Model context settings:", 1)[1].split(
+        "# End model context settings.", 1
+    )[0]
+    section = section.split("\n", 1)[1]
+    # Run the actual launcher section with portable stand-ins for zsh print and
+    # the existing, separately pinned macOS ownership check. No app is started.
+    script = r'''
+set -euo pipefail
+print() {
+    if [[ "$1" == "-u2" ]]; then
+        shift 2
+        printf '%s\n' "$*" >&2
+    else
+        shift 2
+        printf '%s\n' "$*"
+    fi
+}
+private_settings_file() { [[ "$PRIVATE_SETTINGS_OK" == "1" ]]; }
+tool_env=()
+''' + section + '\nprintf "%s\\n" "${tool_env[@]-}"\n'
+    env = {"PATH": os.environ.get("PATH", os.defpath)}
+    env.update(DATA_DIR=str(tmp_path), JQ_BIN=jq, PRIVATE_SETTINGS_OK=str(int(trusted)))
+    env.update(overrides or {})
+    return subprocess.run(
+        ["bash", "-c", script], env=env, capture_output=True, text=True,
+        check=True, timeout=5,
+    )
+
+
+def test_model_context_settings_preserve_other_model_defaults(tmp_path: Path) -> None:
+    result = run_context_settings(tmp_path, json.dumps({
+        "max_context": 32768, "default_context": 16384,
+        "models": {"qwen3.5:4b": 32768},
+    }))
+    values = dict(line.split("=", 1) for line in result.stdout.splitlines())
+    assert values["DAVE_CHAT_NUM_CTX"] == "32768"
+    assert values["DAVE_MODEL_CONTEXT_DEFAULT"] == "16384"
+    assert json.loads(values["DAVE_MODEL_CONTEXT_WINDOWS"]) == {"qwen3.5:4b": 32768}
+    assert not result.stderr
+
+
+def test_model_context_environment_overrides_win_individually(tmp_path: Path) -> None:
+    overrides = {"DAVE_CHAT_NUM_CTX": "65536", "DAVE_MODEL_CONTEXT_WINDOWS": '{"custom":8192}'}
+    result = run_context_settings(tmp_path, json.dumps({
+        "max_context": 32768, "default_context": 16384, "models": {},
+    }), overrides=overrides)
+    values = dict(line.split("=", 1) for line in result.stdout.splitlines())
+    assert values == {**overrides, "DAVE_MODEL_CONTEXT_DEFAULT": "16384"}
+
+
+@pytest.mark.parametrize("contents", [
+    "not json", "[]", "{}", '{"secret":"must-not-be-logged"}',
+    json.dumps({"max_context": 32768, "default_context": 16384, "models": {}, "extra": 1}),
+    json.dumps({"max_context": 4096, "default_context": 4096, "models": {}}),
+    json.dumps({"max_context": 32768.5, "default_context": 16384, "models": {}}),
+    json.dumps({"max_context": 1048576, "default_context": 16384, "models": {}}),
+    json.dumps({"max_context": 32768, "default_context": 65536, "models": {}}),
+    json.dumps({"max_context": 32768, "default_context": 16384, "models": []}),
+    json.dumps({"max_context": 32768, "default_context": 16384, "models": {"": 8192}}),
+    json.dumps({"max_context": 32768, "default_context": 16384, "models": {"m": 65536}}),
+    json.dumps({"max_context": 32768, "default_context": 16384, "models": {"m": True}}),
+    " " * 16385,
+])
+def test_invalid_model_context_settings_are_ignored(tmp_path: Path, contents: str) -> None:
+    result = run_context_settings(tmp_path, contents)
+    assert not result.stdout.strip()
+    assert result.stderr == (
+        "DaveLLM launcher: ignoring model-context.json "
+        "(needs private, valid context limits, under 16 KiB)\n"
+    )
+
+
+def test_missing_and_untrusted_model_context_settings_do_not_apply(tmp_path: Path) -> None:
+    assert not run_context_settings(tmp_path, None).stdout.strip()
+    settings = json.dumps({"max_context": 32768, "default_context": 16384, "models": {}})
+    result = run_context_settings(tmp_path, settings, trusted=False)
+    assert not result.stdout.strip()
+    assert "ignoring model-context.json" in result.stderr
 
 
 def test_macos_launcher_uses_keychain_and_live_tailscale_inventory():
@@ -58,7 +153,30 @@ def test_macos_launcher_enables_tools_but_not_shell_or_roots():
     assert 'DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}"' in launcher
     assert 'DAVE_ENABLE_EXTENDED_TOOLS="${DAVE_ENABLE_EXTENDED_TOOLS:-true}"' in launcher
     assert "DAVE_ENABLE_SHELL_TOOL" not in launcher
-    assert "DAVE_TOOL_ROOTS" not in launcher
+    # Roots come only from the environment or an operator-created file, never a default.
+    assert 'tool_env+=("DAVE_TOOL_ROOTS=${tool_roots}")' in launcher
+    assert not re.search(r'DAVE_TOOL_ROOTS=["\']?\[', launcher)
+
+
+def test_macos_launcher_reads_tool_settings_only_from_private_files():
+    launcher = LAUNCHER.read_text()
+
+    for required in (
+        'tool_roots_file="${DATA_DIR}/tool-roots.json"',
+        'toolpack_file="${DATA_DIR}/toolpack.json"',
+        '[[ -f "$file" && ! -L "$file" ]] || return 1',
+        '[[ "$owner" == "$(/usr/bin/id -u)" ]] && (( (8#$mode & 8#022) == 0 ))',
+        'if [[ -z "${DAVE_TOOL_ROOTS:-}" && -e "$tool_roots_file" ]]; then',
+        'if [[ -z "${DAVE_TOOLPACK_CONFIG:-}" && -e "$toolpack_file" ]]; then',
+        '(.enabled_tools | type) == "array" and (.enabled_tools | length) > 0',
+        '<= 65536',
+        '"${tool_env[@]}" \\\n    "$NPM_BIN" start',
+    ):
+        assert required in launcher
+
+    # Settings files carry no secrets, and the launcher reads no token for them.
+    assert "TOKEN" not in launcher
+    assert not re.search(r"ignoring [^\n]*\$tool_roots|ignoring [^\n]*\$toolpack_config", launcher)
 
 
 def test_macos_launcher_adds_web_search_only_when_searxng_is_healthy():
