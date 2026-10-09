@@ -11,6 +11,16 @@
   "statusReason": "All 100 approved tools are implemented behind additive gates. The installed app has a searchable selected-tool menu and private starter configuration. Walter now also has Qwen3.5 4B at 32768 context, fully GPU-resident in the observed run; a bounded calc.eval acceptance returned 108 with zero errors. Existing models remain installed and retain the 16384-token request default. Larger-window quality, H9, and provider-specific grants, aliases and helper recipes remain separate gates.",
   "evidence": {
     "checkedOn": "2026-10-07",
+    "toolRunLimits": {
+      "checkedOn": "2026-10-09",
+      "baselineRevision": "325571108af1348af899a143a89822caae9ec313",
+      "scope": "Optional per-run wall deadline and per-model-request estimated input-token admission, preserving existing defaults.",
+      "source": "docs/TOOL_RUN_LIMITS.md",
+      "acceptance": "Fake-provider fixtures for initial and accumulated-input refusal, selected schema accounting, deadline cancellation, step/output caps and default compatibility. Exact-head CI, native activation and the approved bounded pilot remain separate evidence gates.",
+      "verification": "Walter, disposable Windows Python 3.12 environment: 47 focused guard/lifecycle/provenance/platform-manifest checks passed in 29.34 seconds. All three guard negative controls fail on baseline 3255711. One legacy shell pwd fixture also fails unchanged on that Windows baseline and is deferred to Linux CI; no unrelated shell change. The portable manifest was regenerated on macOS. No live model request was made by these fixtures.",
+      "nextAction": "Complete exact-head review and required CI, merge, activate the installed Mac launcher with preserved data/configuration, then run only the approved four-case remote pilot under the existing caps.",
+      "limits": "No new model settings, retries, H9 or blanket tool qualification. Retain original live failures; a new pilot is not a reliability rate."
+    },
     "toolTerminalExplanation": {
       "checkedOn": "2026-10-07",
       "baselineRevision": "7726f028f030b25ed98ba27828ca28b9b47a6fef",

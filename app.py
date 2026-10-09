@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 import httpx
 import uuid
 from contextvars import ContextVar
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from daveharness import (
     ApprovalDecision,
@@ -2269,6 +2269,8 @@ class HostRunBinding:
     context_budget: dict
     run_id: Optional[str] = None
     selected_tools: tuple[str, ...] = ()
+    max_input_tokens: Optional[int] = None
+    model_usage: list[dict] = field(default_factory=list, compare=False)
 
 
 HOST_RUN_BINDINGS: dict[str, HostRunBinding] = {}
@@ -2310,14 +2312,37 @@ async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dic
     allowed = frozenset(binding.selected_tools)
     if allowed:
         schemas = [schema for schema in schemas if schema.get("function", {}).get("name") in allowed]
+    schema_tokens = max(1, len(json.dumps(schemas, ensure_ascii=False, separators=(",", ":"))) // 3)
+    input_tokens = schema_tokens + tool_run_message_tokens(messages)
+    usage = {"estimated_input_tokens": input_tokens, "request_sent": False,
+             "status": "input_limit", "prompt_tokens": None, "generated_tokens": None,
+             "duration_ms": 0.0}
+    binding.model_usage.append(usage)
+    if binding.max_input_tokens is not None and input_tokens > binding.max_input_tokens:
+        raise RuntimeError("Model input exceeds the run admission limit")
     # DL-TRANSPORT-01b: native /api/chat, so the run gets the router's num_ctx and keep_alive.
-    with NODE_ACTIVITY.track(binding.node_url):  # DL-ROUTE-04
-        result = await ollama_chat_bounded(
-            binding.node_url, binding.model, messages, tools=schemas, timeout=node_complete_timeout(),
-            max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
-            temperature=chat_temperature(binding.temperature),
-            options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
-        )
+    started = time.monotonic()
+    usage.update(request_sent=True, status="running")
+    try:
+        with NODE_ACTIVITY.track(binding.node_url):  # DL-ROUTE-04
+            result = await ollama_chat_bounded(
+                binding.node_url, binding.model, messages, tools=schemas, timeout=node_complete_timeout(),
+                max_bytes=MAX_HARNESS_MODEL_RESPONSE_BYTES, num_predict=binding.max_tokens,
+                temperature=chat_temperature(binding.temperature),
+                options={"num_ctx": chat_num_ctx(binding.model)}, keep_alive=CHAT_KEEP_ALIVE,
+            )
+        usage["status"] = "completed"
+        for target, source in (("prompt_tokens", "prompt_eval_count"), ("generated_tokens", "eval_count")):
+            value = result.get(source)
+            usage[target] = value if type(value) is int and value >= 0 else None
+    except asyncio.CancelledError:
+        usage["status"] = "cancelled"
+        raise
+    except Exception:
+        usage["status"] = "error"
+        raise
+    finally:
+        usage["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
     if allowed:
         called = {
             call.get("function", {}).get("name")
@@ -3040,6 +3065,8 @@ class LifecycleRunRequest(BaseModel):
     step_limit: int = Field(default=8, ge=1, le=32)
     error_budget: int = Field(default=2, ge=1, le=8)
     selected_tools: List[str] = Field(default_factory=list, max_length=124)
+    max_input_tokens: Optional[int] = Field(default=None, ge=1, le=262_144, strict=True)
+    total_wall_seconds: float = Field(default=300.0, ge=0.1, le=300.0, allow_inf_nan=False, strict=True)
 
     @field_validator("messages")
     @classmethod
@@ -4023,12 +4050,24 @@ def _lifecycle_terminal_explanation(snapshot: dict | None) -> dict | None:
 
 def _lifecycle_response(run_id: str, result, binding: HostRunBinding) -> dict:
     snapshot = result.snapshot.to_dict() if result.snapshot else None
+    explanation = _lifecycle_terminal_explanation(snapshot)
+    if (result.status in TERMINAL_RUN_STATUSES and binding.model_usage
+            and binding.model_usage[-1]["status"] == "input_limit"):
+        explanation = {
+            "source": "harness", "reason_code": "input_limit",
+            "message": "The run stopped before a model request exceeded its estimated input-token limit. "
+                       "This is a harness report, not a model-generated answer.",
+            "tool_errors": [],
+        }
     return {
         "run_id": run_id,
         "status": result.status,
         "reason_code": result.reason_code,
         "snapshot": snapshot,
-        "terminal_explanation": _lifecycle_terminal_explanation(snapshot),
+        "terminal_explanation": explanation,
+        "limits": {"max_input_tokens": binding.max_input_tokens,
+                   "total_wall_seconds": snapshot["budget"]["total_wall_seconds"] if snapshot else None},
+        "model_usage": [dict(item) for item in binding.model_usage],
         "context": {
             "project_id": binding.project_id,
             "brain_revision": binding.brain_revision,
@@ -4108,17 +4147,21 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
     fit_error = tool_run_fit_error(req.model, messages, schema_tokens, req.max_tokens)
     if fit_error:
         raise HTTPException(413, fit_error)
+    if req.max_input_tokens is not None and schema_tokens + tool_run_message_tokens(messages) > req.max_input_tokens:
+        raise HTTPException(413, "Tool run exceeds its estimated input-token limit")
     run_id = f"run_{uuid.uuid4().hex}"
     binding = HostRunBinding(
         user_id, node.url, req.model, req.max_tokens, req.temperature,
         project_id, context_budget.get("brain_revision"),
         context_budget.get("brain_digest"), context_budget, run_id, selected_tools,
+        max_input_tokens=req.max_input_tokens,
     )
     try:
         request = RunRequest.create(
             messages, run_id=run_id, model_id=req.model,
-            budget=RunBudget(model_steps=req.step_limit, errors=req.error_budget),
-            deadline_at=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            budget=RunBudget(model_steps=req.step_limit, errors=req.error_budget,
+                             total_wall_seconds=req.total_wall_seconds),
+            deadline_at=(datetime.now(timezone.utc) + timedelta(seconds=req.total_wall_seconds)).isoformat(),
             allowed_permissions=tuple(sorted({
                 item["permission"] for item in HARNESS_REGISTRY.public_catalog().values()
             })),

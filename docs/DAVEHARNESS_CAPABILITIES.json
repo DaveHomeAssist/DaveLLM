@@ -894,6 +894,12 @@
         "le": 8,
         "required": false
       },
+      "max_input_tokens": {
+        "default": null,
+        "ge": 1,
+        "le": 262144,
+        "required": false
+      },
       "max_tokens": {
         "default": 2048,
         "ge": 1,
@@ -932,6 +938,12 @@
         "default": 0.7,
         "ge": 0,
         "le": 2,
+        "required": false
+      },
+      "total_wall_seconds": {
+        "default": 300.0,
+        "ge": 0.1,
+        "le": 300.0,
         "required": false
       }
     },
