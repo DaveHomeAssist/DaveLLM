@@ -871,10 +871,11 @@ class Lifecycle:
         assert self.client.get("/nodes/node-test/models", headers=LIFECYCLE_AUTH).status_code == 200
         self.chat = mock.post("http://ollama.test:11434/api/chat")
 
-    def start(self, *turns, content="go"):
+    def start(self, *turns, content="go", **limits):
         self.chat.side_effect = _model_turns(*turns)
         created = self.client.post("/tools/agent/runs", headers=LIFECYCLE_AUTH, json={
-            "messages": [{"role": "user", "content": content}], "node_id": "node-test", "model": MODEL_NAME})
+            "messages": [{"role": "user", "content": content}], "node_id": "node-test", "model": MODEL_NAME,
+            **limits})
         assert created.status_code == 200, created.text
         return created.json()["run_id"]
 
@@ -940,11 +941,12 @@ def test_r6_an_expired_approval_writes_nothing(lifecycle, monkeypatch):
     assert lifecycle.fake.writes() == []
 
 
-def test_r6_an_approval_after_the_run_deadline_writes_nothing(lifecycle, monkeypatch):
-    real = _timedelta
-    monkeypatch.setattr(lifecycle.router, "timedelta", lambda **kwargs: real(seconds=1) if kwargs == {"minutes": 5} else real(**kwargs))
-    run_id = lifecycle.start(APPEND_CALL, (None, "done"))
-    pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
+def test_r6_an_approval_after_the_run_deadline_writes_nothing(lifecycle):
+    run_id = lifecycle.start(APPEND_CALL, (None, "done"), total_wall_seconds=1.0)
+    snapshot = lifecycle.settle(run_id)["snapshot"]
+    assert snapshot["budget"]["total_wall_seconds"] == 1.0
+    pending = snapshot["pending_call"]
+    assert pending is not None
     _time.sleep(1.2)
     response = lifecycle.decide(run_id, pending)
     assert response.status_code in (200, 409)
