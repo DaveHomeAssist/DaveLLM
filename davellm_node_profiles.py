@@ -1,7 +1,8 @@
 """Node capability profiles (DL-ROUTE-01) and the prompt-size check (DL-ROUTE-02).
 
 A profile says what a node is good at, so the router can say up front when a prompt is
-going to a node that reads it slowly. It lives in the node's ``DAVE_NODES`` entry as an
+going to a node that reads it slowly, both before sending (DL-ROUTE-05) and while the reply
+waits (DL-ROUTE-02). It lives in the node's ``DAVE_NODES`` entry as an
 optional ``profile`` object::
 
     {"id": "dominic", "name": "Dominic", "url": "...",
@@ -91,14 +92,35 @@ def estimate_prompt_tokens(messages: Sequence[Mapping[str, Any]], estimate: Call
     return sum(estimate(str(message.get("content") or "")) for message in messages)
 
 
+def prompt_size_estimate(profile: Optional[NodeProfile], model_id: str, prompt_tokens: int) -> dict:
+    """The estimate, the node's limit for the model (``None`` without one) and whether it is over.
+
+    The composer's pre-send check (DL-ROUTE-05) shows all three; the stream's waiting status
+    (DL-ROUTE-02) reports only prompts over the limit. Both use this one comparison.
+    """
+    limit = profile.limit_for(model_id) if profile is not None else None
+    return {
+        "prompt_tokens": prompt_tokens,
+        "prompt_token_limit": limit,
+        "over_limit": limit is not None and prompt_tokens > limit,
+    }
+
+
 def prompt_size_check(profile: Optional[NodeProfile], model_id: str, prompt_tokens: int) -> Optional[dict]:
     """Fields for the stream's waiting status when the prompt is over the limit; ``None`` otherwise."""
-    if profile is None:
+    estimate = prompt_size_estimate(profile, model_id, prompt_tokens)
+    if not estimate["over_limit"]:
         return None
-    limit = profile.limit_for(model_id)
-    if limit is None or prompt_tokens <= limit:
-        return None
-    return {"prompt_tokens": prompt_tokens, "prompt_token_limit": limit}
+    return {"prompt_tokens": prompt_tokens, "prompt_token_limit": estimate["prompt_token_limit"]}
+
+
+def reads_only_new_message(prefix_cached: bool, model_loaded: Optional[bool], others_in_flight: int) -> bool:
+    """Whether the node reads only the new message: Ollama still holds this chat's prompt prefix.
+
+    That needs the conversation the node last served, the model confirmed in memory, and nothing
+    else running on the node in between.
+    """
+    return prefix_cached and model_loaded is True and not others_in_flight
 
 
 class NodeActivity:

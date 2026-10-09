@@ -127,6 +127,35 @@ function uiElement(tag, className = "", text = "") {
     return element;
 }
 
+// DL-ROUTE-05: the composer's pre-send size line, from POST /chat/size-check. Advisory only:
+// sending is never blocked, the request still goes to the node and model that are selected.
+function promptSizeText(report, nodeName) {
+    if (!report || !Number.isFinite(report.prompt_tokens)) return null;
+    const size = (n) => Math.round(n).toLocaleString("en-US");
+    const node = nodeName || "this node";
+    if (report.reads_new_message_only) {
+        return {
+            text: `≈${size(report.prompt_tokens)} new tokens to read`,
+            title: `${node} still holds the rest of this conversation, so it reads only the new message.`,
+            over: Boolean(report.over_limit),
+        };
+    }
+    if (report.over_limit && Number.isFinite(report.prompt_token_limit)) {
+        return {
+            text: `≈${size(report.prompt_tokens)} tokens · ${node} reads ~${size(report.prompt_token_limit)} quickly`,
+            title: `This prompt is about ${size(report.prompt_tokens)} tokens and ${node} reads about `
+                + `${size(report.prompt_token_limit)} in reasonable time, so the reply may take several minutes. `
+                + "It counts instructions, project context, history and your draft.",
+            over: true,
+        };
+    }
+    return {
+        text: `≈${size(report.prompt_tokens)} tokens`,
+        title: "Estimated prompt size: instructions, project context, history and your draft.",
+        over: false,
+    };
+}
+
 function notifyConsole(message) {
     const notice = document.getElementById("consoleNotice");
     notice.querySelector("span").textContent = String(message);

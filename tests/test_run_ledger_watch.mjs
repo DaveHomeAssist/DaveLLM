@@ -26,6 +26,7 @@ function ledgerHarness() {
         ...Object.fromEntries(["runLedger", "runLedgerStatus", "runLedgerReason", "runLedgerEvents",
             "runLedgerTranscript", "runLedgerApproval", "runLedgerStop"].map((key) => [key, new Element()])),
     };
+    context.setToolRunClosable = (closable) => { context.toolRunClosable = closable; };
     vm.createContext(context);
     vm.runInContext(source.slice(start, end), context);
     return context;
@@ -49,6 +50,7 @@ test("error-budget rendering shows the harness explanation and both literal erro
     assert.ok(first.includes(run.terminal_explanation.message));
     for (const error of errors) assert.ok(first.includes(error));
     assert.equal(context.runLedgerStop.disabled, true);
+    assert.equal(context.toolRunClosable, true);  // a terminal run's card can close
     context.renderToolRun(run);
     assert.equal(text(context.runLedgerTranscript), first);
     context.renderToolRun({ ...run, run_id: "run_old" });

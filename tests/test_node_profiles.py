@@ -5,7 +5,10 @@ import threading
 
 import pytest
 
-from davellm_node_profiles import NodeActivity, NodeProfile, estimate_prompt_tokens, parse_node_profiles, prompt_size_check
+from davellm_node_profiles import (
+    NodeActivity, NodeProfile, estimate_prompt_tokens, parse_node_profiles, prompt_size_check,
+    prompt_size_estimate, reads_only_new_message,
+)
 
 
 def nodes(*entries):
@@ -62,6 +65,29 @@ def test_the_prompt_check_reports_only_prompts_over_the_limit():
     assert prompt_size_check(cpu, "llama3", 1300) is None
     assert prompt_size_check(None, "llama3", 99_999) is None
     assert prompt_size_check(NodeProfile(compute="gpu"), "llama3", 99_999) is None
+
+
+def test_the_pre_send_estimate_always_reports_and_shares_the_limit_rule():
+    duncan = NodeProfile(compute="gpu", model_prompt_token_limits={"gpt-oss:120b": 2500})
+    assert prompt_size_estimate(duncan, "gpt-oss:120b", 13_520) == {
+        "prompt_tokens": 13_520, "prompt_token_limit": 2500, "over_limit": True,
+    }
+    assert prompt_size_estimate(duncan, "gpt-oss:120b", 2500)["over_limit"] is False
+    assert prompt_size_estimate(duncan, "llama3", 99_999) == {
+        "prompt_tokens": 99_999, "prompt_token_limit": None, "over_limit": False,
+    }
+    assert prompt_size_estimate(None, "llama3", 5)["prompt_token_limit"] is None
+    for tokens in (1, 2500, 2501, 50_000):
+        over = prompt_size_estimate(duncan, "gpt-oss:120b", tokens)["over_limit"]
+        assert over is (prompt_size_check(duncan, "gpt-oss:120b", tokens) is not None)
+
+
+def test_only_a_cached_loaded_idle_node_reads_just_the_new_message():
+    assert reads_only_new_message(True, True, 0) is True
+    assert reads_only_new_message(False, True, 0) is False
+    assert reads_only_new_message(True, None, 0) is False  # residency unknown
+    assert reads_only_new_message(True, False, 0) is False
+    assert reads_only_new_message(True, True, 1) is False
 
 
 def test_prompt_estimate_counts_every_message_text():

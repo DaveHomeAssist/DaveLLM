@@ -157,6 +157,7 @@
                         <span id="runLedgerStatus" role="status" aria-live="polite">Ready</span>
                         <button id="runLedgerRetry" type="button" class="secondary hidden">Reconnect</button>
                         <button id="runLedgerStop" type="button" class="secondary">Stop run</button>
+                        <button id="runLedgerClose" type="button" class="icon-btn run-ledger-close hidden" aria-label="Close tool run" title="Close (Esc)">×</button>
                     </div>
                 </div>
                 <p id="runLedgerReason" class="run-ledger-reason"></p>
@@ -180,6 +181,7 @@
                     <button id="contextTemplateBtn" type="button" class="context-item" data-context-target="templateSelect"><span>Template</span><strong id="contextTemplateValue">General</strong></button>
                     <button id="contextNodeBtn" type="button" class="context-item" data-context-target="targetNodeSelect"><span>Node</span><strong id="contextNodeValue">None</strong></button>
                     <button id="contextModelBtn" type="button" class="context-item" data-context-target="modelSelect"><span>Model</span><strong id="contextModelValue">None</strong><small id="contextModelMarker" class="context-marker hidden">Last used</small></button>
+                    <span id="promptSizeHint" class="prompt-size-hint hidden"></span>
                     <button id="undoPredictionBtn" type="button" class="text-btn hidden">Undo</button>
                     <button id="resetSuggestionsBtn" type="button" class="text-btn">Reset suggestions</button>
                 </div>
@@ -222,7 +224,7 @@
                             <button id="toolPickerToggle" type="button" class="secondary hidden" aria-expanded="false" aria-controls="toolPicker">Tools</button>
                         </div>
                         <div class="actions">
-                            <button id="sendBtn" class="primary">Send</button>
+                            <button id="sendBtn" class="primary" aria-label="Send message">Send</button>
                         </div>
                     </div>
                 </div>

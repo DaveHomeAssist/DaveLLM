@@ -107,7 +107,7 @@ python -m compileall -q daveharness
 python -m mypy daveharness
 python -m pytest -q
 node --check static/app.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js
-node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs tests/test_console.mjs tests/test_markdown_render.mjs
+node --test tests/test_run_ledger_watch.mjs tests/test_approval_preview.mjs tests/test_console.mjs tests/test_markdown_render.mjs tests/test_composer.mjs
 bash -n deploy/check-cluster.sh scripts/verify-cluster.sh scripts/macos/install-launcher.sh scripts/macos/install-whisper-runtime.sh scripts/macos/launch-davellm.sh
 npm ci
 npm ls --depth=0

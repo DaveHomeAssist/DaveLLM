@@ -737,6 +737,32 @@
       "evidenceNote": "PR #70; offline tests only"
     },
     {
+      "id": "DL-16",
+      "type": "bug",
+      "sev": "P2",
+      "title": "Resolved: Send never showed Stop; oversized prompts surfaced only after sending; tool run card could not close",
+      "detail": "Send aborted a streaming reply while still labeled Send, and Enter could start a second reply mid-stream. A project conversation could send a prompt several times the node limit with no warning until the reply bubble. A finished or cancelled tool run card had no way to close. Now: Send reads Stop while streaming and Enter keeps the draft; POST /chat/size-check (DL-ROUTE-05) drives an advisory composer line using the stream's own assembly; the card closes by button or Esc once nothing is live.",
+      "files": [
+        "static/app.js",
+        "static/console.js",
+        "app.py",
+        "davellm_node_profiles.py",
+        "docs/briefs/DL-ROUTE-05-pre-send-size-check.md"
+      ],
+      "evidence": "test",
+      "phase": 1,
+      "history": [
+        {
+          "checkedOn": "2026-10-05",
+          "title": "Send never showed Stop; oversized prompts surfaced only after sending; tool run card could not close",
+          "detail": "Observed in the desktop app: a 13,520 token prompt on Duncan gpt-oss:120b (limit 2,500) with the Dave LLM project attached, a cancelled tool run card with no close control.",
+          "evidence": "observed"
+        }
+      ],
+      "status": "implemented",
+      "evidenceNote": "Automated and headless browser tests on this revision; desktop app acceptance by Dave pending."
+    },
+    {
       "id": "DL-EVAL-01",
       "type": "decision",
       "sev": "P2",
@@ -888,6 +914,12 @@
       "status": "accepted",
       "date": "2026-10-06",
       "decision": "Library Tests stay Enhance-only in v1; running the saved prompt itself is a later milestone."
+    },
+    {
+      "id": "DL-16",
+      "status": "accepted",
+      "date": "2026-10-05",
+      "decision": "Build the Stop button state and the advisory pre-send size check, plus a closable tool run card. Not chosen: trimming project context to the node limit, and refreshing the sidebar preview on send."
     },
     {
       "id": "Tools100 scope 2026-10-05",
