@@ -1348,6 +1348,8 @@ Body of `POST /tools/agent/runs`. Validators in `app.py` add checks not listed h
 | `step_limit` | no | `8` | ge `1`, le `32` |
 | `error_budget` | no | `2` | ge `1`, le `8` |
 | `selected_tools` | no | — | max_length `124` |
+| `max_input_tokens` | no | `null` | ge `1`, le `262144` |
+| `total_wall_seconds` | no | `300.0` | ge `0.1`, le `300.0` |
 
 ### Decision request
 
