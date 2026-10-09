@@ -560,6 +560,21 @@ def _fitting(items: Sequence[Any], envelope: Mapping[str, Any]) -> int:
     return len(items)
 
 
+def _numbered_lines(
+    lines: Sequence[str], start: int, envelope: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Fit both legacy strings and absolute line/text pairs in one result budget."""
+    used = _encoded_size({**envelope, "numbered_lines": []}) + _ENVELOPE_SLACK
+    numbered: list[dict[str, Any]] = []
+    for offset, text in enumerate(lines):
+        entry = {"line": start + offset, "text": text}
+        used += _encoded_size(text) + _encoded_size(entry) + 2  # two array commas
+        if used > OUTPUT_BUDGET_BYTES:
+            break
+        numbered.append(entry)
+    return numbered
+
+
 def _option(arguments: Mapping[str, Any], name: str, default: Any) -> Any:
     """An optional argument; an explicit null means the default, as the schemas allow."""
     value = arguments.get(name)
@@ -741,12 +756,14 @@ def read_lines(
     envelope = {"path": display, "start_line": start, "lines": [], "line_count": 0,
                 "total_lines": len(lines), "next_start_line": start, "truncated": True,
                 "cut_lines": []}
-    kept = _fitting(shown, envelope)
+    numbered = _numbered_lines(shown, start, envelope)
+    kept = len(numbered)
     shown = shown[:kept]
     cut = [start + offset for offset, line in enumerate(window[:kept]) if len(line) > READ_MAX_LINE_CHARS]
     end = start - 1 + kept
     result: dict[str, Any] = {
         "path": display, "start_line": start, "lines": shown, "line_count": kept,
+        "numbered_lines": numbered,
         "total_lines": len(lines), "next_start_line": end + 1 if end < len(lines) else None,
         "truncated": kept < len(window) or bool(cut),
     }
