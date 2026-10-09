@@ -87,7 +87,6 @@ function ledgerContext(overrides = {}) {
         runLedgerApproval: element(),
         runLedgerStatus: element(),
         runLedgerStop: element(),
-        runToolsBtn: element(),
         promptInput: element(),
         aborted,
         ...overrides,
@@ -112,7 +111,7 @@ test("a finished run's card closes and clears; a live run's card stays", () => {
     assert.equal(JSON.stringify(context.toolRunState), JSON.stringify({ runId: null, cursor: 0, events: [] }));
     assert.equal(context.aborted.length, 1);
     assert.equal(context.runLedgerStatus.textContent, "Ready");
-    assert.ok(context.runToolsBtn.focused);
+    assert.ok(context.promptInput.focused);  // main replaced Run tools with the composer tool picker
 });
 
 test("a start that fails shows a closable notice but never hides a live run", () => {
