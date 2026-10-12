@@ -993,6 +993,12 @@
       "status": "accepted",
       "date": "2026-10-06",
       "decision": "A: send format json by default and report invalid-JSON counts. The Prompt Lab runner sends it; /eval/chat leaves format out unless the caller asks."
+    },
+    {
+      "id": "DL-SELFEDIT-01",
+      "status": "accepted",
+      "date": "2026-10-12",
+      "decision": "A: DaveLLM edits its own code only in a separate full clone on its own branch, set as its only tool root; the checkout the app runs from (including the launcher) is no longer a root. Claude or Codex reviews the uncommitted edits, runs the checks and opens a pull request; CI gates the merge; Dave relaunches. A full clone rather than a linked worktree, because Git admission refuses a Git directory outside the root. Shell, commit and push stay off. Setup: docs/TOOLS100_SETUP.md."
     }
   ],
   "files": [
