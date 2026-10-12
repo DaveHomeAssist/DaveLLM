@@ -1,20 +1,37 @@
 # Tools100 deployment-input readiness
 
-Checked October 7, 2026 against `main` at `b935ea09cb0832c5ca76233db93a16ac30c5c3da`.
+## Reconciliation — October 12, 2026
+
+Source checked at `cfc4bf2edfa1f974aa1d0d17cfafc4f1ca47deb1`. This is a documentation reconciliation using existing receipts, not a new runtime probe or grant. The October 7 matrix below remains a **dated historical snapshot**, not today's installed inventory.
+
+| Evidence lane | Reconciled state | Limit |
+| --- | --- | --- |
+| Tool source | All 100 candidate contracts and two freshness companions are delivered. [PR71](https://github.com/DaveHomeAssist/DaveLLM/pull/71), [PR72](https://github.com/DaveHomeAssist/DaveLLM/pull/72) and [PR73](https://github.com/DaveHomeAssist/DaveLLM/pull/73) are merged; their old open/repair blockers are closed. | Registration is not provider, hardware or model acceptance. Do not rebuild these contracts. |
+| Readiness checker | [PR77](https://github.com/DaveHomeAssist/DaveLLM/pull/77) and its procfs-fixture follow-up [PR78](https://github.com/DaveHomeAssist/DaveLLM/pull/78) are merged. | The earlier missing-file output is historical; the checker was not rerun here. |
+| Later installed evidence | The October 7 [model-context record](MODEL_CONTEXT_SETUP.md) reports a selected `calc.eval` run returning 108. The October 9 native activation receipt records canonical source `b34e69b`, a native window, authenticated health/inventories and preserved root/toolpack configuration. | This supersedes the blanket claim that Tools100 remained uninstalled. It does not establish all 100 tools, all provider inputs or today's running-process revision. |
+| Prompt acceptance | The October 9 four-case pilot at `b34e69b` is **2 Pass / 2 Fail**: T10 source fidelity and T11 format/citations remain **FAIL**; T17/T18 passed. It consumed 10 model requests and 4070 generated tokens. | All four attempts are spent; unused aggregate headroom is not a retry grant. The original 12 Pass / 5 Fail batch is unchanged. |
+| Source excerpt correction | [PR86](https://github.com/DaveHomeAssist/DaveLLM/pull/86) merged as `3e0b76b`; [source/CI/publication evidence](SOURCE_EXCERPTS.md#delivered-source-and-remaining-acceptance) closes its source gates. | No installed activation or live improvement of this correction is established. |
+| Current source delivery | [CI37994281894](https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37994281894) and [Pages37994281449](https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37994281449) passed at `cfc4bf2`. | Canonical local checkout was observed clean at `b34e69b` on October 12; a checkout observation is not a running-process or native acceptance check. |
+
+Provider aliases/grants, helper configuration and physical/native acceptance remain individually evidenced inputs, not blanket Missing or Ready claims inferred from this snapshot. None was inspected or changed during this reconciliation. Duncan's October 7 CPU baseline failed after **one request**; the recorded stop-tuning condition remains in force, with no higher profile, retry or budget reset. H9 remains unqualified. See the separately dated entries in [NEXT_STEPS.json](NEXT_STEPS.json).
+
+## Historical snapshot — October 7, 2026
+
+Checked against `main` at `b935ea09cb0832c5ca76233db93a16ac30c5c3da`. Present-tense observations in this historical section refer only to that check.
 
 This is a source and nonsecret-presence inventory, not an activation guide or live acceptance record. The installed router currently exposes the existing 22 qualified/extended tools and no Tools100 definitions. Neither `toolpack.json` nor `tool-roots.json` exists in the DaveLLM data directory. Dominic, Walter and Duncan answer the authenticated node-status route as online, but that proves neither model reliability nor helper readiness. No provider call, model call, mutation, helper installation, service change or restart was performed.
 
 PR #71 was reviewed at `22a5bf332927b46d01fa6dabc09f12da4d1663a2` and has now been reconciled with current `main`. It owns selective `enabled_tools`, secure optional-file loading and `docs/TOOLS100_SETUP.md`; this record does not duplicate that work. Installed activation remains separate and has not occurred.
 
-## Status meanings
+## Historical status meanings
 
 - **Ready**: source needs no additional deployment input, or the required nonsecret target is currently established.
 - **Missing**: a required named alias, allowlist, grant, helper or executable is not configured or not delivered.
 - **Unknown**: presence or capability cannot be established without reading secret values, exercising an effect or selecting an operator-owned path.
 
-All groups still require the default-off Tools100 registry to be enabled in a separately approved installed-runtime change. “Ready” below never means currently installed or accepted.
+At that snapshot, all groups required the default-off Tools100 registry to be enabled in a separately approved installed-runtime change. “Ready” below never meant installed or accepted; later installed evidence is separated above.
 
-## Capability-group matrix
+## Historical capability-group matrix
 
 | Group | Status | Actual named targets / source-ready portion | Required deployment inputs and present gap |
 | --- | --- | --- | --- |
@@ -40,7 +57,7 @@ All groups still require the default-off Tools100 registry to be enabled in a se
 | EX-18 `av.show` | **Ready / Missing** | Inline `dmx.patch_check` needs no network target. | No Art-Net interface/helper, OSC target/address allowlist, Resolume service, MIDI map or AV inventory records are configured. UDP/OSC/physical receipt remains Unknown. |
 | EX-19 `media` | **Ready / Missing** | Inline take-gap and setlist parsing are source-ready. | No admitted media roots, POSIX runner, FFprobe/Tesseract/whisper/Mermaid-style fixed executables, whisper model source or accepted vision inference target. |
 
-## Cross-cutting deployment prerequisites
+## Historical cross-cutting deployment prerequisites
 
 1. **Installed selection and roots — Missing.** Tools100 is not registered in the running app, and the optional nonsecret configuration/root files owned by PR #71 are absent. Merge PR #71 before any installed switch-on work; do not recreate its launcher or setup guide elsewhere.
 2. **POSIX helper — Missing.** No configured runner alias or deployed `scripts/tool_job_runner.py` plus private helper config is established. Dominic is the only inventoried remote POSIX candidate; choosing it still requires exact helper path, hostname, owners, roots, tools, capabilities, executables and recipes. The Mac is POSIX but is not a silent heavy-work fallback. Walter and Duncan remain unsupported for helper jobs.
@@ -57,17 +74,19 @@ runner-capability and executable-key presence/shape for all 21 groups. Output ne
 contains configuration values or paths. Secrets remain `not_read`, network remains
 `not_used`, and live acceptance remains `not_checked`.
 
-The current installed-data check reports both optional files **Missing**, zero enabled
+The October 7 installed-data check reported both optional files **Missing**, zero enabled
 Tools100 names and 21 group rows. That is expected evidence of preserved installed
 state, not a request to create files. The command exits nonzero until every reported
 requirement is Ready; Unknown is intentionally not promoted to Ready.
 
-## Next executable item
+## Historical next item and its disposition
 
-No independent source dependency remains in this deployment-input slice. The next
-step is an explicitly approved operator-owned configuration staging pass: choose the
+No independent source dependency remained in that deployment-input slice. Its next
+step was an explicitly approved operator-owned configuration staging pass: choose the
 nonsecret starter selection and admitted roots, create them outside the repository,
 run this checker, and keep provider grants, helper deployment, restart/activation and
 live acceptance as separate approvals and evidence lanes.
 
-Live/provider-dependent rows require exact inputs rather than broad permission: a named alias and owner allowlist; the minimum required provider scope; or a specific POSIX helper path/config/executable recipe. Missing rows do not block the ready local/advisory tools or the source-only checker.
+The later receipts above supersede this as an instruction to recreate starter files or repeat the already-delivered checker. No new tool implementation gap is established by this reconciliation. The remaining product work is separately bounded installed activation/acceptance of newer source, live answer quality, named provider/helper readiness and physical/operator evidence. This document grants none of those effects, retries or H9 runs.
+
+Live/provider-dependent rows require exact inputs rather than broad permission: a named alias and owner allowlist; the minimum required provider scope; or a specific POSIX helper path/config/executable recipe. Historical missing rows do not block the ready local/advisory tools or the delivered source-only checker.
