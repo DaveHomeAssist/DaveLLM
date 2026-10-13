@@ -118,6 +118,7 @@ def test_calculator_hostile_inputs_are_bounded(expression):
 @pytest.mark.parametrize("name,args,field,expected", [
     ("calc.eval", {"expression": "2+3*4", "from_unit": "", "to_unit": ""}, "value", 14),
     ("calc.eval", {"expression": "12", "from_unit": "in", "to_unit": "ft"}, "value", 1),
+    ("calc.eval", {"expression": "2+3*4"}, "value", 14),  # DL-TOOLUX-01 A1: units only to convert
     ("time.convert", {"timestamp": "2026-10-05T12:00:00Z", "zone": "America/New_York"}, "timestamp", "2026-10-05T08:00:00-04:00"),
     ("json.validate", {"document": '{"x":1}', "schema": '{"type":"object","properties":{"x":{"type":"integer"}},"additionalProperties":false}'}, "valid", True),
     ("prompt.lint", {"text": "Do this on the open page."}, "findings", []),
@@ -338,3 +339,49 @@ def test_starter_example_selects_only_read_only_tools():
     assert [s.name for s in selected] == [s.name for s in ALL_SPECS if s.name in starter["enabled_tools"]]
     assert len(selected) == len(starter["enabled_tools"]) == 13
     assert not any(s.approval for s in selected)
+
+
+# DL-TOOLUX-01 A6: secret.scan over admitted files ------------------------------------------
+
+def test_secret_scan_by_path_reports_locations_never_matches(pack):
+    from davellm_files import PathNotAllowed
+    router, host, _, root = pack
+    docs = root / "docs"
+    docs.mkdir()
+    planted = "api_key=" + "fixtureValue" + "12345678"
+    (docs / "leak.md").write_text(f"# Notes\nordinary\n{planted}\n", encoding="utf-8")
+    (docs / "clean.md").write_text("nothing here\n", encoding="utf-8")
+    (docs / ".env").write_text("token=" + "x" * 24 + "\n", encoding="utf-8")
+    result = execute_local("secret.scan", {"path": "docs"}, host)
+    assert result["findings"] == [{"path": "docs/leak.md", "line": 3, "kind": "credential_candidate"}]
+    assert result["files_scanned"] == 2 and result["clean"] is False and result["path"] == "docs"
+    assert planted not in json.dumps(result) and str(root) not in json.dumps(result)
+    single = execute_local("secret.scan", {"path": "docs/clean.md"}, host)
+    assert single["clean"] is True and single["path"] == "docs/clean.md"
+    for arguments in ({}, {"text": "a", "path": "docs"}):
+        with pytest.raises(ToolpackError, match="either text or path"):
+            execute_local("secret.scan", arguments, host)
+    with pytest.raises(PathNotAllowed):
+        execute_local("secret.scan", {"path": "/etc"}, host)
+
+
+def test_secret_scan_never_opens_protected_or_outside_files(router_factory, monkeypatch, hostile_tree):
+    from hostile_fs import SECRET_FILES
+    monkeypatch.setenv("DAVE_ENABLE_TOOLPACK", "true")
+    router, _, _ = router_factory(tools=True, tool_roots=[str(hostile_tree.root)])
+    for relative in (".env", "certs/server.key", ".ssh/config"):
+        hostile_tree.at(relative).write_text("api_key=" + "plantedSecretValue1\n", encoding="utf-8")
+    (hostile_tree.outside / "notes.txt").write_text("token=" + "plantedOutsideValue1\n", encoding="utf-8")
+    with hostile_tree.at("docs/guide.md").open("a", encoding="utf-8") as handle:
+        handle.write("token=" + "plantedOrdinaryValue1\n")
+    binding = router.HostRunBinding("default", "http://ollama.test:11434", "m", 128, 0, None, None, None, {}, "scan")
+    token = router.HOST_RUN_CONTEXT.set(binding)
+    try:
+        result = execute_local("secret.scan", {"path": "."}, router.TOOLPACK_HOST)
+    finally:
+        router.HOST_RUN_CONTEXT.reset(token)
+    assert [item["path"] for item in result["findings"]] == ["docs/guide.md"]
+    assert result["skipped_large"] == 1 and result["skipped_binary"] == 1
+    text = json.dumps(result)
+    assert not hostile_tree.leaked(text) and "planted" not in text and str(hostile_tree.base) not in text
+    assert not any(secret in json.dumps(result["findings"]) for secret in SECRET_FILES)

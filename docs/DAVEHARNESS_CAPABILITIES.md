@@ -11,7 +11,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 - 128 tools with every flag on: 5 from `DAVE_ENABLE_TOOLS`, 1 from `DAVE_ENABLE_SHELL_TOOL`, 17 from `DAVE_ENABLE_EXTENDED_TOOLS`, 3 from `DAVE_ENABLE_NOTION_TOOLS`, 102 from `DAVE_ENABLE_TOOLPACK`.
 - Exact-call approval required: `artnet.discover`, `audio.transcribe`, `chat.summarize`, `cluster.benchmark`, `code.grep_regex`, `comms.log.append`, `data.query`, `dep.audit`, `diagram.render`, `docker.logs`, `docker.ps`, `docs.ask`, `eval.run`, `file.append`, `file.edit`, `file.write`, `gh.issue.create`, `git.commit`, `git.push`, `gmail.draft`, `ha.config.check`, `ha.service.call`, `image.describe`, `lint.run`, `mac.disk.report`, `mac.pressure`, `memory.propose`, `model.ask`, `model.consensus`, `model.delete`, `model.pull`, `model.unload`, `model.warm`, `nextsteps.update`, `node.disk`, `node.wake`, `notify.push`, `notion.block.update`, `notion.comment.add`, `notion.db.create_row`, `notion.db.update_props`, `notion.log_session`, `notion.page.append`, `notion.page.create`, `ocr.image`, `osc.send`, `pdf.read`, `project.brain.pin`, `project.notepad.write`, `shell.exec`, `tailscale.status`, `test.run`, `vector.index`, `video.probe`.
 - Preflight before approval: `artnet.discover`, `audio.transcribe`, `chat.summarize`, `cluster.benchmark`, `code.grep_regex`, `comms.log.append`, `data.query`, `dep.audit`, `diagram.render`, `docker.logs`, `docker.ps`, `docs.ask`, `eval.run`, `file.edit`, `gh.issue.create`, `git.commit`, `git.push`, `gmail.draft`, `ha.config.check`, `ha.service.call`, `image.describe`, `lint.run`, `mac.disk.report`, `mac.pressure`, `memory.propose`, `model.ask`, `model.consensus`, `model.delete`, `model.pull`, `model.unload`, `model.warm`, `nextsteps.update`, `node.disk`, `node.wake`, `notify.push`, `notion.block.update`, `notion.comment.add`, `notion.db.create_row`, `notion.db.update_props`, `notion.log_session`, `notion.page.append`, `notion.page.create`, `ocr.image`, `osc.send`, `pdf.read`, `project.brain.pin`, `project.notepad.write`, `tailscale.status`, `test.run`, `vector.index`, `video.probe`. A call the preflight finds certain to fail is refused as a tool error instead of asking for approval; the handler still checks everything after approval.
-- Tools by permission: `execute_process` 30; `public_network` 29; `read` 23; `read_files` 20; `read_system` 2; `write` 21; `write_files` 3.
+- Tools by permission: `execute_process` 30; `public_network` 29; `read` 22; `read_files` 21; `read_system` 2; `write` 21; `write_files` 3.
 - Every tool schema rejects unknown arguments (`additionalProperties: false`).
 - Definition fingerprints are not listed: they depend on the checkout path and Python version. `tests/fixtures/davellm/tool_catalog.json` pins their portable inputs.
 
@@ -36,7 +36,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`artnet.discover`](#artnetdiscover) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`interface`** |
 | [`audio.transcribe`](#audiotranscribe) | `DAVE_ENABLE_TOOLPACK` | `execute_process` | exact call, preflight | `60` | `bounded` | async | **`runner`**, **`path`**, **`language`** |
 | [`av.inventory.lookup`](#avinventorylookup) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`query`**, **`limit`** |
-| [`calc.eval`](#calceval) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`expression`**, **`from_unit`**, **`to_unit`** |
+| [`calc.eval`](#calceval) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`expression`**, `from_unit`, `to_unit` |
 | [`calendar.list`](#calendarlist) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`calendar`**, **`start`**, **`end`**, **`limit`** |
 | [`calendar.suggest_time`](#calendarsuggest_time) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`calendar`**, **`start`**, **`end`**, **`minutes`** |
 | [`chat.export`](#chatexport) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`conversation`** |
@@ -143,7 +143,7 @@ DaveLLM `2.1.0` · DaveHarness `1.0.0-rc.1` · manifest version 1
 | [`route.suggest`](#routesuggest) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`text`** |
 | [`rules.lookup`](#ruleslookup) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | **`source`**, **`rule`** |
 | [`runner.select`](#runnerselect) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`capability`** |
-| [`secret.scan`](#secretscan) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`text`** |
+| [`secret.scan`](#secretscan) | `DAVE_ENABLE_TOOLPACK` | `read_files` | — | `60` | `bounded` | async | `text`, `path` |
 | [`service.health`](#servicehealth) | `DAVE_ENABLE_TOOLPACK` | `public_network` | — | `60` | `bounded` | async | **`service`** |
 | [`setlist.parse`](#setlistparse) | `DAVE_ENABLE_TOOLPACK` | `read` | — | `60` | `bounded` | async | **`text`** |
 | [`shell.exec`](#shellexec) | `DAVE_ENABLE_SHELL_TOOL` | `execute_process` | exact call | `6` | `bounded` | sync, run context | **`command`** |
@@ -201,13 +201,13 @@ Look up equipment in an operator-configured nonsecret AV inventory.
 
 ### calc.eval
 
-Evaluate bounded arithmetic AST and explicit unit conversion; never eval or function calls.
+Evaluate bounded arithmetic AST; give from_unit and to_unit only to convert units. Never eval or function calls.
 
 | Argument | Type | Required | Constraints | Description |
 |---|---|---|---|---|
 | `expression` | string | yes | maxLength `200`, minLength `1` | — |
-| `from_unit` | string | yes | maxLength `20`, minLength `0` | — |
-| `to_unit` | string | yes | maxLength `20`, minLength `0` | — |
+| `from_unit` | string | no | maxLength `20`, minLength `0` | — |
+| `to_unit` | string | no | maxLength `20`, minLength `0` | — |
 
 ### calendar.list
 
@@ -490,7 +490,7 @@ Read up to 400 numbered lines from a UTF-8 text file inside an allowed tool root
 
 ### file.search
 
-Find lines containing literal text in UTF-8 files inside an allowed tool root. Binary files and files over 1 MiB are skipped.
+Find lines containing literal text in UTF-8 files inside an allowed tool root, and files whose path contains it (path_matches). Binary files and files over 1 MiB are skipped.
 
 | Argument | Type | Required | Constraints | Description |
 |---|---|---|---|---|
@@ -1188,11 +1188,12 @@ Suggest only configured runner capability records; no dispatch or agents.
 
 ### secret.scan
 
-Detect common credential families in supplied text; returns locations/kinds, never matched secrets.
+Detect common credential families in supplied text, or in the UTF-8 files at a file or folder path inside a tool root (give one of text or path); returns locations/kinds, never matched secrets.
 
 | Argument | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `text` | string | yes | maxLength `8000`, minLength `1` | — |
+| `text` | string | no | maxLength `8000`, minLength `1` | — |
+| `path` | string | no | maxLength `4096`, minLength `1` | — |
 
 ### service.health
 
@@ -1346,7 +1347,7 @@ Body of `POST /tools/agent/runs`. Validators in `app.py` add checks not listed h
 | `max_tokens` | no | `2048` | ge `1`, le `262144` |
 | `temperature` | no | `0.7` | ge `0`, le `2` |
 | `step_limit` | no | `8` | ge `1`, le `32` |
-| `error_budget` | no | `2` | ge `1`, le `8` |
+| `error_budget` | no | `4` | ge `1`, le `8` |
 | `selected_tools` | no | — | max_length `124` |
 | `max_input_tokens` | no | `null` | ge `1`, le `262144` |
 | `total_wall_seconds` | no | `300.0` | ge `0.1`, le `300.0` |
@@ -1414,6 +1415,7 @@ DaveHarness's default ceiling for any JSON payload it admits.
 | POST | `/tools/agent/runs/{run_id}/decisions` | X-API-Key | `decide_agent_run` |
 | GET | `/tools/agent/runs/{run_id}/events` | X-API-Key | `get_agent_run_events` |
 | GET | `/tools/agent/runs/{run_id}/pending/notion-context` | X-API-Key | `notion_pending_context_route` |
+| POST | `/tools/agent/runs/{run_id}/record` | X-API-Key | `record_agent_run` |
 | POST | `/tools/execute` | X-API-Key | `execute_tool_endpoint` |
 
 ## Constants
@@ -1478,7 +1480,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `BINARY_SNIFF_BYTES` | `8192` |
 | `CURSOR_VERSION` | `c1` |
 | `DEFAULT_IGNORED_DIRS` | `[".git", ".trash", "__pycache__", "node_modules", "venv"]` |
-| `FILE_NOT_FOUND` | `File not found` |
+| `FILE_NOT_FOUND` | `File not found; list or search the folder to check the path` |
 | `LIST_DEFAULT_DEPTH` | `1` |
 | `LIST_DEFAULT_ENTRIES` | `100` |
 | `LIST_MAX_DEPTH` | `3` |
@@ -1490,7 +1492,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `NOT_TEXT` | `File is not UTF-8 text` |
 | `OUTPUT_BUDGET_BYTES` | `49152` |
 | `PATH_NOT_ALLOWED` | `Access denied: path is not allowed` |
-| `PATH_NOT_FOUND` | `Path not found` |
+| `PATH_NOT_FOUND` | `Path not found; list or search the folder to check the path` |
 | `READ_DEFAULT_LINES` | `200` |
 | `READ_MAX_FILE_BYTES` | `10485760` |
 | `READ_MAX_LINES` | `400` |
@@ -1502,6 +1504,7 @@ Public constants each module defines, including the fixed refusal messages.
 | `SEARCH_MAX_FILES` | `2000` |
 | `SEARCH_MAX_FILE_BYTES` | `1048576` |
 | `SEARCH_MAX_MATCHES` | `200` |
+| `SEARCH_MAX_PATH_MATCHES` | `20` |
 | `SEARCH_MAX_QUERY_CHARS` | `200` |
 | `SEARCH_SCAN_LIMIT` | `20000` |
 | `SECRET_DIR_NAMES` | `[".aws", ".gnupg", ".ssh"]` |

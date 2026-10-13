@@ -116,3 +116,48 @@ test("a late frame from a prior run cannot advance the new run cursor", async ()
     assert.deepEqual(context.toolRunState.events.map((event) => event.sequence), [1]);
     assert.ok(requested.some((url) => url.includes("run_new/events?stream=true&after=0")));
 });
+
+test("tool steps read as plain words, without doubled numbers, with raw output folded away", () => {
+    const context = ledgerHarness();
+    const call = (id, name, args) => ({ id, type: "function", function: { name, arguments: JSON.stringify(args) } });
+    const result = (id, payload) => ({ role: "tool", tool_call_id: id, content: JSON.stringify(payload) });
+    const run = {
+        run_id: "run_t20", status: "completed", reason_code: "completed", terminal_explanation: null,
+        snapshot: { steps: 2, pending_call: null, transcript: [
+            { role: "user", content: "find it" },
+            { role: "assistant", content: "", tool_calls: [
+                call("a", "file.search", { query: "approvalPreview" }),
+                call("b", "calc.eval", { expression: "2+2" }),
+                call("c", "md.outline", { path: "x.md" }),
+            ] },
+            result("a", { status: "success", result: JSON.stringify({ matches: [{}, {}], path_matches: ["static/app.js"] }) }),
+            result("b", { status: "success", result: JSON.stringify({ value: 4 }) }),
+            result("c", { status: "error", result: "", error: "File not found; list or search the folder to check the path" }),
+            { role: "assistant", content: "Found it." },
+        ] },
+    };
+    context.renderToolRun(run);
+    const steps = context.runLedgerEvents.children.map((item) => item.textContent);
+    assert.deepEqual(steps, [
+        "✓ Searched files for “approvalPreview” · 2 matches, 1 file name",
+        "✓ Calculated 2+2 · = 4",
+        "✗ Outlined x.md · File not found; list or search the folder to check the path",
+    ]);
+    assert.ok(steps.every((line) => !/^\d+\./.test(line)));
+    const [raw] = context.runLedgerTranscript.children;
+    assert.equal(raw.children[0].textContent, "Raw tool output");
+    assert.ok(raw.children.some((block) => block.textContent === "assistant: Found it."));
+});
+
+test("a call awaiting approval and a thinking model show as active steps", () => {
+    const context = ledgerHarness();
+    const steps = context.toolRunSteps({ status: "approval_required", snapshot: {
+        pending_call: { call_id: "e" }, model_inflight: false,
+        transcript: [{ role: "assistant", content: "", tool_calls: [
+            { id: "e", function: { name: "file.edit", arguments: { path: "a.md" } } },
+        ] }],
+    } });
+    assert.deepEqual(JSON.parse(JSON.stringify(steps)), [{ state: "active", text: "… Edit a.md · waiting for your approval" }]);
+    const thinking = context.toolRunSteps({ status: "running", snapshot: { transcript: [], model_inflight: true } });
+    assert.equal(thinking[0].text, "… Thinking");
+});

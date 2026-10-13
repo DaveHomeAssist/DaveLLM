@@ -149,14 +149,14 @@ SPECS = (
     spec("video.gap_find", "media", "Find gaps/overlaps between supplied take intervals; no media decoding.", {"takes": array(obj(name=text(100), start=text(50), end=text(50)))}),
     spec("audio.transcribe", "media", "Run bounded transcription on an approved Whisper-capable runner.", {"runner": ALIAS, "path": PATH, "language": text(20)}, permission="execute_process", approval=True, backend="job"),
     spec("setlist.parse", "media", "Parse bounded setlist lines and optional minute:second durations.", {"text": BODY}),
-    spec("calc.eval", "utility", "Evaluate bounded arithmetic AST and explicit unit conversion; never eval or function calls.", {"expression": text(200), "from_unit": text(20, 0), "to_unit": text(20, 0)}),
+    spec("calc.eval", "utility", "Evaluate bounded arithmetic AST; give from_unit and to_unit only to convert units. Never eval or function calls.", {"expression": text(200), "from_unit": text(20, 0), "to_unit": text(20, 0)}, ("expression",)),
     spec("time.convert", "utility", "Convert an offset-aware ISO timestamp to an IANA timezone; ambiguous naive times refused.", {"timestamp": text(50), "zone": text(100)}),
     spec("image.describe", "media", "Approved bounded vision request to an installed model with an admitted image; no recursive tools.", {"node": NODE, "model": MODEL, "path": PATH, "text": text(1000), "max_tokens": integer(1, 256)}, permission="execute_process", approval=True, backend="cluster"),
     spec("ocr.image", "media", "Run bounded OCR on an approved capable runner and admitted image.", {"runner": ALIAS, "path": PATH}, permission="execute_process", approval=True, backend="job"),
     spec("data.query", "utility", "Query bounded CSV/JSON records with isolated read-only SQL; extension/network/file access disabled.", {"runner": ALIAS, "path": PATH, "sql": text(2000)}, permission="execute_process", approval=True, backend="job"),
     spec("json.validate", "utility", "Validate bounded JSON against the existing harness schema subset; unsupported keywords refused.", {"document": text(8000), "schema": text(8000)}),
     spec("diagram.render", "utility", "Render Mermaid to an SVG artifact on an approved isolated runner; file-producing effect.", {"runner": ALIAS, "source": text(4000), "output": PATH}, permission="execute_process", approval=True, backend="job"),
-    spec("secret.scan", "quality", "Detect common credential families in supplied text; returns locations/kinds, never matched secrets.", {"text": BODY}),
+    spec("secret.scan", "quality", "Detect common credential families in supplied text, or in the UTF-8 files at a file or folder path inside a tool root (give one of text or path); returns locations/kinds, never matched secrets.", {"text": BODY, "path": PATH}, (), permission="read_files"),
 )
 
 BY_NAME = {item.name: item for item in SPECS}

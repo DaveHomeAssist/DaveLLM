@@ -105,7 +105,7 @@
         "node_modules",
         "venv"
       ],
-      "FILE_NOT_FOUND": "File not found",
+      "FILE_NOT_FOUND": "File not found; list or search the folder to check the path",
       "LIST_DEFAULT_DEPTH": 1,
       "LIST_DEFAULT_ENTRIES": 100,
       "LIST_MAX_DEPTH": 3,
@@ -117,7 +117,7 @@
       "NOT_TEXT": "File is not UTF-8 text",
       "OUTPUT_BUDGET_BYTES": 49152,
       "PATH_NOT_ALLOWED": "Access denied: path is not allowed",
-      "PATH_NOT_FOUND": "Path not found",
+      "PATH_NOT_FOUND": "Path not found; list or search the folder to check the path",
       "READ_DEFAULT_LINES": 200,
       "READ_MAX_FILE_BYTES": 10485760,
       "READ_MAX_LINES": 400,
@@ -129,6 +129,7 @@
       "SEARCH_MAX_FILES": 2000,
       "SEARCH_MAX_FILE_BYTES": 1048576,
       "SEARCH_MAX_MATCHES": 200,
+      "SEARCH_MAX_PATH_MATCHES": 20,
       "SEARCH_MAX_QUERY_CHARS": 200,
       "SEARCH_SCAN_LIMIT": 20000,
       "SECRET_DIR_NAMES": [
@@ -824,6 +825,14 @@
     },
     {
       "authentication": "X-API-Key",
+      "endpoint": "record_agent_run",
+      "methods": [
+        "POST"
+      ],
+      "path": "/tools/agent/runs/{run_id}/record"
+    },
+    {
+      "authentication": "X-API-Key",
       "endpoint": "execute_tool_endpoint",
       "methods": [
         "POST"
@@ -889,7 +898,7 @@
         "required": false
       },
       "error_budget": {
-        "default": 2,
+        "default": 4,
         "ge": 1,
         "le": 8,
         "required": false
@@ -1099,7 +1108,7 @@
       "async_handler": true,
       "cancellation": "bounded",
       "context_handler": false,
-      "description": "Evaluate bounded arithmetic AST and explicit unit conversion; never eval or function calls.",
+      "description": "Evaluate bounded arithmetic AST; give from_unit and to_unit only to convert units. Never eval or function calls.",
       "family": "calc",
       "parameters": {
         "additionalProperties": false,
@@ -1121,9 +1130,7 @@
           }
         },
         "required": [
-          "expression",
-          "from_unit",
-          "to_unit"
+          "expression"
         ],
         "type": "object"
       },
@@ -2318,7 +2325,7 @@
       "async_handler": false,
       "cancellation": "bounded",
       "context_handler": false,
-      "description": "Find lines containing literal text in UTF-8 files inside an allowed tool root. Binary files and files over 1 MiB are skipped.",
+      "description": "Find lines containing literal text in UTF-8 files inside an allowed tool root, and files whose path contains it (path_matches). Binary files and files over 1 MiB are skipped.",
       "family": "file",
       "parameters": {
         "additionalProperties": false,
@@ -5168,23 +5175,26 @@
       "async_handler": true,
       "cancellation": "bounded",
       "context_handler": false,
-      "description": "Detect common credential families in supplied text; returns locations/kinds, never matched secrets.",
+      "description": "Detect common credential families in supplied text, or in the UTF-8 files at a file or folder path inside a tool root (give one of text or path); returns locations/kinds, never matched secrets.",
       "family": "secret",
       "parameters": {
         "additionalProperties": false,
         "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
           "text": {
             "maxLength": 8000,
             "minLength": 1,
             "type": "string"
           }
         },
-        "required": [
-          "text"
-        ],
+        "required": [],
         "type": "object"
       },
-      "permission": "read",
+      "permission": "read_files",
       "preflight": false,
       "requires_flags": [
         "DAVE_ENABLE_TOOLS",

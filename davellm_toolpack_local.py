@@ -5,14 +5,19 @@ import ast
 import json
 import math
 import operator
+import os
 import re
+import stat
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from daveharness.schema import validate_json_schema
-from davellm_files import display_path, read_admitted_bytes, decode_text, search_files, read_lines
+from davellm_files import (
+    SEARCH_MAX_DEPTH, SEARCH_SCAN_LIMIT, FileTooLarge, FileToolError, PathNotAllowed, decode_text,
+    deepest_root, display_path, read_admitted_bytes, read_lines, relative_display, search_files, walk_tree,
+)
 from davellm_git import open_repository
 from davellm_toolpack import ToolpackError, digest, _SENSITIVE
 
@@ -23,6 +28,9 @@ _UNITS = {"m": ("length", 1), "cm": ("length", .01), "mm": ("length", .001),
           "ft": ("length", .3048), "in": ("length", .0254), "s": ("time", 1),
           "min": ("time", 60), "h": ("time", 3600), "kg": ("mass", 1), "g": ("mass", .001),
           "lb": ("mass", .45359237)}
+SECRET_SCAN_MAX_FILES = 500
+SECRET_SCAN_MAX_FILE_BYTES = 262_144
+SECRET_SCAN_MAX_FINDINGS = 50
 
 
 def calculator(expression):
@@ -89,6 +97,53 @@ def source_text(host, alias, requested=None):
     return text
 
 
+def _secret_lines(text):
+    return [text.count("\n", 0, match.start()) + 1 for match in _SENSITIVE.finditer(text)]
+
+
+def secret_scan_path(host, requested):
+    """secret.scan over admitted files: walk_tree never yields protected files, and every read
+    goes through read_admitted_bytes, so results carry only root-relative paths and line numbers."""
+    target = host.router["resolve_extended_tool_path"](requested)
+    root = deepest_root(target, host.router["TOOL_ROOTS"])
+    mode = os.lstat(target).st_mode
+    truncated = False
+    if stat.S_ISREG(mode):
+        candidates = [target]
+    elif stat.S_ISDIR(mode):
+        walk = walk_tree(target, root, max_depth=SEARCH_MAX_DEPTH, max_entries=SEARCH_SCAN_LIMIT, include_dirs=False)
+        candidates = [entry.path for entry in walk.entries if entry.kind == "file"]
+        truncated = walk.truncated or walk.depth_limited
+    else:
+        raise ToolpackError("Path is not a file or directory")
+    if len(candidates) > SECRET_SCAN_MAX_FILES:
+        candidates, truncated = candidates[:SECRET_SCAN_MAX_FILES], True
+    counts = {"files_scanned": 0, "skipped_large": 0, "skipped_binary": 0, "skipped_unreadable": 0}
+    findings = []
+    for path in candidates:
+        try:
+            text = decode_text(read_admitted_bytes(path, SECRET_SCAN_MAX_FILE_BYTES))
+        except FileTooLarge:
+            counts["skipped_large"] += 1
+            continue
+        except (FileToolError, PathNotAllowed):
+            counts["skipped_unreadable"] += 1
+            continue
+        if text is None:
+            counts["skipped_binary"] += 1
+            continue
+        counts["files_scanned"] += 1
+        shown = relative_display(path, root)
+        for line in _secret_lines(text):
+            if len(findings) >= SECRET_SCAN_MAX_FINDINGS:
+                truncated = True
+                break
+            findings.append({"path": shown, "line": line, "kind": "credential_candidate"})
+    return {"path": relative_display(target, root), "findings": findings, "clean": not findings,
+            "truncated": truncated, **counts,
+            "note": "Heuristic, not proof of absence; protected files such as .env and keys are never opened"}
+
+
 def execute_local(name, args, host):
     if name in ("project.notepad.snapshot", "project.notepad.write", "memory.propose"):
         with host.native_lock:
@@ -99,12 +154,12 @@ def execute_local(name, args, host):
 def _execute_local(name, args, host):
     if name == "calc.eval":
         result = calculator(args["expression"])
-        source, target = args["from_unit"], args["to_unit"]
-        if source or target:
-            if source not in _UNITS or target not in _UNITS or _UNITS[source][0] != _UNITS[target][0]:
-                raise ToolpackError("Units must be a supported compatible pair")
-            result *= _UNITS[source][1] / _UNITS[target][1]
-        return {"value": result, "unit": target}
+        source, target = args.get("from_unit", ""), args.get("to_unit", "")
+        if not (source or target):
+            return {"value": result}
+        if source not in _UNITS or target not in _UNITS or _UNITS[source][0] != _UNITS[target][0]:
+            raise ToolpackError("Units must be a supported compatible pair")
+        return {"value": result * (_UNITS[source][1] / _UNITS[target][1]), "unit": target}
     if name == "time.convert":
         return {"timestamp": aware(args["timestamp"]).astimezone(ZoneInfo(args["zone"])).isoformat()}
     if name == "json.validate":
@@ -112,8 +167,12 @@ def _execute_local(name, args, host):
         validate_json_schema(document, schema)
         return {"valid": True, "schema_dialect": "DaveHarness supported subset"}
     if name == "secret.scan":
-        findings = [{"line": args["text"].count("\n", 0, m.start()) + 1, "kind": "credential_candidate"}
-                    for m in _SENSITIVE.finditer(args["text"])][:50]
+        if ("text" in args) == ("path" in args):
+            raise ToolpackError("Give either text or path")
+        if "path" in args:
+            return secret_scan_path(host, args["path"])
+        findings = [{"line": line, "kind": "credential_candidate"} for line in _secret_lines(args["text"])]
+        findings = findings[:SECRET_SCAN_MAX_FINDINGS]
         return {"findings": findings, "clean": not findings, "note": "Heuristic, not proof of absence"}
     if name == "prompt.lint":
         findings = []

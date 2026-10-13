@@ -372,8 +372,9 @@ def walk_tree(
 # secret denylist, and tool-root containment) and the configured roots.
 # Every refusal raised here carries a fixed message with no path or OS detail.
 
-FILE_NOT_FOUND = "File not found"
-PATH_NOT_FOUND = "Path not found"
+# DL-TOOLUX-01 A2: still fixed text with no path, but it names the next step.
+FILE_NOT_FOUND = "File not found; list or search the folder to check the path"
+PATH_NOT_FOUND = "Path not found; list or search the folder to check the path"
 NOT_A_REGULAR_FILE = "Path is not a regular file"
 NOT_A_FILE_OR_DIRECTORY = "Path is not a file or directory"
 NOT_TEXT = "File is not UTF-8 text"
@@ -397,6 +398,7 @@ SEARCH_SCAN_LIMIT = 20_000  # walked entries, directories included
 SEARCH_MAX_DEPTH = 32
 SEARCH_MAX_FILE_BYTES = 1_048_576
 SEARCH_MAX_QUERY_CHARS = 200
+SEARCH_MAX_PATH_MATCHES = 20
 SEARCH_LINE_CHARS = 300
 _SEARCH_CONTEXT_CHARS = 100
 
@@ -673,7 +675,7 @@ def _match_text(line: str, column: int) -> tuple[str, bool]:
 def search_files(
     arguments: Mapping[str, Any], *, resolve: Callable[[str], Path], roots: Sequence[Path],
 ) -> dict[str, Any]:
-    """file.search: literal, line-based search over bounded, symlink-safe text reads.
+    """file.search: literal, line-based search over bounded, symlink-safe text reads, plus file paths.
 
     Files come from ``walk_tree`` (so secrets, ignored folders and symlinks are
     never candidates) in its deterministic order. At most SEARCH_MAX_FILES are
@@ -698,9 +700,17 @@ def search_files(
         truncated = walk.truncated or walk.depth_limited
     else:
         raise FileToolError(NOT_A_FILE_OR_DIRECTORY)
+    needle = query if case_sensitive else query.casefold()
+    # DL-TOOLUX-01 A5: people name files ("the setup guide"), so matching paths come back too.
+    path_matches: list[str] = []
+    for path in candidates:
+        shown = relative_display(path, root)
+        if needle in (shown if case_sensitive else shown.casefold()):
+            path_matches.append(shown)
+            if len(path_matches) >= SEARCH_MAX_PATH_MATCHES:
+                break
     if len(candidates) > SEARCH_MAX_FILES:
         candidates, truncated = candidates[:SEARCH_MAX_FILES], True
-    needle = query if case_sensitive else query.casefold()
     counts = {"files_scanned": 0, "skipped_large": 0, "skipped_binary": 0, "skipped_unreadable": 0}
     matches: list[dict[str, Any]] = []
     for path in candidates:
@@ -733,7 +743,8 @@ def search_files(
             matches.append(match)
         if truncated and len(matches) >= max_matches:
             break
-    envelope = {"path": display, "matches": [], "match_count": len(matches), "truncated": True, **counts}
+    envelope = {"path": display, "path_matches": path_matches, "matches": [], "match_count": len(matches),
+                "truncated": True, **counts}
     kept = _fitting(matches, envelope)
     return {**envelope, "matches": matches[:kept], "match_count": kept,
             "truncated": truncated or kept < len(matches)}
