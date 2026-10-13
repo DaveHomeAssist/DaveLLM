@@ -4149,6 +4149,7 @@ function toolRunSteps(run) {
     }
     if (snapshot.model_inflight) steps.push({ state: "active", text: "… Thinking" });
     else if (!steps.length && !TERMINAL_TOOL_RUNS.has(run.status)) steps.push({ state: "active", text: "… Starting" });
+    else if (!steps.length && run.status === "completed") steps.push({ state: "done", text: "✓ Answered without using a tool" });
     return steps;
 }
 
