@@ -6,7 +6,7 @@
     "DaveHomeAssist/DaveLLM"
   ],
   "head": "Compact tools and resizable workspace; project sidebar choice open",
-  "lastActivity": "2026-10-12",
+  "lastActivity": "2026-10-15",
   "status": "amber",
   "statusReason": "All 100 approved tools are source-delivered behind additive gates. October 7-9 receipts record selected-tool installation, private starter configuration, a calc.eval result of 108 and native activation at b34e69b. These are dated observations, not current running-process proof or acceptance of every tool. PR86 source excerpt correction is merged and CI/docs-published but not established as installed. T10/T11 remain FAIL; all four pilot attempts are spent (10 requests, 4070 generated tokens). Provider/helper inputs, physical/native acceptance and H9 remain separate gates; Duncan's one-request CPU failure still requires stopping tuning.",
   "evidence": {
@@ -827,6 +827,33 @@
         }
       ],
       "evidenceNote": "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md; scratch spike against a fake router, nothing committed"
+    },
+    {
+      "id": "DL-18",
+      "type": "security",
+      "sev": "P2",
+      "title": "Implemented: sidebar search no longer puts typed search terms in URLs",
+      "detail": "The sidebar search sent the typed terms as ?query= on GET /search, and uvicorn's access log, which the macOS launcher appends to its log file, records full URLs, so search terms reached the log. POST /search now takes {query, top_k} in a JSON body with the same API-key auth and response shape; top_k is bounded to 1-100 and the query to 100,000 characters. The GET is removed, so the old form gets the static mount's plain 404. Terms already in the existing launcher log are untouched and need Dave's decision before any edit. Mirrors DL-17 (memory lookup, PR #88).",
+      "files": [
+        "app.py",
+        "static/app.js",
+        "tests/test_api_contracts.py",
+        "tests/test_security_and_frontend.py",
+        "tests/test_native_tools.py",
+        "docs/DAVELLM_TOOLS.md"
+      ],
+      "evidence": "test",
+      "phase": 3,
+      "history": [
+        {
+          "checkedOn": "2026-10-15",
+          "title": "Sidebar search query string carried typed search terms",
+          "detail": "The sidebar search button in static/app.js built /search?query=<terms>; app.py served it as GET query parameters.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "implemented",
+      "evidenceNote": "October 15 source repair on branch claude/elegant-hypatia-6f5b13. Targeted pytest and node checks passed on the Mac; full pytest on Dominic and protected CI are recorded in the PR. The installed app is unchanged until merge and relaunch."
     }
   ],
   "phases": [

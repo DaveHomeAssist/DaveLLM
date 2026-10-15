@@ -1807,3 +1807,30 @@ def test_size_check_requires_a_loaded_inventory_and_a_known_model(router_factory
         client.get("/nodes/node-test/models", headers=AUTH)
         assert _size_check(client, None, "hi", model="missing:latest").status_code == 400
     assert client.post("/chat/size-check", json={"prompt": "hi", "node_id": "node-test", "model": MODEL_ID}).status_code == 401
+
+
+def test_conversation_search_takes_the_query_in_the_body_never_the_url(router_factory):
+    router, client, _ = router_factory()
+    router.CONVERSATIONS["mine"] = {"user_id": "default", "title": "Mine", "messages": []}
+    router.CONVERSATIONS["theirs"] = {"user_id": "someone-else", "title": "Theirs", "messages": []}
+    router.store_message_embedding("mine", 0, "user", "the merger draft is due friday")
+    router.store_message_embedding("mine", 1, "assistant", "the merger draft needs a second reader")
+    router.store_message_embedding("theirs", 0, "user", "the merger draft is due friday")
+
+    found = client.post("/search", headers=AUTH, json={"query": "merger draft"})
+    assert found.status_code == 200
+    results = found.json()
+    assert results and {item["conversation_id"] for item in results} == {"mine"}
+    assert set(results[0]) == {"conversation_id", "title", "role", "content", "similarity"}
+    assert results[0]["title"] == "Mine"
+    assert len(client.post("/search", headers=AUTH, json={"query": "merger draft", "top_k": 1}).json()) == 1
+
+    assert client.post("/search", json={"query": "merger"}).status_code == 401
+    assert client.post("/search", headers={"X-API-Key": "wrong"}, json={"query": "merger"}).status_code == 401
+    for bad in ({}, {"query": "x" * 100_001}, {"query": "x", "top_k": 0}, {"query": "x", "top_k": 101}):
+        assert client.post("/search", headers=AUTH, json=bad).status_code == 422, bad
+    # No GET remains, so search terms have no route into a URL and the access log;
+    # the static mount answers the old query-string form with a plain 404.
+    old_form = client.get("/search", headers=AUTH, params={"query": "merger draft"})
+    assert old_form.status_code == 404 and "merger" not in old_form.text
+    assert all("GET" not in route.methods for route in router.app.routes if getattr(route, "path", "") == "/search")
