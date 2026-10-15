@@ -827,6 +827,14 @@
         }
       ],
       "evidenceNote": "docs/briefs/DL-EVAL-01-prompt-lab-eval-harness.md; scratch spike against a fake router, nothing committed"
+    },
+    {
+      "id": "DL-TOOLUX-01",
+      "type": "decision",
+      "sev": "P2",
+      "title": "Tool runs work but do not feel natural yet",
+      "detail": "Probe 2026-10-12: ten plain-language requests (no tool names) against qwen3-coder:30b on walter with 21 tools selected, through an isolated test router whose only root was the self-edit clone. Five answered well (code lookup 58 s, git history, repo status, time conversion, plus the earlier approved edit). Failures: (1) cluster question: the model guessed node names node1-3 in parallel with cluster.status; two \"Node alias is not configured\" errors spent the error budget of 2 and the run ended with no answer although cluster.status succeeded. (2) calc.eval: from_unit and to_unit are required even for plain arithmetic (spec() marks every property required); both attempts failed and the run ended with no answer. (3) md.outline: guessed tools/setup-guide.md, got File not found, and asked the user instead of looking. (4) web: answered from web.search snippets without web.read and invented release details. (5) secret.scan takes text only; the model scanned an invented sentence and then claimed it had no file access. (6) Natural edit: file.search is literal content search, so the guide was not found by name; the model chose docs/DAVELLM_TOOLS.md and proposed a different, multi-paragraph rewrite; the approval was rejected and nothing was written. Also: time.convert used an invented 2023 date (no current date in context); a four-step request stopped after the reads with an empty reply. UI: tool runs need the manual picker, tool-run answers are not saved to the conversation, the sent text stays in the message box, the ledger shows raw event kinds with doubled numbers, and tool results render as raw JSON.",
+      "next": "Dave picks DL-TOOLUX-01 option; write a brief before implementing"
     }
   ],
   "phases": [
@@ -905,7 +913,8 @@
     "DL-UI-02 [Open, 2026-10-05]: desktop notifications when a reply finishes. Options: A only while the window is hidden or unfocused, with a Settings toggle on by default (recommended); B always; C none.",
     "DL-UI-03 [Open, 2026-10-05]: sending during a reply. Options: A refuse and keep the draft (built, recommended); B stop the current reply and send; C queue until the reply ends.",
     "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today.",
-    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector."
+    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector.",
+    "DL-TOOLUX-01 [Open, 2026-10-12]: make tool use feel natural. A make tools succeed: calc.eval units optional, errors that list valid choices or closest paths, correctable argument errors not spending the error budget, run preamble with date, repo map and node names, filename search, one continue nudge after an empty reply (recommended first: backend only, turns most observed failures into answers). B make it feel like chat: tool-run answers saved as chat messages, input cleared, plain-language activity chips with raw detail on expand. C no picker: automatic read-only tool set with presets and remembered selection. D trustworthy web: read before summarizing and show sources. No answer is recorded; current behavior is preserved."
   ],
   "decisionHistory": [
     {
@@ -993,6 +1002,12 @@
       "status": "accepted",
       "date": "2026-10-06",
       "decision": "A: send format json by default and report invalid-JSON counts. The Prompt Lab runner sends it; /eval/chat leaves format out unless the caller asks."
+    },
+    {
+      "id": "DL-SELFEDIT-01",
+      "status": "accepted",
+      "date": "2026-10-12",
+      "decision": "A: DaveLLM edits its own code only in a separate full clone on its own branch, set as its only tool root; the checkout the app runs from (including the launcher) is no longer a root. Claude or Codex reviews the uncommitted edits, runs the checks and opens a pull request; CI gates the merge; Dave relaunches. A full clone rather than a linked worktree, because Git admission refuses a Git directory outside the root. Shell, commit and push stay off. Setup: docs/TOOLS100_SETUP.md."
     }
   ],
   "files": [
