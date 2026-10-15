@@ -76,6 +76,8 @@ Entries are breadth-first and sorted by name within each folder. A cursor works 
 
 Search is literal: characters such as `.`, `*`, and `(` match themselves. It reports the first match on each line, in breadth-first file order. Each match has `path`, `line` (1-based), and `text`. `text` holds at most 300 characters around the match, and `text_truncated` marks a shortened line.
 
+`path_matches` lists up to 20 root-relative files whose path contains the query (same case rule), from the same walk, so asking for "setup" also finds `docs/TOOLS100_SETUP.md`. Protected names never appear.
+
 The result also counts `files_scanned`, `skipped_large` (over 1 MiB), `skipped_binary` (NUL bytes or invalid UTF-8), and `skipped_unreadable`. `truncated` means more matches or files existed than were returned or scanned. At most 2,000 files and 20,000 walked entries are considered per search. Symlinks are not searched, and there is no cursor; narrow `path` or `query` instead.
 
 `file.search` remains literal. The separately enabled `code.grep_regex` expansion runs regex only in an isolated POSIX helper with wall-clock and CPU watchdogs; it does not add regex to this synchronous reader.
@@ -558,6 +560,16 @@ Reads:
 
 `notion.page.read failed`, `notion.page.append failed`, and `notion.block.update failed` stand for any other failure; details stay out of the model's view.
 
+## Tool runs from the app
+
+`POST /tools/agent/runs` (the app's tool runs, DL-TOOLUX-01) differs from the library defaults in three ways:
+
+- **Context message.** After the primary system message, the run gets one more system message: the router's local date, time and zone; for a single tool root, its entries and what each folder holds (at most 120 entries, root-relative, from the same walk as `file.list`, so protected names and ignored folders never appear; several roots list the root paths instead); the configured node ids, never their URLs; and three working rules (look before guessing, act without announcing a plan, answer directly). The file part appears only when a file, Markdown, Git or code tool is selected, the node part only for cluster tools; an empty selection gets both. The fit check counts it.
+- **Error budget 4.** DaveHarness counts every failed call. A run started without `error_budget` now stops at the fourth failure instead of the second, so a guessed path or node id can be corrected. Explicit values behave as before.
+- **One nudge after a silent step.** When the model step after tool results returns neither text nor a tool call, the router asks once more in the same step with a short instruction to continue or answer. The instruction is not added to the transcript. H9 evaluation bindings do not opt in.
+
+`POST /tools/agent/runs/{run_id}/record` adds a finished run's question and answer to the conversation it was started in, once per run. It writes only what the router holds: the run's last user message and, for a `completed` run with visible text, its final answer. Any other ending records the question alone. Unfinished runs and runs without a conversation get 409. The app calls it when a run ends and reloads the conversation, so a follow-up sees the answer.
+
 ## Paths
 
 - **Input.** An absolute path must be inside a tool root. A relative path is anchored at the tool root when exactly one root is configured. With several roots, relative paths are refused with "Use an absolute path when several tool roots are configured".
@@ -589,7 +601,7 @@ Listings read names and metadata, never file contents, so they do not use this p
 |---|---|
 | `Access denied: path is not allowed` | Outside the roots, protected, a symlink escape or loop, or swapped during the read |
 | `Use an absolute path when several tool roots are configured` | Relative path with several roots |
-| `Path not found` / `File not found` | Nothing exists there |
+| `Path not found; list or search the folder to check the path` / `File not found; list or search the folder to check the path` | Nothing exists there. The message stays fixed (no path) but names the next step |
 | `Path is not a regular file` | A folder or special file where `file.read_lines`, a Markdown tool, or `file.edit` needs a file |
 | `File is not UTF-8 text` | Binary data or another encoding |
 | `File is larger than the 10 MiB limit` | Too large for `file.read_lines` or the Markdown tools, or for `file.edit` before or after the edit |

@@ -167,7 +167,7 @@ class ToolpackHost:
     def node(self, alias: str) -> Any:
         node = next((node for node in self.router["NODE_CONFIGS"] if node.id == alias), None)
         if node is None:
-            raise ToolpackError("Node alias is not configured")
+            raise ToolpackError("Node alias is not configured; use one of the configured node ids")
         return node
 
     async def request(self, method: str, url: str, *, body: Any = None,

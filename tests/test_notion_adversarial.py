@@ -1006,7 +1006,7 @@ def test_r6_a_model_that_edits_before_reading_recovers_within_the_run(lifecycle)
 
 def test_r6_failed_and_unknown_outcomes_reach_the_model_as_errors_not_successes(lifecycle):
     lifecycle.fake.fail("PATCH", CHILDREN, "drop_before_apply")
-    run_id = lifecycle.start(APPEND_CALL, APPEND_CALL, (None, "stopped"))
+    run_id = lifecycle.start(APPEND_CALL, APPEND_CALL, (None, "stopped"), error_budget=2)  # the pre-DL-TOOLUX-01 default
     pending = lifecycle.settle(run_id)["snapshot"]["pending_call"]
     decided = lifecycle.decide(run_id, pending).json()
     results = lifecycle.tool_results(decided)

@@ -780,6 +780,32 @@
       "evidenceNote": "Automated and headless browser tests on this revision; desktop app acceptance by Dave pending."
     },
     {
+      "id": "DL-17",
+      "type": "security",
+      "sev": "P2",
+      "title": "Implemented: memory lookup no longer puts chat message text in URLs",
+      "detail": "The renderer sent each chat message as ?query= on GET /conversations/{id}/memories, and uvicorn's access log, which the macOS launcher appends to its log file, records full URLs, so message text reached the log. POST /conversations/{id}/memories now takes the query in a JSON body with the same API-key auth, ownership check and response shape; the GET is removed. Text already in the existing launcher log is untouched and needs Dave's decision before any edit. The sidebar search still sends typed search terms as ?query= on GET /search; that is a separate change.",
+      "files": [
+        "app.py",
+        "static/app.js",
+        "tests/test_api_contracts.py",
+        "tests/test_security_and_frontend.py",
+        "tests/browser_console.cjs"
+      ],
+      "evidence": "test",
+      "phase": 3,
+      "history": [
+        {
+          "checkedOn": "2026-10-12",
+          "title": "Memory query string carried chat message text",
+          "detail": "showRelevantMemories in static/app.js built /memories?query=<message>; app.py served it as a GET query parameter.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "implemented",
+      "evidenceNote": "October 12 source repair in PR #88 (commit 8a051ff). Full pytest on Dominic and the node-dependent tests and node checks on the Mac passed; protected CI was pending when this was written. The installed app is unchanged until merge and relaunch."
+    },
+    {
       "id": "DL-EVAL-01",
       "type": "decision",
       "sev": "P2",
@@ -834,7 +860,7 @@
       "sev": "P2",
       "title": "Tool runs work but do not feel natural yet",
       "detail": "Probe 2026-10-12: ten plain-language requests (no tool names) against qwen3-coder:30b on walter with 21 tools selected, through an isolated test router whose only root was the self-edit clone. Five answered well (code lookup 58 s, git history, repo status, time conversion, plus the earlier approved edit). Failures: (1) cluster question: the model guessed node names node1-3 in parallel with cluster.status; two \"Node alias is not configured\" errors spent the error budget of 2 and the run ended with no answer although cluster.status succeeded. (2) calc.eval: from_unit and to_unit are required even for plain arithmetic (spec() marks every property required); both attempts failed and the run ended with no answer. (3) md.outline: guessed tools/setup-guide.md, got File not found, and asked the user instead of looking. (4) web: answered from web.search snippets without web.read and invented release details. (5) secret.scan takes text only; the model scanned an invented sentence and then claimed it had no file access. (6) Natural edit: file.search is literal content search, so the guide was not found by name; the model chose docs/DAVELLM_TOOLS.md and proposed a different, multi-paragraph rewrite; the approval was rejected and nothing was written. Also: time.convert used an invented 2023 date (no current date in context); a four-step request stopped after the reads with an empty reply. UI: tool runs need the manual picker, tool-run answers are not saved to the conversation, the sent text stays in the message box, the ledger shows raw event kinds with doubled numbers, and tool results render as raw JSON.",
-      "next": "Dave picks DL-TOOLUX-01 option; write a brief before implementing"
+      "next": "A and B implemented (PR90, stacked on PR89; pending CI and merge). Branch-code rerun 2026-10-12 of the ten probe requests against qwen3-coder:30b on walter answered 9 of 10 (was 5): cluster, math, outline and time now succeed; web now reads pages before answering; secret.scan scans docs/ by path. Open: the natural-edit request emitted a qwen3-coder tool call as plain text and stopped; the model can still guess a path and report it missing instead of searching; plan narration persists. Browser check on a local test router: composer clears, the question shows at once, plain steps render, the answer is saved to the conversation and a follow-up uses it. C and D remain proposals."
     },
     {
       "id": "DL-18",
@@ -940,8 +966,7 @@
     "DL-UI-02 [Open, 2026-10-05]: desktop notifications when a reply finishes. Options: A only while the window is hidden or unfocused, with a Settings toggle on by default (recommended); B always; C none.",
     "DL-UI-03 [Open, 2026-10-05]: sending during a reply. Options: A refuse and keep the draft (built, recommended); B stop the current reply and send; C queue until the reply ends.",
     "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today.",
-    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector.",
-    "DL-TOOLUX-01 [Open, 2026-10-12]: make tool use feel natural. A make tools succeed: calc.eval units optional, errors that list valid choices or closest paths, correctable argument errors not spending the error budget, run preamble with date, repo map and node names, filename search, one continue nudge after an empty reply (recommended first: backend only, turns most observed failures into answers). B make it feel like chat: tool-run answers saved as chat messages, input cleared, plain-language activity chips with raw detail on expand. C no picker: automatic read-only tool set with presets and remembered selection. D trustworthy web: read before summarizing and show sources. No answer is recorded; current behavior is preserved."
+    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector."
   ],
   "decisionHistory": [
     {
@@ -1035,6 +1060,12 @@
       "status": "accepted",
       "date": "2026-10-12",
       "decision": "A: DaveLLM edits its own code only in a separate full clone on its own branch, set as its only tool root; the checkout the app runs from (including the launcher) is no longer a root. Claude or Codex reviews the uncommitted edits, runs the checks and opens a pull request; CI gates the merge; Dave relaunches. A full clone rather than a linked worktree, because Git admission refuses a Git directory outside the root. Shell, commit and push stay off. Setup: docs/TOOLS100_SETUP.md."
+    },
+    {
+      "id": "DL-TOOLUX-01",
+      "status": "accepted",
+      "date": "2026-10-12",
+      "decision": "A then B: make tools succeed (calc.eval units optional, next-step not-found errors, lifecycle error budget 4, run context message, file.search path matches, secret.scan by path, one continue nudge), then make tool runs feel like chat (run answers recorded in the conversation, input cleared, plain-language steps). Options C (no picker) and D (web sources) stay proposals. Brief: docs/briefs/DL-TOOLUX-01-natural-tool-use.md."
     }
   ],
   "files": [

@@ -343,9 +343,13 @@ def test_no_app_code_posts_to_the_openai_compatible_endpoint():
     harness = {
         node.name: (node.lineno, node.end_lineno)
         for node in ast.walk(tree)
-        if isinstance(node, ast.AsyncFunctionDef) and node.name in ("invoke_harness_model", "run_agent_endpoint")
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name in ("invoke_harness_model", "_invoke_harness_model_once", "run_agent_endpoint")
     }
-    assert set(harness) == {"invoke_harness_model", "run_agent_endpoint"}
+    assert set(harness) == {"invoke_harness_model", "_invoke_harness_model_once", "run_agent_endpoint"}
+    # DL-TOOLUX-01 A7: invoke_harness_model wraps one bounded call (plus an optional nudge) in a helper.
+    start, end = harness.pop("invoke_harness_model")
+    assert "_invoke_harness_model_once(" in "\n".join(lines[start - 1:end])
     for name, (start, end) in harness.items():
         assert "ollama_chat_bounded(" in "\n".join(lines[start - 1:end]), name
 

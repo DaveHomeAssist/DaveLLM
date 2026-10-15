@@ -90,7 +90,12 @@ async def test_growth_after_tool_result_is_refused_before_second_request(router_
     router, _, _ = router_factory(tools=True, tool_roots=[str(tmp_path)])
     messages = [{"role": "user", "content": "Read large.txt then report"}]
     schemas = [s for s in router.HARNESS_REGISTRY.model_schemas() if s["function"]["name"] == "file.read"]
-    limit = max(1, len(json.dumps(schemas, ensure_ascii=False, separators=(",", ":"))) // 3) + router.tool_run_message_tokens(messages) + 100
+    # DL-TOOLUX-01 A4: the run also carries its context message, so the first request's estimate includes it.
+    sent = router.with_run_context(messages, router.tool_run_context(
+        now=datetime.now().astimezone(), roots=router.TOOL_ROOTS,
+        node_ids=[item.id for item in router.NODE_CONFIGS], selected_tools=["file.read"],
+    ))
+    limit = max(1, len(json.dumps(schemas, ensure_ascii=False, separators=(",", ":"))) // 3) + router.tool_run_message_tokens(sent) + 100
     with respx.mock(assert_all_called=True) as mock:
         route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=httpx.Response(
             200, json={"message": {"role": "assistant", "content": "", "tool_calls": [

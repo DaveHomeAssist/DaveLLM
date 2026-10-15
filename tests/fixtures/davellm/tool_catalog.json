@@ -614,7 +614,7 @@
       "async_handler": false,
       "cancellation": "bounded",
       "context_handler": false,
-      "description": "Find lines containing literal text in UTF-8 files inside an allowed tool root. Binary files and files over 1 MiB are skipped.",
+      "description": "Find lines containing literal text in UTF-8 files inside an allowed tool root, and files whose path contains it (path_matches). Binary files and files over 1 MiB are skipped.",
       "handler": "app.tool_file_search",
       "handler_version": "",
       "parameters": {

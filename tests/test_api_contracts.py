@@ -607,6 +607,39 @@ def test_title_and_embeddings_use_raw_history_indexes(router_factory):
     assert template_indexes == [(0,), (1,)]
 
 
+def test_memory_search_takes_the_query_in_the_body_never_the_url(router_factory):
+    router, client, _ = router_factory()
+    router.CONVERSATIONS["mine"] = {"user_id": "default", "messages": []}
+    router.CONVERSATIONS["theirs"] = {"user_id": "someone-else", "messages": []}
+    router.store_message_embedding("mine", 0, "user", "the merger draft is due friday")
+    router.store_message_embedding("mine", 1, "assistant", "lunch options near the office")
+    path = "/conversations/mine/memories"
+
+    found = client.post(path, headers=AUTH, json={"query": "merger draft"})
+    assert found.status_code == 200
+    body = found.json()
+    assert set(body) == {"conversation_id", "query", "memories"}
+    assert body["conversation_id"] == "mine" and body["query"] == "merger draft"
+    assert body["memories"][0]["content"] == "the merger draft is due friday"
+    assert set(body["memories"][0]) == {"index", "role", "content", "similarity"}
+    assert client.post(path, headers=AUTH, json={}).json() == {"memories": [], "query": ""}
+
+    assert client.post(path, json={"query": "merger"}).status_code == 401
+    assert client.post(path, headers={"X-API-Key": "wrong"}, json={"query": "merger"}).status_code == 401
+    assert client.post("/conversations/theirs/memories", headers=AUTH, json={"query": "x"}).status_code == 403
+    assert client.post("/conversations/missing/memories", headers=AUTH, json={"query": "x"}).status_code == 404
+    assert client.post(path, headers=AUTH, json={"query": "x" * 100_001}).status_code == 422
+    # No GET remains, so message text has no route into a URL and the access log;
+    # the static mount answers the old query-string form with a plain 404.
+    old_form = client.get(path, headers=AUTH, params={"query": "merger draft"})
+    assert old_form.status_code == 404 and "merger" not in old_form.text
+    assert all(
+        "GET" not in route.methods
+        for route in router.app.routes
+        if getattr(route, "path", "") == "/conversations/{conversation_id}/memories"
+    )
+
+
 def test_unreachable_node_reports_reason_and_preserves_inventory(router_factory):
     router, client, _ = router_factory()
 

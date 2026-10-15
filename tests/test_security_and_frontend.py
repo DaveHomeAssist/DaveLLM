@@ -226,6 +226,15 @@ def test_displayed_prompt_contract_and_renderer_security():
     assert "prompt: effectivePrompt" in app_source
     assert "content: effectivePrompt" in app_source
     assert "showRelevantMemories(effectivePrompt)" in app_source
+    # Message text reaches the router's access log through a URL, so the memory
+    # query travels in a POST body and never in a query string.
+    memory_fetch = app_source[app_source.index("async function showRelevantMemories"):]
+    memory_fetch = memory_fetch[:memory_fetch.index("res.json()")]
+    assert "/memories`), {" in memory_fetch
+    assert 'method: "POST"' in memory_fetch
+    assert "body: JSON.stringify({ query })" in memory_fetch
+    assert "URLSearchParams" not in memory_fetch
+    assert "/memories?" not in app_source
     assert "if (data.error) throw new Error(data.error)" in app_source
     assert "messages: []," in app_source
     assert 'system_prompt: data.system_prompt || ""' in app_source

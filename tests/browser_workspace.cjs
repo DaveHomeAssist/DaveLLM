@@ -41,6 +41,7 @@ const server = http.createServer((request, response) => {
         const page = await context.newPage();
         const errors = [];
         let submitted = null;
+        let recorded = 0;
         page.on("pageerror", (error) => errors.push(error.message));
         await page.route("**/*", (route) => {
             if (new URL(route.request().url()).origin !== base) { rejected.push("external request"); return route.abort(); }
@@ -51,6 +52,17 @@ const server = http.createServer((request, response) => {
             }
             if (pathname === "/tools/agent/runs/run_fixture") return route.fulfill({ json: { run_id: "run_fixture", status: "completed", reason_code: "completed", snapshot: { transcript: [], pending_call: null } } });
             if (pathname === "/tools/agent/runs/run_fixture/events") return route.fulfill({ contentType: "text/event-stream", body: 'data: {"run_id":"run_fixture","sequence":1,"kind":"terminal","status":"completed"}\n\n' });
+            // DL-TOOLUX-01 B1: a run opens a conversation first and saves its answer there when it ends.
+            if (pathname === "/conversations/from_template" && route.request().method() === "POST") {
+                return route.fulfill({ json: { conversation_id: "conv_fixture", project_id: null, system_prompt: "" } });
+            }
+            if (pathname === "/tools/agent/runs/run_fixture/record" && route.request().method() === "POST") {
+                recorded += 1;
+                return route.fulfill({ json: { recorded: true, conversation_id: "conv_fixture", messages: 1 } });
+            }
+            if (pathname === "/conversations/conv_fixture") {
+                return route.fulfill({ json: { title: "Fixture tool selection only.", project_id: null, messages: [{ role: "user", content: "Fixture tool selection only." }] } });
+            }
             return route.continue();
         });
         await page.goto(base);
@@ -169,6 +181,10 @@ const server = http.createServer((request, response) => {
         await page.locator("#runLedgerStatus").filter({ hasText: "completed" }).waitFor();
         assert.deepEqual(submitted.selected_tools, ["calc.eval"]);
         assert.equal(submitted.messages.at(-1).content, "Fixture tool selection only.");
+        assert.equal(submitted.conversation_id, "conv_fixture");
+        assert.equal(await page.locator("#promptInput").inputValue(), "");
+        for (let attempt = 0; attempt < 40 && recorded === 0; attempt += 1) await page.waitForTimeout(50);
+        assert.equal(recorded, 1);
         assert.deepEqual(errors, []);
         assert.deepEqual(rejected, []);
         console.log("Workspace fixture passed: tool rows, keyboard/pointer resize, reset, persistence, clamping, two themes/five viewports.");

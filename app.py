@@ -1670,8 +1670,8 @@ def extended_tool_definitions() -> List[ToolDefinition]:
         ToolDefinition(
             name="file.search",
             description=(
-                "Find lines containing literal text in UTF-8 files inside an allowed tool root. "
-                "Binary files and files over 1 MiB are skipped."
+                "Find lines containing literal text in UTF-8 files inside an allowed tool root, and files whose path "
+                "contains it (path_matches). Binary files and files over 1 MiB are skipped."
             ),
             parameters={
                 "type": "object",
@@ -2271,6 +2271,10 @@ class HostRunBinding:
     selected_tools: tuple[str, ...] = ()
     max_input_tokens: Optional[int] = None
     model_usage: list[dict] = field(default_factory=list, compare=False)
+    # DL-TOOLUX-01: set only by POST /tools/agent/runs, so H9 evaluation bindings keep the old behavior.
+    conversation_id: Optional[str] = None
+    user_prompt: str = ""
+    continue_nudge: bool = False
 
 
 HOST_RUN_BINDINGS: dict[str, HostRunBinding] = {}
@@ -2304,8 +2308,25 @@ NODE_IDLE_TIMEOUT = _env_seconds("DAVE_NODE_IDLE_TIMEOUT", 120.0)
 NODE_TOTAL_TIMEOUT = _env_seconds("DAVE_NODE_TOTAL_TIMEOUT", 600.0)
 
 
+from davellm_run_context import CONTINUE_NUDGE, needs_continue_nudge, tool_run_context, with_run_context
+
+
 async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dict:
-    """Use the node/model captured for this run, including after approval resume."""
+    """Use the node/model captured for this run, including after approval resume.
+
+    DL-TOOLUX-01 A7: when an opted-in run's step after tool results returns neither text nor a
+    tool call, ask once more in the same step. The nudge is not added to the transcript.
+    """
+    result = await _invoke_harness_model_once(messages, schemas)
+    binding = HOST_RUN_CONTEXT.get()
+    if binding is not None and binding.continue_nudge and needs_continue_nudge(messages, result):
+        result = await _invoke_harness_model_once(
+            [*messages, {"role": "system", "content": CONTINUE_NUDGE}], schemas,
+        )
+    return result
+
+
+async def _invoke_harness_model_once(messages: List[Dict], schemas: List[Dict]) -> dict:
     binding = HOST_RUN_CONTEXT.get()
     if binding is None:
         raise RuntimeError("Run model binding is unavailable")
@@ -3054,6 +3075,11 @@ class ChatSizeCheckRequest(BaseModel):
     max_tokens: Optional[int] = Field(default=2048, ge=1, le=262_144)
 
 
+class MemorySearchRequest(BaseModel):
+    """The message text to match; it travels in the body so it never reaches a URL or access log."""
+    query: str = Field(default="", max_length=100_000)
+
+
 class AgentRunRequest(BaseModel):
     messages: List[Dict]
     node_id: str
@@ -3105,6 +3131,11 @@ class AgentResumeRequest(BaseModel):
     decision: Literal["approve", "deny"]
 
 
+# DL-TOOLUX-01 A3: DaveHarness counts every failed call; a guessed path or node alias that the
+# model can correct should not end a UI run at the second miss, so the product default is 4.
+LIFECYCLE_ERROR_BUDGET = 4
+
+
 class LifecycleRunRequest(BaseModel):
     messages: List[Dict]
     node_id: str = Field(min_length=1, max_length=128)
@@ -3114,7 +3145,7 @@ class LifecycleRunRequest(BaseModel):
     max_tokens: int = Field(default=2048, ge=1, le=262_144)
     temperature: float = Field(default=0.7, ge=0, le=2)
     step_limit: int = Field(default=8, ge=1, le=32)
-    error_budget: int = Field(default=2, ge=1, le=8)
+    error_budget: int = Field(default=LIFECYCLE_ERROR_BUDGET, ge=1, le=8)
     selected_tools: List[str] = Field(default_factory=list, max_length=124)
     max_input_tokens: Optional[int] = Field(default=None, ge=1, le=262_144, strict=True)
     total_wall_seconds: float = Field(default=300.0, ge=0.1, le=300.0, allow_inf_nan=False, strict=True)
@@ -3388,10 +3419,11 @@ def download_model(req: ModelDownloadRequest, request: Request, _auth=Depends(re
         "size_bytes": total
     }
 
-@app.get("/conversations/{conversation_id}/memories")
-def get_conversation_memories(conversation_id: str, query: str = "", user_id: str = Depends(get_current_user)):
-    """Search for relevant memories in a conversation."""
+@app.post("/conversations/{conversation_id}/memories")
+def search_conversation_memories(conversation_id: str, req: MemorySearchRequest, user_id: str = Depends(get_current_user)):
+    """Search for relevant memories in a conversation. POST only: a query string would put message text in the access log."""
     assert_convo_owner(conversation_id, user_id)
+    query = req.query
     if not query:
         return {"memories": [], "query": query}
     
@@ -4195,17 +4227,24 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
             )
         except ProjectContextError as exc:
             raise context_http_error(exc)
+    # DL-TOOLUX-01 A4: date, folder map and node ids, counted by the fit check like any message.
+    messages = with_run_context(messages, tool_run_context(
+        now=datetime.now().astimezone(), roots=TOOL_ROOTS,
+        node_ids=[item.id for item in NODE_CONFIGS], selected_tools=selected_tools,
+    ))
     fit_error = tool_run_fit_error(req.model, messages, schema_tokens, req.max_tokens)
     if fit_error:
         raise HTTPException(413, fit_error)
     if req.max_input_tokens is not None and schema_tokens + tool_run_message_tokens(messages) > req.max_input_tokens:
         raise HTTPException(413, "Tool run exceeds its estimated input-token limit")
     run_id = f"run_{uuid.uuid4().hex}"
+    user_prompt = next((item.get("content") for item in reversed(req.messages) if item.get("role") == "user"), "")
     binding = HostRunBinding(
         user_id, node.url, req.model, req.max_tokens, req.temperature,
         project_id, context_budget.get("brain_revision"),
         context_budget.get("brain_digest"), context_budget, run_id, selected_tools,
-        max_input_tokens=req.max_input_tokens,
+        max_input_tokens=req.max_input_tokens, conversation_id=req.conversation_id,
+        user_prompt=user_prompt if isinstance(user_prompt, str) else "", continue_nudge=True,
     )
     try:
         request = RunRequest.create(
@@ -4340,6 +4379,50 @@ async def cancel_agent_run(run_id: str, user_id: str = Depends(get_current_user)
         raise HTTPException(409, "Reject the pending call to stop this run")
     result = await HARNESS.cancel(run_id)
     return _lifecycle_response(run_id, result, binding)
+
+
+RECORDED_TOOL_RUNS: set[str] = set()
+HARNESS_STORE.add_remove_listener(RECORDED_TOOL_RUNS.discard)
+
+
+@app.post("/tools/agent/runs/{run_id}/record")
+async def record_agent_run(run_id: str, user_id: str = Depends(get_current_user)):
+    """DL-TOOLUX-01 B1: add a finished run's question and answer to its conversation, once.
+
+    Only server-held values are written: the run's own last user message and, for a completed
+    run, its final visible answer. A run that ended any other way records the question alone,
+    so no empty or partial assistant turn reaches the conversation.
+    """
+    if not TOOLS_ENABLED:
+        raise HTTPException(403, "Tools are disabled")
+    result, binding = _lifecycle_run(run_id, user_id)
+    if result.status not in TERMINAL_RUN_STATUSES:
+        raise HTTPException(409, "Run has not finished")
+    if not binding.conversation_id:
+        raise HTTPException(409, "Run has no conversation")
+    if run_id in RECORDED_TOOL_RUNS:
+        return {"recorded": False, "reason": "already_recorded"}
+    assert_convo_owner(binding.conversation_id, user_id)
+    conversation = CONVERSATIONS[binding.conversation_id]
+    messages = conversation.setdefault("messages", [])
+    first_exchange = not any(item.get("role") in {"user", "assistant"} for item in messages)
+    added = []
+    question = binding.user_prompt.strip()
+    if question:
+        added.append({"role": "user", "content": binding.user_prompt})
+    snapshot = result.snapshot.to_dict() if result.snapshot else {}
+    answer = snapshot.get("last_content") if result.status == "completed" else None
+    if added and isinstance(answer, str) and answer.strip():
+        added.append({"role": "assistant", "content": answer})
+    RECORDED_TOOL_RUNS.add(run_id)
+    if not added:
+        return {"recorded": False, "reason": "nothing_to_record"}
+    messages.extend(added)
+    conversation["updated_at"] = datetime.now().isoformat()
+    if first_exchange and conversation.get("title") == DEFAULT_CONVO_TITLE:
+        conversation["title"] = question[:30] + ("..." if len(question) > 30 else "")
+    save_conversations(CONVERSATIONS)
+    return {"recorded": True, "conversation_id": binding.conversation_id, "messages": len(added)}
 
 @app.post("/route/decision", response_model=RouteDecisionResponse)
 def route_decision(req: RouteDecisionRequest, user_id: str = Depends(get_current_user)):

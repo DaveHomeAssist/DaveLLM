@@ -247,6 +247,7 @@ let promptSizeTimer = null;
 let promptSizeAbort = null;
 let promptSizeSeq = 0;
 let toolRunState = { runId: null, cursor: 0, events: [] };
+const toolRunConversations = new Map();  // run id → conversation awaiting the run's answer
 let toolRunWatcher = null;
 let toolRunStreamAbort = null;
 const nodeSelect = document.getElementById("targetNodeSelect");
@@ -3013,9 +3014,11 @@ async function showRelevantMemories(query) {
     if (!convo || (convo.messages || []).length === 0) return;
 
     try {
-        const params = new URLSearchParams({ query });
-        const res = await fetch(routerEndpoint(`/conversations/${state.sessionId}/memories?${params}`), {
-            headers: authHeaders()
+        // The query is message text, so it goes in the body: URLs reach the router's access log.
+        const res = await fetch(routerEndpoint(`/conversations/${encodeURIComponent(state.sessionId)}/memories`), {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ query })
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -3974,19 +3977,14 @@ function renderToolRun(run) {
     runLedgerReason.textContent = TERMINAL_TOOL_RUNS.has(run.status)
         ? `Finished: ${run.reason_code.replaceAll("_", " ")}`
         : `Run ${run.run_id.slice(0, 13)}… · ${snapshot.steps || 0} model steps`;
-    runLedgerEvents.replaceChildren(...toolRunState.events.map((event) => {
+    // DL-TOOLUX-01 B3: steps in plain words; the raw transcript stays one click away.
+    runLedgerEvents.replaceChildren(...toolRunSteps(run).map((step) => {
         const item = document.createElement("li");
-        item.textContent = `${event.sequence}. ${event.kind.replaceAll("_", " ")}${event.tool_name ? ` · ${event.tool_name}` : ""}${event.status ? ` · ${event.status}` : ""}`;
+        item.className = `run-step run-step-${step.state}`;
+        item.textContent = step.text;
         return item;
     }));
-    runLedgerTranscript.replaceChildren(...(snapshot.transcript || [])
-        .filter((item) => item.role === "assistant" || item.role === "tool")
-        .slice(-8).map((item) => {
-            const block = document.createElement("p");
-            const content = typeof item.content === "string" ? item.content : "[tool call]";
-            block.textContent = `${item.role}: ${content.slice(0, 2000)}`;
-            return block;
-        }));
+    runLedgerTranscript.replaceChildren(...toolRunRawDetails(snapshot));
     const explanation = run.status === "error_budget" ? run.terminal_explanation : null;
     if (explanation?.source === "harness") {
         const report = document.createElement("section");
@@ -4069,6 +4067,110 @@ function renderToolRun(run) {
         ? "Reject the pending call to stop this run" : "Stop the active run";
 }
 
+function toolRunParse(text) {
+    if (typeof text !== "string") return null;
+    try { return JSON.parse(text); } catch { return null; }
+}
+
+function toolRunCallArguments(call) {
+    const raw = call?.function?.arguments;
+    return (typeof raw === "string" ? toolRunParse(raw) : raw) || {};
+}
+
+const TOOL_STEP_LABELS = {
+    "file.search": (a) => `Searched files for “${a.query || ""}”`,
+    "file.read_lines": (a) => `Read ${a.path || "a file"}`,
+    "file.read": (a) => `Read ${a.path || "a file"}`,
+    "file.list": (a) => `Listed ${a.path || "the tool root"}`,
+    "file.edit": (a) => `Edit ${a.path || "a file"}`,
+    "file.write": (a) => `Write ${a.path || "a file"}`,
+    "file.append": (a) => `Append to ${a.path || "a file"}`,
+    "md.outline": (a) => `Outlined ${a.path || "a document"}`,
+    "md.section": (a) => `Read “${a.heading || "a section"}” in ${a.path || "a document"}`,
+    "git.status": () => "Checked repository status",
+    "git.log": () => "Read recent commits",
+    "git.diff": () => "Read the diff",
+    "git.show": (a) => `Read commit ${a.revision || ""}`.trim(),
+    "web.search": (a) => `Searched the web for “${a.query || ""}”`,
+    "web.read": (a) => `Read ${a.url || "a web page"}`,
+    "web.fetch": (a) => `Fetched ${a.url || "a web page"}`,
+    "cluster.status": () => "Checked which nodes are up",
+    "ollama.ps": (a) => `Checked loaded models on ${a.node || "a node"}`,
+    "calc.eval": (a) => `Calculated ${a.expression || ""}`.trim(),
+    "time.convert": (a) => `Converted a time to ${a.zone || "another zone"}`,
+    "secret.scan": (a) => (a.path ? `Scanned ${a.path} for secrets` : "Scanned text for secrets"),
+    "code.symbols": (a) => `Listed functions in ${a.path || "a file"}`,
+};
+
+function toolStepOutcome(name, result) {
+    if (!result || typeof result !== "object") return "done";
+    const count = (items, one, many = `${one}s`) => `${items.length} ${items.length === 1 ? one : many}`;
+    if (name === "file.search") {
+        const names = (result.path_matches || []).length;
+        return `${count(result.matches || [], "match", "matches")}${names ? `, ${count(result.path_matches, "file name")}` : ""}`;
+    }
+    if (name === "file.read_lines" && result.line_count) {
+        return `lines ${result.start_line}–${result.start_line + result.line_count - 1} of ${result.total_lines}`;
+    }
+    if (name === "file.list" && Array.isArray(result.entries)) return count(result.entries, "entry", "entries");
+    if (name === "git.log" && Array.isArray(result.commits)) return count(result.commits, "commit");
+    if (name === "git.status" && result.counts) {
+        const changed = Object.values(result.counts).reduce((sum, value) => sum + (Number(value) || 0), 0);
+        return `${result.branch || "detached"}, ${changed ? count({ length: changed }, "change") : "clean"}`;
+    }
+    if (name === "cluster.status" && Array.isArray(result.nodes)) {
+        return `${result.nodes.filter((node) => node.reachable).length} of ${result.nodes.length} up`;
+    }
+    if (name === "secret.scan" && Array.isArray(result.findings)) {
+        return result.findings.length ? count(result.findings, "possible secret") : "nothing found";
+    }
+    if ("value" in result) return `= ${result.value}`;
+    return "done";
+}
+
+function toolRunSteps(run) {
+    const snapshot = run.snapshot || {};
+    const transcript = snapshot.transcript || [];
+    const results = new Map(transcript.filter((item) => item.role === "tool")
+        .map((item) => [item.tool_call_id, toolRunParse(item.content) || {}]));
+    const steps = [];
+    for (const message of transcript) {
+        for (const call of message.role === "assistant" ? message.tool_calls || [] : []) {
+            const name = call?.function?.name || "a tool";
+            const label = (TOOL_STEP_LABELS[name] || (() => `Used ${name}`))(toolRunCallArguments(call));
+            const outcome = results.get(call.id);
+            if (!outcome) {
+                const waiting = snapshot.pending_call?.call_id === call.id ? "waiting for your approval" : "running";
+                steps.push({ state: "active", text: `… ${label} · ${waiting}` });
+            } else if (outcome.status === "success") {
+                steps.push({ state: "done", text: `✓ ${label} · ${toolStepOutcome(name, toolRunParse(outcome.result))}` });
+            } else {
+                steps.push({ state: "failed", text: `✗ ${label} · ${outcome.error || outcome.status || "failed"}` });
+            }
+        }
+    }
+    if (snapshot.model_inflight) steps.push({ state: "active", text: "… Thinking" });
+    else if (!steps.length && !TERMINAL_TOOL_RUNS.has(run.status)) steps.push({ state: "active", text: "… Starting" });
+    else if (!steps.length && run.status === "completed") steps.push({ state: "done", text: "✓ Answered without using a tool" });
+    return steps;
+}
+
+function toolRunRawDetails(snapshot) {
+    const items = (snapshot.transcript || []).filter((item) => item.role === "assistant" || item.role === "tool");
+    if (!items.length) return [];
+    const details = document.createElement("details");
+    details.className = "run-ledger-raw";
+    const summary = document.createElement("summary");
+    summary.textContent = "Raw tool output";
+    details.append(summary, ...items.slice(-8).map((item) => {
+        const block = document.createElement("p");
+        const content = typeof item.content === "string" && item.content ? item.content : "[tool call]";
+        block.textContent = `${item.role}: ${content.slice(0, 2000)}`;
+        return block;
+    }));
+    return [details];
+}
+
 async function attachNotionContext(runId, pending, preview) {
     try {
         const context = await toolRunRequest(`/tools/agent/runs/${runId}/pending/notion-context`);
@@ -4085,7 +4187,31 @@ async function refreshToolRun(runId) {
     const run = await toolRunRequest(`/tools/agent/runs/${runId}`);
     if (activeToolRunId !== runId) return null;
     renderToolRun(run);
+    if (TERMINAL_TOOL_RUNS.has(run.status)) recordToolRun(run);
     return run;
+}
+
+// DL-TOOLUX-01 B1: once a run ends, the server adds its question and answer to the conversation
+// from its own record of the run; the view then reloads that conversation.
+async function recordToolRun(run) {
+    const conversationId = toolRunConversations.get(run.run_id);
+    if (!conversationId) return;
+    toolRunConversations.delete(run.run_id);
+    try {
+        await toolRunRequest(`/tools/agent/runs/${run.run_id}/record`, { method: "POST" });
+        if (await loadConversationHistory(conversationId)) {
+            if (state.sessionId === conversationId) renderMessages();
+            renderConversationList();
+        }
+    } catch (error) {
+        const answer = run.snapshot?.last_content;
+        showToolRunNotice(`The answer could not be saved to the conversation: ${error.message}`);
+        if (run.status === "completed" && typeof answer === "string" && answer.trim()) {
+            const block = document.createElement("p");
+            block.textContent = answer;
+            runLedgerTranscript.prepend(block);
+        }
+    }
 }
 
 async function watchToolRun(runId) {
@@ -4154,7 +4280,12 @@ async function startToolRun() {
     }
     sendBtn.disabled = true;
     try {
-        const history = (currentConversation()?.messages || [])
+        // DL-TOOLUX-01 B1: a run belongs to a conversation, so its answer can be saved there.
+        if (!state.sessionId || !state.conversations[state.sessionId]) await createNewConversation();
+        const conversationId = state.sessionId;
+        const conversation = state.conversations[conversationId];
+        if (!conversation) throw new Error("Could not open a conversation for this run.");
+        const history = (conversation.messages || [])
             .filter((item) => ["user", "assistant"].includes(item.role) && typeof item.content === "string")
             .slice(-24).map((item) => ({ role: item.role, content: item.content }));
         const selection = [...selectedToolNames].sort();
@@ -4163,11 +4294,19 @@ async function startToolRun() {
             body: JSON.stringify({
                 messages: [...history, { role: "user", content: prompt }],
                 node_id: state.selectedNode, model: modelSelect.value,
-                project_id: currentConversation()?.project_id || null,
-                conversation_id: state.sessionId || null,
+                project_id: conversation.project_id || null,
+                conversation_id: conversationId,
                 selected_tools: selection
             })
         });
+        // B2: the message leaves the box once the run exists; a refused run keeps the draft.
+        promptInput.value = "";
+        promptInput.style.height = "auto";
+        schedulePromptSizeCheck();
+        sessionStorage.removeItem(DRAFT_SESSION_KEY);
+        conversation.messages = [...(conversation.messages || []), { role: "user", content: prompt }];
+        toolRunConversations.set(run.run_id, conversationId);
+        if (state.sessionId === conversationId) renderMessages();
         toolRunStreamAbort?.abort();
         activeToolRunId = run.run_id;
         toolRunState = { runId: run.run_id, cursor: 0, events: [] };
