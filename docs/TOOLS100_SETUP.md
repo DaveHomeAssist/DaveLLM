@@ -25,6 +25,20 @@ chmod 600 tool-roots.json
 
 Use your real paths ([example](examples/tool-roots.example.json)), quit DaveLLM and start it again. With several roots, give the tools absolute paths; a relative path works only when there is exactly one root.
 
+### Letting DaveLLM edit its own code
+
+Don't make the checkout the app runs from a root. The Dock app starts `scripts/macos/launch-davellm.sh` and the router straight from that checkout, so an approved edit there changes the running app, and an edit to the launcher changes what the next launch switches on. Give DaveLLM its own full clone and make that the only root:
+
+```bash
+git clone --no-hardlinks ~/Code/DaveLLM ~/Code/_worktrees/DaveLLM/selfedit
+cd ~/Code/_worktrees/DaveLLM/selfedit
+git remote set-url origin https://github.com/DaveHomeAssist/DaveLLM.git
+git fetch origin main
+git switch -c davellm/self-edit --no-track origin/main
+```
+
+Use a clone, not `git worktree add`: a linked worktree keeps its Git directory inside the main checkout, outside the root, so the Git tools answer "Not a Git working tree". DaveLLM has no shell, commit or push, so its edits stay uncommitted in the clone. Review them with `git diff`, commit them on a branch, run the checks and open a pull request. The app picks the change up after it merges and you update the checkout it runs from and start it again.
+
 ## 2. Switch on the Tools100 starter
 
 The [starter](examples/toolpack.starter.json) turns on 13 read-only tools that need no token, no helper machine and no further settings:
