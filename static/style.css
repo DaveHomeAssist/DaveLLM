@@ -324,7 +324,13 @@ button.message-action:hover { background: var(--surface-300); }
 .run-ledger-heading-actions button { font-size: 11px; }
 .run-ledger-heading-actions .run-ledger-close { font-size: 16px; line-height: 1; padding: 2px 8px; }
 .run-ledger-reason { color: var(--muted); font-size: 12px; margin: 8px 0; }
-.run-ledger-events { font: 11px/1.6 var(--font-mono); padding-left: 20px; }
+.run-ledger-events { list-style: none; padding-left: 0; font-size: 12px; line-height: 1.7; }
+.run-step { overflow-wrap: anywhere; }
+.run-step-active { color: var(--muted); }
+.run-step-failed { color: var(--danger); }
+.run-ledger-raw { margin-top: 8px; color: var(--muted); }
+.run-ledger-raw summary { cursor: pointer; font-size: 11px; }
+.run-ledger-raw p { font: 11px/1.5 var(--font-mono); margin: 6px 0; }
 .run-ledger-transcript { font-size: 12px; white-space: pre-wrap; }
 .run-ledger-approval { border-top: 1px solid var(--warning); padding-top: 12px; }
 .run-ledger-approval h4 { font-size: 18px; margin-bottom: 8px; }

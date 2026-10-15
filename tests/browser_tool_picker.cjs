@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 
 const base = process.env.CONSOLE_URL || 'http://127.0.0.1:8769';
 let submitted = null;
+let recorded = 0;
 
 (async () => {
     const browser = await chromium.launch({
@@ -33,7 +34,12 @@ let submitted = null;
                 submitted = request.postDataJSON();
                 return json({ run_id: 'run_picker', status: 'completed', reason_code: 'completed', snapshot: { transcript: [], pending_call: null } });
             }
-            if (path === '/tools/agent/runs/run_picker') return json({ run_id: 'run_picker', status: 'completed', reason_code: 'completed', snapshot: { transcript: [], pending_call: null } });
+            if (path === '/tools/agent/runs/run_picker') return json({ run_id: 'run_picker', status: 'completed', reason_code: 'completed', snapshot: { transcript: [], pending_call: null, last_content: '108' } });
+            // DL-TOOLUX-01 B1: a run opens a conversation, and its answer is saved there when it ends.
+            if (path === '/conversations/from_template') return json({ conversation_id: 'conv_picker', project_id: null, system_prompt: '' });
+            if (path === '/tools/agent/runs/run_picker/record') { recorded += 1; return json({ recorded: true, conversation_id: 'conv_picker', messages: 2 }); }
+            if (path === '/conversations/conv_picker') return json({ title: 'Calculate 12 * 9.', project_id: null, messages: [
+                { role: 'user', content: 'Calculate 12 * 9.' }, { role: 'assistant', content: '108' }] });
             return route.continue();
         });
         await page.goto(base, { waitUntil: 'domcontentloaded' });
@@ -50,6 +56,10 @@ let submitted = null;
         await page.locator('#runLedgerStatus').filter({ hasText: 'completed' }).waitFor();
         assert.deepEqual(submitted.selected_tools, ['calc.eval']);
         assert.equal(submitted.messages.at(-1).content, 'Calculate 12 * 9.');
+        assert.equal(submitted.conversation_id, 'conv_picker');
+        assert.equal(await page.locator('#promptInput').inputValue(), '');
+        await page.waitForFunction(() => document.body.innerText.includes('108'));
+        assert.equal(recorded, 1);
 
         await page.setViewportSize({ width: 390, height: 844 });
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);

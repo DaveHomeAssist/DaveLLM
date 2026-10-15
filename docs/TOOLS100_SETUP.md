@@ -49,6 +49,8 @@ The [starter](examples/toolpack.starter.json) turns on 13 read-only tools that n
 | Git and code (need step 1) | `git.worktrees`, `git.write_preview`, `agent.claim.check`, `code.symbols` |
 | Utilities | `calc.eval`, `time.convert`, `json.validate`, `secret.scan`, `prompt.lint` |
 
+`calc.eval` needs `from_unit` and `to_unit` only to convert units. `secret.scan` takes either `text` or, with step 1, a file or folder `path`; it reports root-relative paths and line numbers, never the matched text, and never opens protected files such as `.env` or keys.
+
 ```bash
 cp ~/Code/DaveLLM/docs/examples/toolpack.starter.json ~/Library/Application\ Support/DaveLLM/toolpack.json
 chmod 600 ~/Library/Application\ Support/DaveLLM/toolpack.json

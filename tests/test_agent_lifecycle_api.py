@@ -10,6 +10,7 @@ import respx
 import pytest
 
 from conftest import TEST_API_KEY, TEST_NODE_URL
+from davellm_files import FILE_NOT_FOUND
 
 
 AUTH = {"X-API-Key": TEST_API_KEY}
@@ -130,7 +131,7 @@ def test_error_budget_explains_both_t20_refusals_without_another_call(
         assert snapshot["tool_calls"] == 2
         assert snapshot["executed_call_ids"] == ["call_missing", "call_denied"]
         outcomes = [json.loads(item["content"]) for item in snapshot["transcript"] if item["role"] == "tool"]
-        assert [item["error"] for item in outcomes] == ["File not found", "Access denied: path is not allowed"]
+        assert [item["error"] for item in outcomes] == [FILE_NOT_FOUND, "Access denied: path is not allowed"]
         assert not missing.exists()
         explanation = final["terminal_explanation"]
         assert explanation["source"] == "harness"
