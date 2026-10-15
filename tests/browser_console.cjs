@@ -65,9 +65,15 @@ const run = () => ({ run_id: 'run_design', status: runStatus, reason_code: runSt
         assert.equal(await page.locator('.code-toolbar span').innerText(), 'json');
         assert.equal(await page.locator('.code-block code').innerText(), '{"limit": 8}');
         await page.locator('#promptInput').fill('Review the next edit.');
+        const memoryRequest = page.waitForRequest((request) => new URL(request.url()).pathname.endsWith('/memories'));
         await page.locator('#sendBtn').click();
         await page.locator('.message-assistant').filter({ hasText: 'Fixture reply' }).waitFor();
         assert.equal(sent.prompt, 'Review the next edit.');
+        // Message text must never travel in a URL, which the router's access log records.
+        const memory = await memoryRequest;
+        assert.equal(memory.method(), 'POST');
+        assert.equal(new URL(memory.url()).search, '');
+        assert.deepEqual(memory.postDataJSON(), { query: 'Review the next edit.' });
         assert.equal(sent.model, model);
         assert.equal(sent.node_id, 'fixture');
         for (const width of [390, 820, 1024, 1280, 1440, 1920, 5120]) {

@@ -3013,9 +3013,11 @@ async function showRelevantMemories(query) {
     if (!convo || (convo.messages || []).length === 0) return;
 
     try {
-        const params = new URLSearchParams({ query });
-        const res = await fetch(routerEndpoint(`/conversations/${state.sessionId}/memories?${params}`), {
-            headers: authHeaders()
+        // The query is message text, so it goes in the body: URLs reach the router's access log.
+        const res = await fetch(routerEndpoint(`/conversations/${encodeURIComponent(state.sessionId)}/memories`), {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ query })
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

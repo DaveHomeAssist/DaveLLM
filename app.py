@@ -3054,6 +3054,11 @@ class ChatSizeCheckRequest(BaseModel):
     max_tokens: Optional[int] = Field(default=2048, ge=1, le=262_144)
 
 
+class MemorySearchRequest(BaseModel):
+    """The message text to match; it travels in the body so it never reaches a URL or access log."""
+    query: str = Field(default="", max_length=100_000)
+
+
 class AgentRunRequest(BaseModel):
     messages: List[Dict]
     node_id: str
@@ -3388,10 +3393,11 @@ def download_model(req: ModelDownloadRequest, request: Request, _auth=Depends(re
         "size_bytes": total
     }
 
-@app.get("/conversations/{conversation_id}/memories")
-def get_conversation_memories(conversation_id: str, query: str = "", user_id: str = Depends(get_current_user)):
-    """Search for relevant memories in a conversation."""
+@app.post("/conversations/{conversation_id}/memories")
+def search_conversation_memories(conversation_id: str, req: MemorySearchRequest, user_id: str = Depends(get_current_user)):
+    """Search for relevant memories in a conversation. POST only: a query string would put message text in the access log."""
     assert_convo_owner(conversation_id, user_id)
+    query = req.query
     if not query:
         return {"memories": [], "query": query}
     

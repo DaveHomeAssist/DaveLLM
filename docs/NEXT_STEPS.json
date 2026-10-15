@@ -780,6 +780,32 @@
       "evidenceNote": "Automated and headless browser tests on this revision; desktop app acceptance by Dave pending."
     },
     {
+      "id": "DL-17",
+      "type": "security",
+      "sev": "P2",
+      "title": "Implemented: memory lookup no longer puts chat message text in URLs",
+      "detail": "The renderer sent each chat message as ?query= on GET /conversations/{id}/memories, and uvicorn's access log, which the macOS launcher appends to its log file, records full URLs, so message text reached the log. POST /conversations/{id}/memories now takes the query in a JSON body with the same API-key auth, ownership check and response shape; the GET is removed. Text already in the existing launcher log is untouched and needs Dave's decision before any edit. The sidebar search still sends typed search terms as ?query= on GET /search; that is a separate change.",
+      "files": [
+        "app.py",
+        "static/app.js",
+        "tests/test_api_contracts.py",
+        "tests/test_security_and_frontend.py",
+        "tests/browser_console.cjs"
+      ],
+      "evidence": "test",
+      "phase": 3,
+      "history": [
+        {
+          "checkedOn": "2026-10-12",
+          "title": "Memory query string carried chat message text",
+          "detail": "showRelevantMemories in static/app.js built /memories?query=<message>; app.py served it as a GET query parameter.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "implemented",
+      "evidenceNote": "October 12 source repair in PR #88 (commit 8a051ff). Full pytest on Dominic and the node-dependent tests and node checks on the Mac passed; protected CI was pending when this was written. The installed app is unchanged until merge and relaunch."
+    },
+    {
       "id": "DL-EVAL-01",
       "type": "decision",
       "sev": "P2",
