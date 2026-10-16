@@ -197,11 +197,26 @@ TEXT_CALL = ("I need to find the guide first. <function=file.search> <parameter=
              "</parameter> </function> </tool_call>")
 
 
+SYNTAX_ANSWER = ("qwen3-coder writes calls like `<function=file.search>`. A full one looks like this:\n"
+                 "```\n<function=file.search>\n<parameter=query>setup</parameter>\n</function>\n```")
+
+
 def test_text_form_tool_calls_are_recognised_only_without_a_structured_call():
     assert looks_like_text_tool_call(TEXT_CALL)
+    assert looks_like_text_tool_call("Let me look.\n<function=file.search>\n<parameter=query>\nsetup\n</parameter>")
+    assert looks_like_text_tool_call("<function=git.status></function>")
     assert looks_like_text_tool_call("<tool_call>\n{\"name\": \"file.list\"}\n</tool_call>")
     assert not looks_like_text_tool_call("Functions such as file.search take a query.")
     assert not looks_like_text_tool_call(None)
+
+
+def test_markup_in_code_or_prose_is_an_answer_not_a_call():
+    # Codex review on #92: only a call-shaped ending counts; quoted or mentioned markup is an answer.
+    assert not looks_like_text_tool_call(SYNTAX_ANSWER)
+    assert not looks_like_text_tool_call("The <function=x> tag opens a call and </function> closes it. That is all.")
+    assert not looks_like_text_tool_call("A call starts with <function=file.search>")
+    assert not looks_like_text_tool_call("The <tool_call> wrapper holds JSON.")
+    assert not looks_like_text_tool_call('<tool_call>{"arguments": {}}</tool_call>')
     assert wrote_tool_call_as_text({"message": {"role": "assistant", "content": TEXT_CALL}})
     assert not wrote_tool_call_as_text({"message": {"content": TEXT_CALL, "tool_calls": [{"id": "x"}]}})
 
@@ -229,3 +244,16 @@ def test_record_never_saves_tool_call_markup_as_the_answer(router_factory):
     assert final["status"] == "completed" and len(route.calls) == 2  # one nudge, then the run ends
     assert client.post(f"/tools/agent/runs/{run_id}/record", headers=AUTH).json()["messages"] == 1
     assert router.CONVERSATIONS[conversation_id]["messages"] == [{"role": "user", "content": "Say done"}]
+
+
+def test_an_answer_about_call_syntax_is_neither_nudged_nor_dropped(router_factory):
+    router, client, _ = router_factory(tools=True)
+    conversation_id = conversation(client)
+    with respx.mock(assert_all_called=True) as mock, _persistent_loop(client):
+        inventory(client, mock)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=reply(SYNTAX_ANSWER))
+        run_id = new_run(client, conversation_id=conversation_id).json()["run_id"]
+        final = settled(client, run_id)
+    assert final["status"] == "completed" and len(route.calls) == 1
+    assert client.post(f"/tools/agent/runs/{run_id}/record", headers=AUTH).json()["messages"] == 2
+    assert router.CONVERSATIONS[conversation_id]["messages"][-1] == {"role": "assistant", "content": SYNTAX_ANSWER}

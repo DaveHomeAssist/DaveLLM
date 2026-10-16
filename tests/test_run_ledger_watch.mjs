@@ -166,4 +166,11 @@ test("a call awaiting approval and a thinking model show as active steps", () =>
         transcript: [], model_inflight: false, last_content: "Let me look. <function=file.search> <parameter=query>x</parameter>",
     } });
     assert.deepEqual(JSON.parse(JSON.stringify(textCall)), [{ state: "failed", text: "✗ The model wrote a tool call as text, so it did not run" }]);
+    const syntaxAnswer = context.toolRunSteps({ status: "completed", snapshot: {
+        transcript: [], model_inflight: false,
+        last_content: "Calls look like `<function=file.search>`:\n```\n<function=file.search>\n<parameter=query>x</parameter>\n</function>\n```",
+    } });
+    assert.equal(syntaxAnswer[0].text, "✓ Answered without using a tool");
+    assert.equal(context.looksLikeTextToolCall('<tool_call>{"name": "file.list"}</tool_call>'), true);
+    assert.equal(context.looksLikeTextToolCall("The <function=x> tag opens a call. That is all."), false);
 });
