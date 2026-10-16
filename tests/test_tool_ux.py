@@ -9,8 +9,8 @@ import respx
 from conftest import TEST_NODE_URL
 from davellm_files import search_files
 from davellm_run_context import (
-    CONTINUE_NUDGE, RUN_CONTEXT_MAX_ENTRIES, folder_map, needs_continue_nudge, tool_run_context,
-    with_run_context,
+    CONTINUE_NUDGE, RUN_CONTEXT_MAX_ENTRIES, TEXT_CALL_NUDGE, folder_map, looks_like_text_tool_call,
+    needs_continue_nudge, tool_run_context, with_run_context, wrote_tool_call_as_text,
 )
 from hostile_fs import SECRET_FILES
 from test_agent_lifecycle_api import AUTH, inventory, new_run, settled
@@ -189,3 +189,43 @@ def test_file_search_returns_matching_paths_and_never_protected_names(hostile_tr
     for query in ("env", "id_", "ssh", "pem"):
         shown = search_files({"query": query}, resolve=resolve, roots=[root])["path_matches"]
         assert not any(secret in shown for secret in SECRET_FILES), (query, shown)
+
+
+# Text-form tool calls (qwen3-coder writes the call into its reply text) -------------------------
+
+TEXT_CALL = ("I need to find the guide first. <function=file.search> <parameter=query> tools setup guide "
+             "</parameter> </function> </tool_call>")
+
+
+def test_text_form_tool_calls_are_recognised_only_without_a_structured_call():
+    assert looks_like_text_tool_call(TEXT_CALL)
+    assert looks_like_text_tool_call("<tool_call>\n{\"name\": \"file.list\"}\n</tool_call>")
+    assert not looks_like_text_tool_call("Functions such as file.search take a query.")
+    assert not looks_like_text_tool_call(None)
+    assert wrote_tool_call_as_text({"message": {"role": "assistant", "content": TEXT_CALL}})
+    assert not wrote_tool_call_as_text({"message": {"content": TEXT_CALL, "tool_calls": [{"id": "x"}]}})
+
+
+def test_text_form_tool_call_gets_one_nudge_in_the_same_step(router_factory):
+    _, client, _ = router_factory(tools=True)
+    with respx.mock(assert_all_called=True) as mock, _persistent_loop(client):
+        inventory(client, mock)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(side_effect=[reply(TEXT_CALL), reply("Done.")])
+        final = settled(client, new_run(client, selected_tools=["system.info"]).json()["run_id"])
+    assert final["status"] == "completed" and final["snapshot"]["last_content"] == "Done."
+    assert len(route.calls) == 2 and final["snapshot"]["steps"] == 1
+    assert json.loads(route.calls[1].request.content)["messages"][-1] == {"role": "system", "content": TEXT_CALL_NUDGE}
+    assert TEXT_CALL_NUDGE not in json.dumps(final["snapshot"]["transcript"])
+
+
+def test_record_never_saves_tool_call_markup_as_the_answer(router_factory):
+    router, client, _ = router_factory(tools=True)
+    conversation_id = conversation(client)
+    with respx.mock(assert_all_called=True) as mock, _persistent_loop(client):
+        inventory(client, mock)
+        route = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=reply(TEXT_CALL))
+        run_id = new_run(client, conversation_id=conversation_id).json()["run_id"]
+        final = settled(client, run_id)
+    assert final["status"] == "completed" and len(route.calls) == 2  # one nudge, then the run ends
+    assert client.post(f"/tools/agent/runs/{run_id}/record", headers=AUTH).json()["messages"] == 1
+    assert router.CONVERSATIONS[conversation_id]["messages"] == [{"role": "user", "content": "Say done"}]

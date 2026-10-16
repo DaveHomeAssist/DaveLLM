@@ -162,4 +162,8 @@ test("a call awaiting approval and a thinking model show as active steps", () =>
     assert.equal(thinking[0].text, "… Thinking");
     const direct = context.toolRunSteps({ status: "completed", snapshot: { transcript: [], model_inflight: false } });
     assert.equal(direct[0].text, "✓ Answered without using a tool");
+    const textCall = context.toolRunSteps({ status: "completed", snapshot: {
+        transcript: [], model_inflight: false, last_content: "Let me look. <function=file.search> <parameter=query>x</parameter>",
+    } });
+    assert.deepEqual(JSON.parse(JSON.stringify(textCall)), [{ state: "failed", text: "✗ The model wrote a tool call as text, so it did not run" }]);
 });

@@ -1,4 +1,4 @@
-"""DL-TOOLUX-01: what a tool run knows before its first step, and the nudge after a silent step.
+"""DL-TOOLUX-01: what a tool run knows before its first step, and the nudges after a bad step.
 
 The context names the date, the tool root's layout and the node ids so the model can look things
 up instead of guessing them. It never carries node URLs, file contents or protected names: the
@@ -6,6 +6,7 @@ folder map comes from ``walk_tree``, which skips secrets, ignored folders and es
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -25,6 +26,12 @@ CONTINUE_NUDGE = (
     "You have the tool results above. Continue: make the next tool call the request still needs, "
     "or answer the user directly."
 )
+TEXT_CALL_NUDGE = (
+    "Your last reply wrote a tool call as text, so it did not run. Make it as a structured tool call, "
+    "or answer the user directly."
+)
+# Tool-call markup some models (qwen3-coder) leave in the reply text instead of returning a call.
+TEXT_TOOL_CALL = re.compile(r"</?tool_call>|<function=[A-Za-z0-9_.\-]+>")
 
 
 def folder_map(root: Path) -> str:
@@ -95,3 +102,14 @@ def needs_continue_nudge(messages: Sequence[Mapping[str, Any]], reply: Mapping[s
     return (bool(messages) and messages[-1].get("role") == "tool"
             and not message.get("tool_calls")
             and not (isinstance(content, str) and content.strip()))
+
+
+def looks_like_text_tool_call(content: Any) -> bool:
+    """True when reply text carries tool-call markup; such text never ran and is not an answer."""
+    return isinstance(content, str) and TEXT_TOOL_CALL.search(content) is not None
+
+
+def wrote_tool_call_as_text(reply: Mapping[str, Any]) -> bool:
+    """True when the model put a tool call in its text and returned no structured call."""
+    message = reply.get("message") if isinstance(reply.get("message"), Mapping) else {}
+    return not message.get("tool_calls") and looks_like_text_tool_call(message.get("content"))

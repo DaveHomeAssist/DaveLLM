@@ -4077,6 +4077,9 @@ function toolRunCallArguments(call) {
     return (typeof raw === "string" ? toolRunParse(raw) : raw) || {};
 }
 
+// Tool-call markup a model left in its text (qwen3-coder); it never ran. Mirrors davellm_run_context.
+const TEXT_TOOL_CALL = /<\/?tool_call>|<function=[A-Za-z0-9_.\-]+>/;
+
 const TOOL_STEP_LABELS = {
     "file.search": (a) => `Searched files for “${a.query || ""}”`,
     "file.read_lines": (a) => `Read ${a.path || "a file"}`,
@@ -4151,7 +4154,9 @@ function toolRunSteps(run) {
     }
     if (snapshot.model_inflight) steps.push({ state: "active", text: "… Thinking" });
     else if (!steps.length && !TERMINAL_TOOL_RUNS.has(run.status)) steps.push({ state: "active", text: "… Starting" });
-    else if (!steps.length && run.status === "completed") steps.push({ state: "done", text: "✓ Answered without using a tool" });
+    else if (run.status === "completed" && TEXT_TOOL_CALL.test(snapshot.last_content || "")) {
+        steps.push({ state: "failed", text: "✗ The model wrote a tool call as text, so it did not run" });
+    } else if (!steps.length && run.status === "completed") steps.push({ state: "done", text: "✓ Answered without using a tool" });
     return steps;
 }
 
