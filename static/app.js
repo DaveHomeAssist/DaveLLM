@@ -4077,6 +4077,25 @@ function toolRunCallArguments(call) {
     return (typeof raw === "string" ? toolRunParse(raw) : raw) || {};
 }
 
+// A tool call a model wrote at the end of its text (qwen3-coder); it never ran. Mirrors
+// looks_like_text_tool_call in davellm_run_context.py: code and prose mentions do not count.
+function looksLikeTextToolCall(content) {
+    if (typeof content !== "string") return false;
+    const text = content.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, "").trimEnd();
+    const xmlStart = text.lastIndexOf("<function=");
+    if (xmlStart >= 0) {
+        const tail = text.slice(xmlStart);
+        const call = tail.replace(/(?:\s*<\/(?:function|tool_call)>)+\s*$/, "");
+        const shaped = /^<function=[A-Za-z0-9_.\-]+>(?:\s*<parameter=[A-Za-z0-9_.\-]+>[\s\S]*?<\/parameter>)*\s*$/.test(call);
+        if (shaped && (call.includes("<parameter=") || tail.includes("</function>"))) return true;
+    }
+    const jsonStart = text.lastIndexOf("<tool_call>");
+    const match = jsonStart >= 0 && text.slice(jsonStart).match(/^<tool_call>\s*(\{[\s\S]*\})\s*(?:<\/tool_call>)?\s*$/);
+    if (!match) return false;
+    const payload = toolRunParse(match[1]);
+    return Boolean(payload) && typeof payload === "object" && typeof payload.name === "string";
+}
+
 const TOOL_STEP_LABELS = {
     "file.search": (a) => `Searched files for “${a.query || ""}”`,
     "file.read_lines": (a) => `Read ${a.path || "a file"}`,
@@ -4151,7 +4170,9 @@ function toolRunSteps(run) {
     }
     if (snapshot.model_inflight) steps.push({ state: "active", text: "… Thinking" });
     else if (!steps.length && !TERMINAL_TOOL_RUNS.has(run.status)) steps.push({ state: "active", text: "… Starting" });
-    else if (!steps.length && run.status === "completed") steps.push({ state: "done", text: "✓ Answered without using a tool" });
+    else if (run.status === "completed" && looksLikeTextToolCall(snapshot.last_content)) {
+        steps.push({ state: "failed", text: "✗ The model wrote a tool call as text, so it did not run" });
+    } else if (!steps.length && run.status === "completed") steps.push({ state: "done", text: "✓ Answered without using a tool" });
     return steps;
 }
 

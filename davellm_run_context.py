@@ -1,4 +1,4 @@
-"""DL-TOOLUX-01: what a tool run knows before its first step, and the nudge after a silent step.
+"""DL-TOOLUX-01: what a tool run knows before its first step, and the nudges after a bad step.
 
 The context names the date, the tool root's layout and the node ids so the model can look things
 up instead of guessing them. It never carries node URLs, file contents or protected names: the
@@ -6,6 +6,8 @@ folder map comes from ``walk_tree``, which skips secrets, ignored folders and es
 """
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -25,6 +27,16 @@ CONTINUE_NUDGE = (
     "You have the tool results above. Continue: make the next tool call the request still needs, "
     "or answer the user directly."
 )
+TEXT_CALL_NUDGE = (
+    "Your last reply wrote a tool call as text, so it did not run. Make it as a structured tool call, "
+    "or answer the user directly."
+)
+# A tool call some models (qwen3-coder) leave at the end of the reply text instead of returning one.
+# Only a call-shaped ending counts: markup quoted in code or mentioned in prose is an answer.
+_CODE = re.compile(r"```.*?```|~~~.*?~~~|`[^`\n]*`", re.S)
+_TRAILING_CLOSERS = re.compile(r"(?:\s*</(?:function|tool_call)>)+\s*\Z")
+_XML_CALL = re.compile(r"<function=[A-Za-z0-9_.\-]+>(?:\s*<parameter=[A-Za-z0-9_.\-]+>[\s\S]*?</parameter>)*\s*")
+_JSON_CALL = re.compile(r"<tool_call>\s*(\{[\s\S]*\})\s*(?:</tool_call>)?\s*")
 
 
 def folder_map(root: Path) -> str:
@@ -95,3 +107,35 @@ def needs_continue_nudge(messages: Sequence[Mapping[str, Any]], reply: Mapping[s
     return (bool(messages) and messages[-1].get("role") == "tool"
             and not message.get("tool_calls")
             and not (isinstance(content, str) and content.strip()))
+
+
+def looks_like_text_tool_call(content: Any) -> bool:
+    """True when the reply ends in a tool call written as text, which never ran and is not an answer.
+
+    The XML form (``<function=name>`` with ``<parameter=...>`` parts) must run to the end of the
+    reply and have a parameter or a closing ``</function>``; the JSON form must be a ``<tool_call>``
+    object with a string ``name``. Code blocks and inline code are ignored first.
+    """
+    if not isinstance(content, str):
+        return False
+    text = _CODE.sub("", content).rstrip()
+    start = text.rfind("<function=")
+    if start >= 0:
+        tail = text[start:]
+        call = _TRAILING_CLOSERS.sub("", tail)
+        if _XML_CALL.fullmatch(call) and ("<parameter=" in call or "</function>" in tail):
+            return True
+    start = text.rfind("<tool_call>")
+    if start >= 0 and (match := _JSON_CALL.fullmatch(text[start:])):
+        try:
+            payload = json.loads(match.group(1))
+        except ValueError:
+            return False
+        return isinstance(payload, dict) and isinstance(payload.get("name"), str)
+    return False
+
+
+def wrote_tool_call_as_text(reply: Mapping[str, Any]) -> bool:
+    """True when the model put a tool call in its text and returned no structured call."""
+    message = reply.get("message") if isinstance(reply.get("message"), Mapping) else {}
+    return not message.get("tool_calls") and looks_like_text_tool_call(message.get("content"))

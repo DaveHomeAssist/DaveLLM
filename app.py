@@ -2308,21 +2308,26 @@ NODE_IDLE_TIMEOUT = _env_seconds("DAVE_NODE_IDLE_TIMEOUT", 120.0)
 NODE_TOTAL_TIMEOUT = _env_seconds("DAVE_NODE_TOTAL_TIMEOUT", 600.0)
 
 
-from davellm_run_context import CONTINUE_NUDGE, needs_continue_nudge, tool_run_context, with_run_context
+from davellm_run_context import (
+    CONTINUE_NUDGE, TEXT_CALL_NUDGE, looks_like_text_tool_call, needs_continue_nudge, tool_run_context,
+    with_run_context, wrote_tool_call_as_text,
+)
 
 
 async def invoke_harness_model(messages: List[Dict], schemas: List[Dict]) -> dict:
     """Use the node/model captured for this run, including after approval resume.
 
     DL-TOOLUX-01 A7: when an opted-in run's step after tool results returns neither text nor a
-    tool call, ask once more in the same step. The nudge is not added to the transcript.
+    tool call, or a step writes its tool call as text instead of returning one, ask once more in
+    the same step. At most one nudge per step, and the nudge is not added to the transcript.
     """
     result = await _invoke_harness_model_once(messages, schemas)
     binding = HOST_RUN_CONTEXT.get()
-    if binding is not None and binding.continue_nudge and needs_continue_nudge(messages, result):
-        result = await _invoke_harness_model_once(
-            [*messages, {"role": "system", "content": CONTINUE_NUDGE}], schemas,
-        )
+    if binding is not None and binding.continue_nudge:
+        nudge = (TEXT_CALL_NUDGE if wrote_tool_call_as_text(result)
+                 else CONTINUE_NUDGE if needs_continue_nudge(messages, result) else None)
+        if nudge:
+            result = await _invoke_harness_model_once([*messages, {"role": "system", "content": nudge}], schemas)
     return result
 
 
@@ -4390,8 +4395,8 @@ async def record_agent_run(run_id: str, user_id: str = Depends(get_current_user)
     """DL-TOOLUX-01 B1: add a finished run's question and answer to its conversation, once.
 
     Only server-held values are written: the run's own last user message and, for a completed
-    run, its final visible answer. A run that ended any other way records the question alone,
-    so no empty or partial assistant turn reaches the conversation.
+    run, its final visible answer. A run that ended any other way, or whose final text is tool-call
+    markup, records the question alone, so no empty, partial or unrun turn reaches the conversation.
     """
     if not TOOLS_ENABLED:
         raise HTTPException(403, "Tools are disabled")
@@ -4412,7 +4417,8 @@ async def record_agent_run(run_id: str, user_id: str = Depends(get_current_user)
         added.append({"role": "user", "content": binding.user_prompt})
     snapshot = result.snapshot.to_dict() if result.snapshot else {}
     answer = snapshot.get("last_content") if result.status == "completed" else None
-    if added and isinstance(answer, str) and answer.strip():
+    # Tool-call markup left in the text never ran; saved, the model would read it back as its own answer.
+    if added and isinstance(answer, str) and answer.strip() and not looks_like_text_tool_call(answer):
         added.append({"role": "assistant", "content": answer})
     RECORDED_TOOL_RUNS.add(run_id)
     if not added:
