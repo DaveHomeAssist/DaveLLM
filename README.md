@@ -67,7 +67,7 @@ The installer creates a strong `DAVE_API_KEY` in macOS Keychain when the `com.da
 
 Double-click **DaveLLM Launcher** in `~/Applications` for subsequent launches. Startup failures are written to `~/Library/Logs/DaveLLM/launcher.log`. Stop any browser-mode process already using TCP port `8000` before launching the desktop app.
 
-The launcher hands off startup and exits immediately; it is not a second app you need to keep open. Only the Electron desktop remains running and owns the local backend. Quit the desktop app normally to stop it. Startup errors after the handoff are recorded in the log (not a launcher alert). Force Quit of the desktop itself, logout, and reboot still stop DaveLLM; the launcher does not automatically restart it.
+The launcher hands off startup and exits immediately; it is not a second app you need to keep open. Only the Electron desktop remains running and owns the local backend. A per-user Electron instance lock prevents overlapping launches from starting duplicate backends. Quit the desktop app normally to stop it. Startup errors after the handoff are recorded in the log (not a launcher alert). Force Quit of the desktop itself, logout, and reboot still stop DaveLLM; the launcher does not automatically restart it.
 
 The launcher automatically discovers Homebrew `whisper-cli`. Local dictation uses the model under `DAVE_DATA_DIR/models/ggml-tiny.en.bin`; override either path with `DAVE_WHISPER_BIN` or `DAVE_WHISPER_MODEL`.
 

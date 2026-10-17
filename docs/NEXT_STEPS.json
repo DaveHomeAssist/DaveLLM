@@ -14,8 +14,8 @@
       "checkedOn": "2026-10-17",
       "baselineRevision": "f6ca9cceec172fb55fb19919f6869e7372320a1b",
       "cause": "macOS termination evidence identifies Force Quit of the launcher and subordinate processes, not a spontaneous backend crash. The synchronous AppleScript wrapper stays alive for the entire Electron session.",
-      "repair": "Hand off startup with nohup and all standard descriptors redirected, then exit the wrapper. Preserve normal desktop quit, startup validation, Keychain, data, configuration and node services. No auto restart or login service.",
-      "verification": "Both new regressions fail against the synchronous baseline. Targeted Mac tests, exact-head CI and installed handoff acceptance gate delivery separately.",
+      "repair": "Hand off startup with nohup and all standard descriptors redirected, then exit the wrapper. Acquire Electron's per-user instance lock before scheduling backend startup so overlapping launches cannot spawn duplicate backends. Preserve normal desktop quit, startup validation, Keychain, data, configuration and node services. No auto restart or login service.",
+      "verification": "Two launcher regressions fail against the synchronous baseline; 26 targeted Mac launcher tests pass after repair. Two desktop lifecycle regressions fail before the instance guard and pass after it. Exact-head CI and installed handoff acceptance gate delivery separately.",
       "nextAction": "Verify the installed launcher exits while the desktop and authenticated backend remain healthy; do not restart healthy nodes or merge unrelated tool changes."
     },
     "checkedOn": "2026-10-17",

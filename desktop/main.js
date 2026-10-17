@@ -148,13 +148,29 @@ async function startDesktop() {
   }
 }
 
-app.whenReady().then(() => {
-  startDesktop();
-
-  app.on("activate", () => {
-    if (backendReady && BrowserWindow.getAllWindows().length === 0) createWindow();
+// Detached launcher clicks can overlap before either backend binds its port.
+// Take Electron's per-user instance lock before scheduling any backend startup.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    } else if (backendReady) {
+      createWindow();
+    }
   });
-});
+
+  app.whenReady().then(() => {
+    startDesktop();
+
+    app.on("activate", () => {
+      if (backendReady && BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
