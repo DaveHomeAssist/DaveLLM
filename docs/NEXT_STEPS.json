@@ -6,11 +6,24 @@
     "DaveHomeAssist/DaveLLM"
   ],
   "head": "Compact tools and resizable workspace; project sidebar choice open",
-  "lastActivity": "2026-10-16",
+  "lastActivity": "2026-10-17",
   "status": "amber",
-  "statusReason": "All 100 approved tools are source-delivered behind additive gates. October 7-9 receipts record selected-tool installation, private starter configuration, a calc.eval result of 108 and native activation at b34e69b. These are dated observations, not current running-process proof or acceptance of every tool. PR86 source excerpt correction is merged and CI/docs-published but not established as installed. T10/T11 remain FAIL; all four pilot attempts are spent (10 requests, 4070 generated tokens). Provider/helper inputs, physical/native acceptance and H9 remain separate gates; Duncan's one-request CPU failure still requires stopping tuning.",
+  "statusReason": "All 100 approved tools are source-delivered behind additive gates. On October 17 the existing Mac launcher was gracefully relaunched at already-current clean main 5f88b5e, which includes PR86 and later tool UX fixes. Native tools-menu, authenticated three-node inventories and five direct read-only tool checks passed; source excerpts preserve absolute line identities and calc.eval accepts arithmetic without units. Existing conversations, projects and private configuration were preserved. This is bounded installed acceptance, not all-100 or model-answer acceptance. T10/T11 remain FAIL; the October 9 pilot attempts and budget remain spent. Provider/helper, physical/operator and H9 gates remain separate; Duncan's one-request CPU stop remains unchanged.",
   "evidence": {
-    "checkedOn": "2026-10-12",
+    "checkedOn": "2026-10-17",
+    "installedToolsAcceptance": {
+      "checkedOn": "2026-10-17",
+      "sourceRevision": "5f88b5ec4c56b0c3beee4fd302c3f880d24b16ae",
+      "sourceCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/38727145783",
+      "scope": "Existing canonical Mac launcher restart and direct read-only tool verification. Checkout was already current; no downgrade, code update, dependency install or remote-service change was needed.",
+      "preservation": "Verified complete private data backup after graceful quit. All 37 conversations, four projects, settings, tool roots, toolpack and model-context files remained byte-identical after restart and direct checks.",
+      "native": "Native DaveLLM 2.1.0 window and refreshed Tools picker verified. Existing Walter/qwen3-coder:30b selection restored after inventory loaded. An intermediate computer-use capture error was resolved by accessibility readback; no repeated action was required.",
+      "runtime": "New loopback backend healthy; authenticated status and inventories responded for Dominic, Walter and Duncan with 1/4/5 models. Unauthenticated nodes returned 401. New tool-run record endpoint present but not invoked.",
+      "followup": "After initial acceptance, Electron received an unattributed SIGTERM at 03:21 EDT. One canonical relaunch restored backend health, all three authenticated inventories and arithmetic success at 03:25 EDT. Native window readback after this second launch was unavailable because macOS ScreenCaptureKit returned -3811. Earlier native acceptance is retained as a dated observation, not current second-launch proof; no tools-crash root cause is established.",
+      "tools": "Five direct calls passed using the existing admitted self-edit root: file.search (two matches); file.read_lines (40 lines, chosen match included); md.outline; md.section (ten lines); calc.eval without unit arguments returned value 715. Both excerpt results matched exact file text and absolute contiguous line identities.",
+      "limits": "No inference, H9, provider write, run-record mutation, model tuning or configuration change. Direct tool success does not establish model selection, final-answer quality, approval flow, export/recovery or all tool families. Historical T10/T11 FAIL and the spent 10-request/4070-token pilot remain unchanged.",
+      "nextAction": "Keep historical failure scores; any fresh T10/T11 model-quality attempt needs its own explicit bounded grant. Preserve the working installed app and existing tool roots."
+    },
     "toolsReadinessReconciliation": {
       "checkedOn": "2026-10-12",
       "sourceRevision": "cfc4bf2edfa1f974aa1d0d17cfafc4f1ca47deb1",
@@ -1158,9 +1171,9 @@
     }
   ],
   "kickoffPrompt": "Finish DaveLLM Tools100 as working software. Preserve credentials and unrelated services, but do not impose obsolete source-only, no-inference or no-GUI limits. Complete protected delivery, restart through the canonical launcher, verify the native Tools picker and selected-schema enforcement, and run a real read-only selected-tool inference acceptance. Keep provider-specific families fail-closed until their actual grants and aliases are configured. Do not create subagents.",
-  "confidence": "high for exact catalog, isolated implementation contracts and protected source delivery; installed/provider/native/physical acceptance is not implied",
+  "confidence": "high for exact catalog, isolated contracts and protected source delivery; October 17 adds bounded Mac launcher, five direct tool checks and three-node inventory evidence. Native menu passed before an unattributed shutdown; backend checks passed after one relaunch, but fresh native readback was unavailable. All-tool, model-answer, provider and physical acceptance remain separate.",
   "unknowns": [
-    "Dominic SSH and container capability are freshly verified for this source build. Current installed runtime/model inventory and inference on that node were not reprobed by the tools-only build; previous inventory snapshots remain historical.",
+    "October 17 authenticated installed-app probes verified Dominic, Walter and Duncan online with 1, 4 and 5 models respectively, including after the second launcher start. No inference or fresh runner-capability test was performed in this activation slice; model-answer quality remains unverified.",
     "Tools100 runtime target configuration, provider credentials/grants, recipes, executable installations and POSIX helper deployment are not established by source tests. Windows job-object isolation is not implemented; Windows helper calls fail closed.",
     "Duncan gpt-oss:20b is not currently viable on the required path: the October 7 request-local CPU-only 4K baseline failed allocating a 10152345600-byte CPU repack buffer, and Ollama reported no usable GPU for its current runner build. No higher profile or actual-context request was attempted after the required stop.",
     "H9 structured-write compatibility and the remaining fixed corpus; passing native bounded acceptance is not governing qualification.",
