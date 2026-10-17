@@ -10,6 +10,14 @@
   "status": "amber",
   "statusReason": "All 100 approved tools are source-delivered behind additive gates. On October 17 the existing Mac launcher was gracefully relaunched at already-current clean main 5f88b5e, which includes PR86 and later tool UX fixes. Native tools-menu, authenticated three-node inventories and five direct read-only tool checks passed; source excerpts preserve absolute line identities and calc.eval accepts arithmetic without units. Existing conversations, projects and private configuration were preserved. This is bounded installed acceptance, not all-100 or model-answer acceptance. T10/T11 remain FAIL; the October 9 pilot attempts and budget remain spent. Provider/helper, physical/operator and H9 gates remain separate; Duncan's one-request CPU stop remains unchanged.",
   "evidence": {
+    "launcherHandoff": {
+      "checkedOn": "2026-10-17",
+      "baselineRevision": "f6ca9cceec172fb55fb19919f6869e7372320a1b",
+      "cause": "macOS termination evidence identifies Force Quit of the launcher and subordinate processes, not a spontaneous backend crash. The synchronous AppleScript wrapper stays alive for the entire Electron session.",
+      "repair": "Hand off startup with nohup and all standard descriptors redirected, then exit the wrapper. Preserve normal desktop quit, startup validation, Keychain, data, configuration and node services. No auto restart or login service.",
+      "verification": "Both new regressions fail against the synchronous baseline. Targeted Mac tests, exact-head CI and installed handoff acceptance gate delivery separately.",
+      "nextAction": "Verify the installed launcher exits while the desktop and authenticated backend remain healthy; do not restart healthy nodes or merge unrelated tool changes."
+    },
     "checkedOn": "2026-10-17",
     "installedToolsAcceptance": {
       "checkedOn": "2026-10-17",

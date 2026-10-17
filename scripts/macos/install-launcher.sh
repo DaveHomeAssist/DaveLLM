@@ -60,12 +60,15 @@ compiled_app="${APP_DIR}/.DaveLLM Launcher.$$.app"
 runner_escaped="$(escape_applescript "$RUNNER_PATH")"
 log_escaped="$(escape_applescript "$LOG_PATH")"
 
+# Hand off and exit: a synchronous applet remains in the Dock and Force Quit
+# on that wrapper also terminates its Electron/backend children. Redirect all
+# descriptors so AppleScript does not wait for the background process's pipes.
 /usr/bin/osacompile -o "$compiled_app" \
     -e 'on run' \
     -e "set runnerPath to \"${runner_escaped}\"" \
     -e "set logPath to \"${log_escaped}\"" \
     -e 'try' \
-    -e 'do shell script "/bin/zsh " & quoted form of runnerPath & " >> " & quoted form of logPath & " 2>&1"' \
+    -e 'do shell script "/usr/bin/nohup /bin/zsh " & quoted form of runnerPath & " < /dev/null >> " & quoted form of logPath & " 2>&1 &"' \
     -e 'on error' \
     -e 'display alert "DaveLLM could not start" message "See " & logPath & " for details." as critical' \
     -e 'end try' \
