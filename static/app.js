@@ -4812,7 +4812,12 @@ function renderSearchBox() {
         if (!q) return;
         results.textContent = "Searching...";
         try {
-            const res = await fetch(routerEndpoint(`/search?query=${encodeURIComponent(q)}`), { headers: authHeaders() });
+            // Search terms go in the body: URLs reach the router's access log.
+            const res = await fetch(routerEndpoint("/search"), {
+                method: "POST",
+                headers: authHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({ query: q })
+            });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             results.replaceChildren();

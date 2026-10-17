@@ -882,6 +882,33 @@
       "title": "Tool runs work but do not feel natural yet",
       "detail": "Probe 2026-10-12: ten plain-language requests (no tool names) against qwen3-coder:30b on walter with 21 tools selected, through an isolated test router whose only root was the self-edit clone. Five answered well (code lookup 58 s, git history, repo status, time conversion, plus the earlier approved edit). Failures: (1) cluster question: the model guessed node names node1-3 in parallel with cluster.status; two \"Node alias is not configured\" errors spent the error budget of 2 and the run ended with no answer although cluster.status succeeded. (2) calc.eval: from_unit and to_unit are required even for plain arithmetic (spec() marks every property required); both attempts failed and the run ended with no answer. (3) md.outline: guessed tools/setup-guide.md, got File not found, and asked the user instead of looking. (4) web: answered from web.search snippets without web.read and invented release details. (5) secret.scan takes text only; the model scanned an invented sentence and then claimed it had no file access. (6) Natural edit: file.search is literal content search, so the guide was not found by name; the model chose docs/DAVELLM_TOOLS.md and proposed a different, multi-paragraph rewrite; the approval was rejected and nothing was written. Also: time.convert used an invented 2023 date (no current date in context); a four-step request stopped after the reads with an empty reply. UI: tool runs need the manual picker, tool-run answers are not saved to the conversation, the sent text stays in the message box, the ledger shows raw event kinds with doubled numbers, and tool results render as raw JSON.",
       "next": "A and B implemented (PR90, stacked on PR89; pending CI and merge). Branch-code rerun 2026-10-12 of the ten probe requests against qwen3-coder:30b on walter answered 9 of 10 (was 5): cluster, math, outline and time now succeed; web now reads pages before answering; secret.scan scans docs/ by path. Open: the natural-edit request emitted a qwen3-coder tool call as plain text and stopped; the model can still guess a path and report it missing instead of searching; plan narration persists. Browser check on a local test router: composer clears, the question shows at once, plain steps render, the answer is saved to the conversation and a follow-up uses it. C and D remain proposals."
+    },
+    {
+      "id": "DL-18",
+      "type": "security",
+      "sev": "P2",
+      "title": "Implemented: sidebar search no longer puts typed search terms in URLs",
+      "detail": "The sidebar search sent the typed terms as ?query= on GET /search, and uvicorn's access log, which the macOS launcher appends to its log file, records full URLs, so search terms reached the log. POST /search now takes {query, top_k} in a JSON body with the same API-key auth and response shape; top_k is bounded to 1-100 and the query to 100,000 characters. The GET is removed, so the old form gets the static mount's plain 404. Terms already in the existing launcher log are untouched and need Dave's decision before any edit. Mirrors DL-17 (memory lookup, PR #88).",
+      "files": [
+        "app.py",
+        "static/app.js",
+        "tests/test_api_contracts.py",
+        "tests/test_security_and_frontend.py",
+        "tests/test_native_tools.py",
+        "docs/DAVELLM_TOOLS.md"
+      ],
+      "evidence": "test",
+      "phase": 3,
+      "history": [
+        {
+          "checkedOn": "2026-10-15",
+          "title": "Sidebar search query string carried typed search terms",
+          "detail": "The sidebar search button in static/app.js built /search?query=<terms>; app.py served it as GET query parameters.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "implemented",
+      "evidenceNote": "October 15 source repair on branch claude/elegant-hypatia-6f5b13. Targeted pytest and node checks passed on the Mac; full pytest on Dominic and protected CI are recorded in the PR. The installed app is unchanged until merge and relaunch."
     }
   ],
   "phases": [

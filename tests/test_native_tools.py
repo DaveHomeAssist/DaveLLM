@@ -464,7 +464,7 @@ def test_chat_search_with_no_matches(native):
 def test_search_route_behaviour_is_unchanged(native):
     router, client, _ = native
     conversation(router, title="Route chat", messages=(("system", "route phrase alpha"), ("user", "route phrase alpha")))
-    results = client.get("/search", params={"query": "route phrase alpha"}, headers=AUTH).json()
+    results = client.post("/search", json={"query": "route phrase alpha"}, headers=AUTH).json()
     assert {item["role"] for item in results} == {"system", "user"}
 
 
