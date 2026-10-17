@@ -10,6 +10,14 @@
   "status": "amber",
   "statusReason": "All 100 approved tools are source-delivered behind additive gates. On October 17 the existing Mac launcher was gracefully relaunched at already-current clean main 5f88b5e, which includes PR86 and later tool UX fixes. Native tools-menu, authenticated three-node inventories and five direct read-only tool checks passed; source excerpts preserve absolute line identities and calc.eval accepts arithmetic without units. Existing conversations, projects and private configuration were preserved. This is bounded installed acceptance, not all-100 or model-answer acceptance. T10/T11 remain FAIL; the October 9 pilot attempts and budget remain spent. Provider/helper, physical/operator and H9 gates remain separate; Duncan's one-request CPU stop remains unchanged.",
   "evidence": {
+    "launcherHandoff": {
+      "checkedOn": "2026-10-17",
+      "baselineRevision": "f6ca9cceec172fb55fb19919f6869e7372320a1b",
+      "cause": "macOS termination evidence identifies Force Quit of the launcher and subordinate processes, not a spontaneous backend crash. The synchronous AppleScript wrapper stays alive for the entire Electron session.",
+      "repair": "Hand off startup with nohup and all standard descriptors redirected, then exit the wrapper. Acquire Electron's per-user instance lock before scheduling backend startup so overlapping launches cannot spawn duplicate backends. Preserve normal desktop quit, startup validation, Keychain, data, configuration and node services. No auto restart or login service.",
+      "verification": "Two launcher regressions fail against the synchronous baseline; 26 targeted Mac launcher tests pass after repair. Two desktop lifecycle regressions fail before the instance guard and pass after it. Exact-head CI and installed handoff acceptance gate delivery separately.",
+      "nextAction": "Verify the installed launcher exits while the desktop and authenticated backend remain healthy; do not restart healthy nodes or merge unrelated tool changes."
+    },
     "checkedOn": "2026-10-17",
     "installedToolsAcceptance": {
       "checkedOn": "2026-10-17",
@@ -882,6 +890,33 @@
       "title": "Interface review of the chat screen (2026-10-16)",
       "detail": "Component-by-component review from a screenshot and main 5f88b5e source. Defects: the circular-arrows icon beside Project Home re-applies project instructions but reads as refresh (index.html resyncProject); the sidebar project dropdown filters the list, sets the project for new chats and leaves the open conversation, while the composer Project chip means attachment. Should fix: tool mode is silent and persists across conversations; the 3-7 day age colour reuses the danger red; routing is shown three times (pill, sentence, Node/Model chips), search has three controls, template is set in two places; the DR avatar looks interactive but is not; Model is text-only reads as no tools; empty New Conversation entries clutter the list; titles are cut at 30 characters server-side; the approval card leads with permission and call IDs. Verified: focus-visible ring, labelled icon buttons, keyboard resize separator, starting-mode cards hide once a chat has messages and expose aria-pressed. Not verified: dark theme, narrow widths, keyboard-only and screen-reader walkthroughs, Projects, Cluster and Settings views.",
       "next": "Dave answers DL-UI-06"
+    },
+    {
+      "id": "DL-18",
+      "type": "security",
+      "sev": "P2",
+      "title": "Implemented: sidebar search no longer puts typed search terms in URLs",
+      "detail": "The sidebar search sent the typed terms as ?query= on GET /search, and uvicorn's access log, which the macOS launcher appends to its log file, records full URLs, so search terms reached the log. POST /search now takes {query, top_k} in a JSON body with the same API-key auth and response shape; top_k is bounded to 1-100 and the query to 100,000 characters. The GET is removed, so the old form gets the static mount's plain 404. Terms already in the existing launcher log are untouched and need Dave's decision before any edit. Mirrors DL-17 (memory lookup, PR #88).",
+      "files": [
+        "app.py",
+        "static/app.js",
+        "tests/test_api_contracts.py",
+        "tests/test_security_and_frontend.py",
+        "tests/test_native_tools.py",
+        "docs/DAVELLM_TOOLS.md"
+      ],
+      "evidence": "test",
+      "phase": 3,
+      "history": [
+        {
+          "checkedOn": "2026-10-15",
+          "title": "Sidebar search query string carried typed search terms",
+          "detail": "The sidebar search button in static/app.js built /search?query=<terms>; app.py served it as GET query parameters.",
+          "evidence": "code-read"
+        }
+      ],
+      "status": "implemented",
+      "evidenceNote": "October 15 source repair on branch claude/elegant-hypatia-6f5b13. Targeted pytest and node checks passed on the Mac; full pytest on Dominic and protected CI are recorded in the PR. The installed app is unchanged until merge and relaunch."
     }
   ],
   "phases": [

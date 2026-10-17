@@ -436,3 +436,17 @@ def test_chat_ui_rename_streaming_scroll_and_sidebar_contracts():
     assert 'return { action: "deny" };' in main_source
     assert "shell.openExternal(url)" in main_source
     assert 'win.webContents.on("will-navigate"' in main_source
+
+
+def test_sidebar_search_sends_terms_in_the_body_never_the_url():
+    """Typed search terms reach the router's access log through a URL, so the sidebar
+    search posts them in a JSON body."""
+    repo = Path(__file__).resolve().parents[1]
+    app_source = (repo / "static" / "app.js").read_text()
+    search = app_source.split('results.textContent = "Searching...";', 1)[1].split("const data = await res.json();", 1)[0]
+    assert 'fetch(routerEndpoint("/search"), {' in search
+    assert 'method: "POST"' in search
+    assert 'headers: authHeaders({ "Content-Type": "application/json" })' in search
+    assert "body: JSON.stringify({ query: q })" in search
+    assert "/search?" not in app_source
+    assert "encodeURIComponent(q)" not in app_source

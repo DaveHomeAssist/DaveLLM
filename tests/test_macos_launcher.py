@@ -2,7 +2,10 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -212,6 +215,46 @@ def test_macos_installer_generates_a_key_and_one_click_app_without_printing_it()
 
     assert 'print -- "$generated_key"' not in installer
     assert not re.search(r"http://(?:\d{1,3}\.){3}\d{1,3}:11434", installer)
+
+
+def test_macos_installer_hands_off_without_waiting_for_the_app():
+    installer = INSTALLER.read_text()
+    assert '/usr/bin/nohup /bin/zsh ' in installer
+    assert ' < /dev/null >> ' in installer
+    assert ' 2>&1 &"' in installer
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS AppleScript")
+def test_installed_applescript_command_returns_while_child_is_alive(tmp_path: Path):
+    # Exercise the exact generated AppleScript command, not a lookalike shell.
+    # Quoted paths and redirected descriptors are required for an actual handoff.
+    runner = tmp_path / "Dave's test runner.sh"
+    log = tmp_path / "Dave's launcher.log"
+    runner.write_text('#!/bin/zsh\nprint -r -- $$\nexec /bin/sleep 5\n')
+    command = next(
+        line.strip()[4:-3] for line in INSTALLER.read_text().splitlines()
+        if line.strip().startswith("-e 'do shell script ")
+    )
+    started = time.monotonic()
+    try:
+        result = subprocess.run(
+            ["/usr/bin/osascript", "-e", f'set runnerPath to "{runner}"',
+             "-e", f'set logPath to "{log}"', "-e", command],
+            capture_output=True, text=True, timeout=3, check=True,
+        )
+        assert time.monotonic() - started < 3
+        assert not result.stdout.strip()
+        deadline = time.monotonic() + 1
+        while (not log.exists() or not log.read_text().strip()) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        child_pid = int(log.read_text().strip())
+        os.kill(child_pid, 0)
+    finally:
+        if log.exists() and log.read_text().strip():
+            try:
+                os.kill(int(log.read_text().strip()), signal.SIGTERM)
+            except ProcessLookupError:
+                pass
 
 
 def test_macos_whisper_installer_keeps_the_verified_model_out_of_source():

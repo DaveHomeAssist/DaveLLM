@@ -301,7 +301,7 @@ Listing returns `artifacts` (each with `artifact`, `title`, `kind`, `pinned`, `c
 | `query` | string | required | 1–200 characters |
 | `max_results` | integer | `5` | 1–10 |
 
-Searches only the run user's conversations, using the same search as `GET /search`. The query never changes whose conversations are searched. Only user and assistant messages are searched; system prompts, system and tool messages, and conversation instructions never appear. Each result has `conversation` (its identifier), `title`, `role`, and a `snippet` of at most 300 characters around the match.
+Searches only the run user's conversations, using the same search as `POST /search`. The query never changes whose conversations are searched. Only user and assistant messages are searched; system prompts, system and tool messages, and conversation instructions never appear. Each result has `conversation` (its identifier), `title`, `role`, and a `snippet` of at most 300 characters around the match.
 
 ### `cluster.status`
 

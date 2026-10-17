@@ -4585,10 +4585,18 @@ def search_conversation_messages(
     return results[:top_k]
 
 
-@app.get("/search")
-def global_search(query: str, top_k: int = 10, user_id: str = Depends(get_current_user)):
-    """Search across all conversations by semantic similarity with substring fallback."""
-    return search_conversation_messages(query, user_id, top_k)
+class ConversationSearchRequest(BaseModel):
+    """The search terms; they travel in the body so they never reach a URL or access log."""
+    query: str = Field(max_length=100_000)
+    top_k: int = Field(default=10, ge=1, le=100)
+
+
+@app.post("/search")
+def global_search(req: ConversationSearchRequest, user_id: str = Depends(get_current_user)):
+    """Search across all conversations by semantic similarity with substring fallback.
+
+    POST only: a query string would put the search terms in the access log."""
+    return search_conversation_messages(req.query, user_id, req.top_k)
 
 @app.get("/conversations")
 def list_conversations(user_id: str = Depends(get_current_user)):
