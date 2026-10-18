@@ -1,6 +1,6 @@
 # DaveLLM tools
 
-DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the qualified built-in tools, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, the native read tools added in PR-05, the approved `file.edit` added in PR-06, the web tools `web.search` and `web.read`, and the Notion tools.
+DaveLLM offers tools to Ollama models through the in-process DaveHarness registry. All tools are off by default. This page covers the settings, the built-in tools and their qualification boundaries, the extended file tools added in PR-02, the Markdown tools added in PR-03, the read-only Git tools added in PR-04, the native read tools added in PR-05, the approved `file.edit` added in PR-06, the web tools `web.search` and `web.read`, and the Notion tools.
 
 [DAVEHARNESS_CAPABILITIES.md](DAVEHARNESS_CAPABILITIES.md) lists every tool's full schema, flags, run budgets, host limits, routes, and tool-module constants in one place. It and its machine-readable twin, [DAVEHARNESS_CAPABILITIES.json](DAVEHARNESS_CAPABILITIES.json), are generated from the registry by `scripts/generate_capabilities_manifest.py`.
 
@@ -33,7 +33,9 @@ Leave `DAVE_ENABLE_EXTENDED_TOOLS` off while qualifying a target model, so H9 re
 
 The macOS launcher reads `DAVE_TOOL_ROOTS` and the Tools100 settings from owner-only files in the data folder, so a Dock launch gets them too. See [Switching on tools in the Mac app](TOOLS100_SETUP.md).
 
-## Qualified built-in tools
+<a id="qualified-built-in-tools"></a>
+
+## Built-in tools and qualification boundaries
 
 | Tool | Permission | Approval |
 |---|---|---|
@@ -45,6 +47,8 @@ The macOS launcher reads `DAVE_TOOL_ROOTS` and the Tools100 settings from owner-
 | `shell.exec` (needs `DAVE_ENABLE_SHELL_TOOL`) | `execute_process` | Yes |
 
 `web.fetch` now pins each HTTP connection to the public IP addresses admitted for that redirect hop, while preserving the original Host header and TLS certificate identity. It ignores environment proxies and does not reuse connections between requests. The DNS-rebinding fix intentionally changes this handler’s source fingerprint; the catalog fixture is updated. Earlier qualification evidence remains historical and does not qualify this revised handler.
+
+The [October 18 source review](TOOLS100_READINESS.md#reconciliation--october-18-2026) records existing connection/provenance fixtures and exact-source CI. That closes the reviewed source-evidence question, not live-model qualification; no additional handler change or H9 run follows merely from the intentional fingerprint change.
 
 These tools are unchanged by the extended tools. `file.read` still returns at most 5,000 characters and does not apply the protected-path rules below.
 
@@ -342,7 +346,7 @@ The approval card lives in the browser and desktop UI for runs started with `POS
 
 ## Web tools
 
-`web.search` and `web.read` let a tool run look something up and read the source. Both are read-only, need no approval, use permission `public_network`, run as asynchronous handlers with bounded cancellation, and time out after 10 seconds. Neither changes the qualified `web.fetch`.
+`web.search` and `web.read` let a tool run look something up and read the source. Both are read-only, need no approval, use permission `public_network`, run as asynchronous handlers with bounded cancellation, and time out after 10 seconds. Their registration does not change `web.fetch`; the separately delivered public-connection repair and its qualification boundary are described above.
 
 ### `web.search`
 

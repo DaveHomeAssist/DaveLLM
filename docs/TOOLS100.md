@@ -4,6 +4,8 @@ All 100 approved candidates have separate schemas and implementations in `davell
 
 This is an opt-in source delivery, not an installed-runtime upgrade. No service, credential store, model inventory or native UI is changed, and the macOS launcher registers the expansion only when the operator creates `toolpack.json` in the data folder ([setup guide](TOOLS100_SETUP.md)). Existing qualified handler provenance and Notion v1 behavior remain pinned. Provider and physical acceptance are separate from offline tests.
 
+That source-delivery boundary is not a claim that the expansion remains uninstalled. [Dated readiness evidence](TOOLS100_READINESS.md) records later selected-tool activation and direct-tool checks, while preserving their limits. The original roadmap's first-slice question is superseded by the all-100 approval; source delivery, installed selection, live-model qualification and provider/device acceptance must not be collapsed into one status.
+
 ## Enabling
 
 `DAVE_ENABLE_TOOLS=true` and `DAVE_ENABLE_TOOLPACK=true` register the expansion at startup. Inference additionally needs `DAVE_ENABLE_TOOL_INFERENCE=true`; SSH jobs additionally need `DAVE_ENABLE_TOOL_JOBS=true`. All default to false. `DAVE_TOOLPACK_CONFIG` is at most 64 KiB of operator-owned nonsecret JSON. Malformed/unconfigured targets fail closed.
