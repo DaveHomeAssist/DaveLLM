@@ -331,6 +331,7 @@ const projectHomeDescription = document.getElementById("projectHomeDescription")
 const projectAttachmentState = document.getElementById("projectAttachmentState");
 const attachProjectChatBtn = document.getElementById("attachProjectChat");
 const startProjectChatBtn = document.getElementById("startProjectChat");
+const projectOutputDirectory = document.getElementById("projectOutputDirectory");
 const projectContextBudget = document.getElementById("projectContextBudget");
 const contextBudgetMeter = document.getElementById("contextBudgetMeter");
 const projectHomeInstructions = document.getElementById("projectHomeInstructions");
@@ -1981,6 +1982,7 @@ function populateProjectHomepage(data) {
     projectHomeDescription.textContent = data.project.description
         || "One source of truth for the context added to every attached chat.";
     projectContextBudget.value = data.context_budget.total;
+    projectOutputDirectory.value = data.project.output_directory || "";
     projectHomeInstructions.value = data.components.project_instructions.content || "";
     renderProjectBudget();
     renderProjectAttachmentState();
@@ -2039,7 +2041,7 @@ async function openProjectHomepage() {
 async function saveProjectInstructions() {
     if (!projectHomeProjectId) return;
     saveProjectInstructionsBtn.disabled = true;
-    projectHomeStatus.textContent = "Saving project instructions and budget...";
+    projectHomeStatus.textContent = "Saving project settings...";
     try {
         const response = await fetch(
             routerEndpoint(`/projects/${encodeURIComponent(projectHomeProjectId)}`),
@@ -2047,6 +2049,7 @@ async function saveProjectInstructions() {
                 method: "PUT",
                 headers: authHeaders({ "Content-Type": "application/json" }),
                 body: JSON.stringify({
+                    output_directory: projectOutputDirectory.value.trim(),
                     system_prompt: projectHomeInstructions.value,
                     context_budget_tokens: Number.parseInt(projectContextBudget.value, 10)
                 })
@@ -2055,7 +2058,7 @@ async function saveProjectInstructions() {
         if (!response.ok) throw new Error(await apiError(response));
         await loadProjects();
         await refreshProjectHomepage();
-        projectHomeStatus.textContent = "Instructions saved. Attached chats use them on the next message.";
+        projectHomeStatus.textContent = "Project settings saved. New tool runs use the saved output folder.";
     } catch (error) {
         projectHomeStatus.textContent = `Save failed: ${error.message}`;
     } finally {
@@ -4020,6 +4023,9 @@ function renderToolRun(run) {
         heading.textContent = "Approval required";
         const summary = document.createElement("p");
         summary.textContent = `${pending.tool_name} · permission: ${pending.permission} · call: ${pending.call_id}`;
+        if (run.context?.output_directory) {
+            summary.textContent += ` · Output folder: ${run.context.output_directory}`;
+        }
         const argumentsBlock = document.createElement("pre");
         argumentsBlock.textContent = JSON.stringify(pending.arguments, null, 2);
         const actions = document.createElement("div");

@@ -61,3 +61,24 @@ Automatic tool selection and presets (option C), web source handling (option D),
 1. Unit and contract tests cover A1–A7 and B1–B3; the full suite, mypy and the renderer tests pass on Python 3.12–3.14 CI.
 2. The ten probe requests rerun against walter answer at least P1, P2, P3 and P7, and none regresses.
 3. A tool run's question and answer appear in the conversation and a follow-up plain chat sees them.
+
+## Project file destination repair (2026-10-18)
+
+Problem: the run prompt recommends root-relative filenames, but qualified file tools resolve
+against the backend process directory. Approval therefore precedes a predictable root refusal.
+Projects previously had no filesystem destination. Dave chose explicit assignment of an existing
+allowed folder per project on October 18.
+
+Smallest slice: Project Home saves an optional absolute `output_directory` with Project Instructions using **Save project settings**.
+Create/update rejects nonexistent folders, relative paths and folders outside `DAVE_TOOL_ROOTS`.
+A lifecycle run captures that directory before its first model step; its folder map and qualified
+file tools use the captured directory. Approval displays that folder. Project changes during a
+pause apply only to new runs. No folder is inferred from a project name or model output.
+Projects without an assigned folder refuse file access; nonproject runs accept relative filenames
+only with a single allowed root. Absolute paths still require global root admission.
+
+Acceptance: a relative file write creates nothing before exact-call approval and creates the
+expected bytes in the captured project directory afterward, even after changing the project
+setting. Traversal, sibling-project absolute paths, escaping symlinks, revoked roots, missing
+assignments and ambiguous nonproject relative paths fail. Existing BRAIN approval behavior remains
+covered. No changes to approval permissions, automatic folder creation, shell execution or roots.

@@ -237,7 +237,7 @@ def test_brain_snapshot_survives_approval_and_later_edit(router_factory):
 def test_approved_resume_uses_frozen_brain_messages(router_factory, tmp_path):
     router, client, _ = router_factory(tools=True, tool_roots=[str(tmp_path)])
     project_id = client.post("/projects", headers=AUTH, json={
-        "name": "Approved run", "system_prompt": "Project instructions",
+        "name": "Approved run", "system_prompt": "Project instructions", "output_directory": str(tmp_path),
     }).json()["project_id"]
     router.PROJECT_CONTEXT.update_brain(project_id, pinned_text="Frozen fact", expected_revision=1)
     target = tmp_path / "approved.txt"

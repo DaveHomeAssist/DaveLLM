@@ -1121,7 +1121,7 @@ def resolve_tool_path(path: str) -> Path:
     """Resolve a tool path and require containment in an explicit root."""
     if not path:
         raise ValueError("Missing path")
-    candidate = Path(path).expanduser().resolve()
+    candidate = project_tool_candidate(path)
     if not any(candidate == root or candidate.is_relative_to(root) for root in TOOL_ROOTS):
         raise PermissionError("Access denied: path is outside DAVE_TOOL_ROOTS")
     return candidate
@@ -1327,7 +1327,7 @@ def resolve_extended_tool_path(path: str) -> Path:
     A relative path is anchored at the single tool root. The qualified built-in
     tools keep calling resolve_tool_path directly.
     """
-    return admit_path(anchor_path(path, TOOL_ROOTS), resolve_tool_path)
+    return admit_path(anchor_run_tool_path(path), resolve_tool_path)
 
 
 def _run_extended_file_tool(name: str, implementation, params: Dict) -> ToolResult:
@@ -2275,6 +2275,52 @@ class HostRunBinding:
     conversation_id: Optional[str] = None
     user_prompt: str = ""
     continue_nudge: bool = False
+    project_directory: Optional[str] = None
+
+
+def validate_project_directory(value: str | None) -> str:
+    """Only operator-assigned, existing directories inside explicit tool roots are admitted."""
+    if not value or not value.strip():
+        return ""
+    try:
+        directory = Path(value.strip()).expanduser()
+        if not directory.is_absolute():
+            raise HTTPException(422, "Output folder must be an absolute path")
+        directory = directory.resolve()
+        if directory.is_dir() and any(
+            directory == root or directory.is_relative_to(root) for root in TOOL_ROOTS
+        ):
+            return str(directory)
+    except (OSError, RuntimeError, ValueError):
+        pass
+    raise HTTPException(422, "Output folder must be an existing directory inside DAVE_TOOL_ROOTS")
+
+
+def anchor_run_tool_path(path: str) -> str:
+    binding = HOST_RUN_CONTEXT.get()
+    return path if binding and binding.project_id else anchor_path(path, TOOL_ROOTS)
+
+
+def project_tool_candidate(path: str) -> Path:
+    """Resolve against the run's captured project folder, never the server working directory."""
+    binding = HOST_RUN_CONTEXT.get()
+    directory = binding.project_directory if binding else None
+    candidate = Path(path).expanduser()
+    if binding and binding.project_id:
+        if not directory:
+            raise PermissionError("Assign an output folder in Project Home before using file tools")
+        base = Path(directory)
+        if base.resolve() != base or not base.is_dir():
+            raise PermissionError("Project output folder changed; start a new run")
+        candidate = (candidate if candidate.is_absolute() else base / candidate).resolve()
+        if not (candidate == base or candidate.is_relative_to(base)):
+            raise PermissionError("Access denied: path is outside the project output folder")
+        return candidate
+    if not candidate.is_absolute():
+        if len(TOOL_ROOTS) != 1:
+            raise PermissionError("Relative paths require one allowed root or an assigned project output folder")
+        candidate = TOOL_ROOTS[0] / candidate
+    return candidate.resolve()
 
 
 HOST_RUN_BINDINGS: dict[str, HostRunBinding] = {}
@@ -2973,6 +3019,7 @@ class ModelDownloadRequest(BaseModel):
     dest_path: Optional[str] = None
 
 class ProjectCreate(BaseModel):
+    output_directory: Optional[str] = None
     name: str
     system_prompt: Optional[str] = None
     preferred_model: Optional[str] = None
@@ -2984,6 +3031,7 @@ class ProjectCreate(BaseModel):
 
 class ProjectResponse(BaseModel):
     project_id: str
+    output_directory: Optional[str] = None
     name: str
     system_prompt: Optional[str] = None
     preferred_model: Optional[str] = None
@@ -2997,6 +3045,7 @@ class ProjectResponse(BaseModel):
     archived: bool = False
 
 class ProjectUpdate(BaseModel):
+    output_directory: Optional[str] = None
     name: Optional[str] = None
     system_prompt: Optional[str] = None
     preferred_model: Optional[str] = None
@@ -3511,6 +3560,7 @@ def project_response(project_id: str, project: dict) -> ProjectResponse:
     return ProjectResponse(
         project_id=project_id,
         name=project.get("name", ""),
+        output_directory=project.get("output_directory", ""),
         system_prompt=project.get("system_prompt"),
         preferred_model=project.get("preferred_model"),
         preferred_node=project.get("preferred_node"),
@@ -3566,6 +3616,7 @@ def create_project(req: ProjectCreate, user_id: str = Depends(get_current_user))
     project_id = f"proj_{int(time.time() * 1000)}"
     project = {
         "name": req.name.strip(),
+        "output_directory": validate_project_directory(req.output_directory),
         "system_prompt": req.system_prompt or "",
         "preferred_model": req.preferred_model,
         "preferred_node": req.preferred_node,
@@ -3605,6 +3656,8 @@ def get_project_endpoint(project_id: str, user_id: str = Depends(get_current_use
 def update_project(project_id: str, req: ProjectUpdate, user_id: str = Depends(get_current_user)):
     proj = get_project(project_id, user_id)
     updates = req.model_dump(exclude_unset=True)
+    if "output_directory" in updates:
+        updates["output_directory"] = validate_project_directory(updates["output_directory"])
     try:
         profile = PROJECT_CONTEXT.update_profile(
             project_id,
@@ -4158,6 +4211,7 @@ def _lifecycle_response(run_id: str, result, binding: HostRunBinding) -> dict:
         "model_usage": [dict(item) for item in binding.model_usage],
         "context": {
             "project_id": binding.project_id,
+            "output_directory": binding.project_directory,
             "brain_revision": binding.brain_revision,
             "brain_digest": binding.brain_digest,
             "budget": binding.context_budget,
@@ -4232,11 +4286,15 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
             )
         except ProjectContextError as exc:
             raise context_http_error(exc)
+    project_directory = validate_project_directory(project.get("output_directory")) if project_id else None
+    run_roots = [Path(project_directory)] if project_directory else ([] if project_id else TOOL_ROOTS)
     # DL-TOOLUX-01 A4: date, folder map and node ids, counted by the fit check like any message.
+    file_context = ("\n\nThis project has no output folder. Ask the user to assign one in Project Home before file access."
+                    if project_id and not project_directory else "")
     messages = with_run_context(messages, tool_run_context(
-        now=datetime.now().astimezone(), roots=TOOL_ROOTS,
+        now=datetime.now().astimezone(), roots=run_roots,
         node_ids=[item.id for item in NODE_CONFIGS], selected_tools=selected_tools,
-    ))
+    ) + file_context)
     fit_error = tool_run_fit_error(req.model, messages, schema_tokens, req.max_tokens)
     if fit_error:
         raise HTTPException(413, fit_error)
@@ -4250,6 +4308,7 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
         context_budget.get("brain_digest"), context_budget, run_id, selected_tools,
         max_input_tokens=req.max_input_tokens, conversation_id=req.conversation_id,
         user_prompt=user_prompt if isinstance(user_prompt, str) else "", continue_nudge=True,
+        project_directory=project_directory,
     )
     try:
         request = RunRequest.create(
