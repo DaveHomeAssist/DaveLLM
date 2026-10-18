@@ -38,7 +38,7 @@ def pack(router_factory, monkeypatch, tmp_path):
               "av_inventory": {"speaker": {"count": 2}}, "runners": {"runner": {"capabilities": ["python"]}}}
     monkeypatch.setenv("DAVE_TOOLPACK_CONFIG", json.dumps(config))
     router, client, _ = router_factory(tools=True, tool_roots=[str(tmp_path)])
-    binding = router.HostRunBinding("default", "http://ollama.test:11434", "m", 128, 0, "p", None, None, {}, "fixture-run")
+    binding = router.HostRunBinding("default", "http://ollama.test:11434", "m", 128, 0, "p", None, None, {}, "fixture-run", project_directory=str(tmp_path))
     token = router.HOST_RUN_CONTEXT.set(binding)
     router.PROJECTS["p"] = {"name": "Fixture", "user_id": "default", "notepad": "before"}
     router.get_project("p", "default")
