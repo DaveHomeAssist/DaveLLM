@@ -402,6 +402,13 @@
       "verification": "Dominic: 154 Python checks passed for folder assignment, approval/resume, project context, extended files, edits, catalog provenance and token budgets. Browser checks cover saving, reopening, invalid-save preservation, keyboard focus and ten theme/viewport combinations. Exact-head CI and installed runtime acceptance remain separate.",
       "nextAction": "Complete source delivery, then assign an existing allowed output folder in Project Home and start a new file run. Existing pending runs have no captured folder.",
       "limits": "No new tool roots, automatic directory assignment, live model inference, model qualification or Notion tool effects."
+    },
+    "standaloneMonitorParser": {
+      "checkedOn": "2026-10-18",
+      "scope": "Repair the generated standalone node_status_monitor.py; no live backend connection.",
+      "problem": "Wrong token offsets and parsing the ms suffix silently dropped nodes; recovery flag was inverted.",
+      "acceptance": "Healthy samples parse exact names, endpoints and latency; malformed and unsupported unhealthy reports fail explicitly without replacing prior state. Offline display and JSON save/load round trip tested in temporary storage.",
+      "nextAction": "Define the unhealthy report contract before connecting this standalone script to any backend; existing structured Cluster monitoring remains separate."
     }
   },
   "shipped": [
@@ -752,7 +759,7 @@
       "type": "docs",
       "sev": "P3",
       "title": "Docs and release drift: manifest, check lists, no tags",
-      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
       "files": [
         "docs/design/DESIGN_OVERHAUL_MANIFEST.md",
         "CLAUDE.md:108",
@@ -764,7 +771,7 @@
         {
           "checkedOn": "2026-10-02",
           "title": "Docs and release drift: manifest, check lists, no tags",
-          "detail": "Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+          "detail": "Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
           "evidence": "code-read"
         }
       ],
@@ -981,7 +988,7 @@
       "goal": "Make docs match HEAD; record the H9, manifest and version decisions",
       "items": [
         "DL-03: relabel edit_outside_root case, fix table row, note baselines not comparable",
-        "DL-14: mark design manifest as-built, record §9 outcomes, fix CLAUDE.md check list",
+        "DL-14: mark design manifest as-built, record \u00a79 outcomes, fix CLAUDE.md check list",
         "Decide VERSION bump/CHANGELOG/tags and prune old branches (Dave)"
       ],
       "gate": "pytest -q tests/test_documentation_contracts.py tests/test_capabilities_manifest.py; git diff --check"
