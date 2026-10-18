@@ -4032,17 +4032,34 @@ def tool_run_fit_error(model_id: str, messages: List[Dict], schema_tokens: int, 
     )
 
 
+async def require_model_available(node: NodeConfig, model_id: str) -> None:
+    """Fail closed unless ``model_id`` is in this node's live inventory.
+
+    Inventories are process-local. The macOS backend can restart while the UI
+    remains open, so the first request after a restart must be able to rebuild
+    the inventory instead of depending on an earlier picker request.
+    """
+    inventory = MODEL_INVENTORY.get(node.id)
+    if inventory is None:
+        result = await fetch_node_models(node)
+        if result["error"] is not None:
+            raise HTTPException(
+                409,
+                f"Model inventory for node '{node.id}' could not be refreshed",
+            )
+        inventory = {model["id"] for model in result["models"]}
+        MODEL_INVENTORY[node.id] = inventory
+    if model_id not in inventory:
+        raise HTTPException(400, f"Model '{model_id}' is not available on node '{node.id}'")
+
+
 @app.post("/tools/agent/run")
 async def run_agent_endpoint(req: AgentRunRequest, _auth=Depends(require_api_key)):
     """Run the bounded Ollama executor loop and return its complete transcript."""
     if not TOOLS_ENABLED:
         raise HTTPException(403, "Tools are disabled")
     node = get_node_by_id(req.node_id)
-    inventory = MODEL_INVENTORY.get(node.id)
-    if inventory is None:
-        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
-    if req.model not in inventory:
-        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    await require_model_available(node, req.model)
     fit_error = tool_run_fit_error(req.model, req.messages, tool_schema_tokens(TOOL_REGISTRY), req.max_tokens)
     if fit_error:
         raise HTTPException(413, fit_error)
@@ -4183,11 +4200,7 @@ async def create_agent_run(req: LifecycleRunRequest, user_id: str = Depends(get_
             HARNESS_STORE.stored_bytes > HARNESS_STORE.max_bytes - HARNESS_STORE_HEADROOM_BYTES):
         raise HTTPException(503, "Tool run ledger is at capacity")
     node = get_node_by_id(req.node_id)
-    inventory = MODEL_INVENTORY.get(node.id)
-    if inventory is None:
-        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
-    if req.model not in inventory:
-        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    await require_model_available(node, req.model)
     registered_tools = HARNESS_REGISTRY.public_catalog()
     unknown_tools = sorted(set(req.selected_tools) - set(registered_tools))
     if unknown_tools:
@@ -5113,11 +5126,7 @@ async def chat_size_check(req: ChatSizeCheckRequest, user_id: str = Depends(get_
     project_cfg = get_project(project_id, user_id) if project_id else {}
 
     node = get_node_by_id(req.node_id)
-    inventory = MODEL_INVENTORY.get(node.id)
-    if inventory is None:
-        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
-    if req.model not in inventory:
-        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    await require_model_available(node, req.model)
 
     raw_history.append({"role": "user", "content": req.prompt or "[image]"})
     history = prepare_history_for_prompt(raw_history, summarize=history_summary_placeholder)
@@ -5262,11 +5271,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
     if not req.node_id or not req.model:
         raise HTTPException(400, "node_id and model are required from the loaded inventory")
     node = get_node_by_id(req.node_id)
-    inventory = MODEL_INVENTORY.get(node.id)
-    if inventory is None:
-        raise HTTPException(409, f"Model inventory for node '{node.id}' has not been loaded")
-    if req.model not in inventory:
-        raise HTTPException(400, f"Model '{req.model}' is not available on node '{node.id}'")
+    await require_model_available(node, req.model)
     preferred_model = req.model
 
     # Get conversation history and preserve raw indexes before pruning.
