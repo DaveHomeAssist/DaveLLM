@@ -127,15 +127,10 @@ DaveHarness `1.0.0-rc.1` adds H8 offline qualification, bounded JSON admission, 
 
 H9 action 55 adds the authorized live-evaluation runner `scripts/evaluate_live_daveharness.py`, which runs DaveLLM's Ollama adapter and file/system tools inside disposable roots and reports the action 56 thresholds per model. See [H9 live evaluation](docs/DAVEHARNESS_H9_LIVE_EVALUATION.md). No target model is qualified yet, and DaveHarness remains `1.0.0-rc.1`.
 
-## Status naming
+## Session naming
 
-Name work with one string everywhere (chat status title, session title, Notion
-Status Check Runs "Human Name"):
+Follow [Status Naming](https://github.com/DaveHomeAssist/skills/blob/master/status-naming.md), the canonical authority for the format, parent/subproject emoji map, phases, date semantics and exceptions.
 
-`Project | 🚦 | Phase | Title → state, reason | MM-DD`
+`<emoji(s)> <Project> | <PHASE> | <Title> <MM-DD>`
 
-- 🚦: 🟢 complete and verified · 🟡 partial · 🔴 not started, blocked or failed · ⚪ unverifiable.
-  Add ⏳ scheduled, 🙋 awaiting Dave or 🚧 blocked to 🟡/🔴/⚪, never to 🟢.
-- Phase: Research, Design, Build, Audit or Scheduled. MM-DD: date of the latest light change.
-- Every light change gets a new name: a `RENAME:` line in chat and the Notion row updated.
-- Canonical source: https://github.com/DaveHomeAssist/skills/blob/master/status-naming.md
+Preserve Dave's manual titles and protected or uncertain sessions. Status belongs in the body; status changes do not authorize renames or Notion writes. Local instructions extend this rule only through a named, purposeful exception; they do not maintain a competing format.
