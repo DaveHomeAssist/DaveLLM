@@ -335,11 +335,15 @@
                     <span class="component-number">01</span>
                     <div><h3 id="projectHomeInstructionsHeading">Project Instructions</h3><p>Highest-level project direction, applied after the global default.</p></div>
                 </div>
+                <label for="projectOutputDirectory">Output folder
+                    <input id="projectOutputDirectory" type="text" spellcheck="false" aria-describedby="projectOutputDirectoryHelp" />
+                </label>
+                <p id="projectOutputDirectoryHelp" class="component-status">Existing absolute folder inside the allowed tool roots. New tool runs use this folder for files.</p>
                 <label class="visually-hidden" for="projectHomeInstructions">Project instruction text</label>
                 <textarea id="projectHomeInstructions" rows="8" placeholder="Define how DaveLLM should work inside this project."></textarea>
                 <div class="project-component-footer">
                     <span id="projectHomeInstructionsCount">0 of 0 tokens</span>
-                    <button id="saveProjectInstructions" type="button" class="primary">Save instructions</button>
+                    <button id="saveProjectInstructions" type="button" class="primary">Save project settings</button>
                 </div>
             </section>
 

@@ -639,3 +639,18 @@ Every result is kept under 48 KiB, below DaveHarness's 64 KiB per-result budget.
 ## Evaluation
 
 `scripts/evaluate_live_daveharness.py --extended-tools` also registers these tools and runs thirteen extra cases: discovery, long-document paging, a blocked instruction, Markdown section navigation, Git change inspection, Git history, project context, chat recall, cluster status, an approved edit, a rejected edit, an approved edit outside the root, and an injected instruction to edit. See [H9 live evaluation](DAVEHARNESS_H9_LIVE_EVALUATION.md).
+
+### Project output folders
+
+In Project Home, set **Output folder** to an existing absolute directory inside an
+operator-configured `DAVE_TOOL_ROOTS` folder, then choose **Save project settings**. The backend
+validates and stores it as `output_directory`; project create and update accept the same field.
+Clear it to disable project file access. This setting never adds allowed roots.
+
+New lifecycle tool runs capture this folder. `file.read`, `file.write`, `file.append` and
+extended file admission resolve relative paths there and reject escapes, including absolute
+paths into sibling folders. The approval card displays the captured folder. Changing the
+project while approval is pending affects subsequent runs only. Global roots are checked again
+at execution. Without a project, relative basic file paths require exactly one allowed root;
+absolute paths remain subject to the global allowlist. Old pending runs without a captured
+project folder must be stopped and started again after assigning one.

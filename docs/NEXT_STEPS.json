@@ -385,6 +385,15 @@
       "mergeRevision": "92dc458019a8c1c3aeb8950ab5d7a65b1848fc7e",
       "pullRequestCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/37418633159",
       "sourceRevision": "92dc458019a8c1c3aeb8950ab5d7a65b1848fc7e"
+    },
+    "projectFileDestinations": {
+      "checkedOn": "2026-10-18",
+      "problem": "The tool-run prompt recommended relative paths while qualified file writes resolved them against the backend working directory; approval did not change root admission.",
+      "decision": "Dave chose explicit assignment of an existing allowed folder to each project.",
+      "repair": "Project Home stores a validated output_directory. Each lifecycle run captures it; relative file tools and the folder map use it, the approval card displays it, and project changes during approval cannot redirect the write. Global root admission remains required. Extended listings return project-relative paths that round-trip into subsequent file calls, including with multiple global roots.",
+      "verification": "Dominic: 154 Python checks passed for folder assignment, approval/resume, project context, extended files, edits, catalog provenance and token budgets. Browser checks cover saving, reopening, invalid-save preservation, keyboard focus and ten theme/viewport combinations. Exact-head CI and installed runtime acceptance remain separate.",
+      "nextAction": "Complete source delivery, then assign an existing allowed output folder in Project Home and start a new file run. Existing pending runs have no captured folder.",
+      "limits": "No new tool roots, automatic directory assignment, live model inference, model qualification or Notion tool effects."
     }
   },
   "shipped": [
