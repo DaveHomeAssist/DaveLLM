@@ -10,6 +10,11 @@ REPO_ROOT="${SCRIPT_DIR:h:h}"
 KEYCHAIN_SERVICE="${DAVE_KEYCHAIN_SERVICE:-com.davellm.api-key}"
 KEYCHAIN_ACCOUNT="${DAVE_KEYCHAIN_ACCOUNT:-${USER:-$(/usr/bin/id -un)}}"
 DATA_DIR="${DAVE_DATA_DIR:-${HOME}/Library/Application Support/DaveLLM}"
+SERVICE_LABEL="${DAVE_BACKEND_SERVICE_LABEL:-com.davellm.backend}"
+SERVICE_TARGET="gui/$(/usr/bin/id -u)/${SERVICE_LABEL}"
+SERVICE_PLIST="${HOME}/Library/LaunchAgents/${SERVICE_LABEL}.plist"
+BACKEND_ONLY=false
+[[ "${1:-}" == "--backend-only" ]] && BACKEND_ONLY=true
 
 fail() {
     print -u2 -- "DaveLLM launcher: $1"
@@ -181,19 +186,56 @@ if [[ -e "$model_context_file" ]]; then
 fi
 # End model context settings.
 
-if /usr/sbin/lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
-    fail "TCP port 8000 is already in use; stop the existing DaveLLM/browser-mode process first"
-fi
-
 /bin/mkdir -p "$DATA_DIR"
 cd "$REPO_ROOT"
 
+if $BACKEND_ONLY; then
+    if /usr/sbin/lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
+        fail "TCP port 8000 is already owned; refusing to replace or duplicate its listener"
+    fi
+    exec /usr/bin/env \
+        DAVE_API_KEY="$api_key" \
+        DAVE_NODES="$nodes_json" \
+        DAVE_DATA_DIR="$DATA_DIR" \
+        DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}" \
+        DAVE_ENABLE_EXTENDED_TOOLS="${DAVE_ENABLE_EXTENDED_TOOLS:-true}" \
+        DAVE_SEARCH_URL="$search_url" \
+        "${tool_env[@]}" \
+        "${REPO_ROOT}/venv/bin/python" -m uvicorn app:app --host 127.0.0.1 --port 8000
+fi
+
+[[ -f "$SERVICE_PLIST" ]] || fail "backend service is not installed; run npm run install:macos"
+
+service_loaded=false
+if /bin/launchctl print "$SERVICE_TARGET" >/dev/null 2>&1; then
+    service_loaded=true
+fi
+
+if ! $service_loaded && /usr/sbin/lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
+    owner="$(/usr/sbin/lsof -nP -iTCP:8000 -sTCP:LISTEN 2>/dev/null | /usr/bin/awk 'NR == 2 {print $1 " pid=" $2}')"
+    fail "TCP port 8000 is owned by ${owner:-an unknown process}; refusing to start a duplicate"
+fi
+
+if ! $service_loaded; then
+    /bin/launchctl bootstrap "gui/$(/usr/bin/id -u)" "$SERVICE_PLIST" \
+        || fail "could not load backend service ${SERVICE_LABEL}"
+fi
+/bin/launchctl kickstart "$SERVICE_TARGET" >/dev/null 2>&1 || true
+
+healthy=false
+for _ in {1..12}; do
+    if health_json="$(/usr/bin/curl --noproxy '*' --fail --silent \
+        --connect-timeout 2 --max-time 3 http://127.0.0.1:8000/health 2>/dev/null)" \
+        && [[ "$(print -r -- "$health_json" | "$JQ_BIN" -r '.status // empty' 2>/dev/null)" == "ok" ]]; then
+        healthy=true
+        break
+    fi
+    /bin/sleep 1
+done
+$healthy || fail "backend service did not become healthy; see ~/Library/Logs/DaveLLM/backend.error.log"
+
 exec /usr/bin/env \
     DAVE_API_KEY="$api_key" \
-    DAVE_NODES="$nodes_json" \
+    DAVE_BACKEND_MANAGED=true \
     DAVE_DATA_DIR="$DATA_DIR" \
-    DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}" \
-    DAVE_ENABLE_EXTENDED_TOOLS="${DAVE_ENABLE_EXTENDED_TOOLS:-true}" \
-    DAVE_SEARCH_URL="$search_url" \
-    "${tool_env[@]}" \
     "$NPM_BIN" start
