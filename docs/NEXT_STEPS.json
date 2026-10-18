@@ -1200,7 +1200,7 @@
     },
     {
       "path": "docs/DAVELLM_TOOL_ROADMAP.md",
-      "why": "Candidate tool roadmap: 100 ideas, 21 refined families, phases and open decision DL-TOOLS-01"
+      "why": "Historical tool roadmap: 100 approved/source-delivered candidates, 21 families and original phases; DL-TOOLS-01 superseded by the accepted all-100 scope"
     },
     {
       "path": "docs/DAVELLM_TOOL_EXECUTION_PLAN.md",
