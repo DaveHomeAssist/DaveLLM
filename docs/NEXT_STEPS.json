@@ -23,8 +23,8 @@
       "scope": "Add a durable on-call status surface to the existing Cluster view and route unchanged healthy hourly results there instead of chat.",
       "source": "docs/briefs/DL-OPS-01-on-call-monitor.md",
       "implementation": "Structured recorder with atomic owner-only writes and 168-check history; authenticated read endpoint; responsive Cluster card with current, stale, empty, recovery and recent-history states.",
-      "verification": "Focused Python API/recorder and JavaScript renderer checks pass locally. Full CI, browser viewport evidence, installed activation, one live write/readback and automation prompt update remain separate gates.",
-      "nextAction": "Complete source delivery, install merged source, record and read back a live check, then update the hourly heartbeat to publish every run and notify chat only on incidents."
+      "verification": "PR #98 merged at 8850997348a9508124c5e49f77fca9ff18b387cb after protected Python 3.12, 3.13 and 3.14 CI passed, including remote Electron browser fixtures. The merged backend is installed from canonical main, the live authenticated endpoint returned HTTP 200 with four healthy targets, the status file is owner-only, and the active hourly heartbeat now publishes every run to Cluster while reserving chat for incidents.",
+      "nextAction": "Observe the next scheduled hourly write and confirm the history gains a second entry without a routine healthy chat notification; native installed-window capture remains unavailable in the current screen-capture service."
     },
     "launcherHandoff": {
       "checkedOn": "2026-10-17",
