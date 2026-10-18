@@ -759,7 +759,7 @@
       "type": "docs",
       "sev": "P3",
       "title": "Docs and release drift: manifest, check lists, no tags",
-      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
       "files": [
         "docs/design/DESIGN_OVERHAUL_MANIFEST.md",
         "CLAUDE.md:108",
@@ -771,7 +771,7 @@
         {
           "checkedOn": "2026-10-02",
           "title": "Docs and release drift: manifest, check lists, no tags",
-          "detail": "Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+          "detail": "Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
           "evidence": "code-read"
         }
       ],
@@ -988,7 +988,7 @@
       "goal": "Make docs match HEAD; record the H9, manifest and version decisions",
       "items": [
         "DL-03: relabel edit_outside_root case, fix table row, note baselines not comparable",
-        "DL-14: mark design manifest as-built, record \u00a79 outcomes, fix CLAUDE.md check list",
+        "DL-14: mark design manifest as-built, record §9 outcomes, fix CLAUDE.md check list",
         "Decide VERSION bump/CHANGELOG/tags and prune old branches (Dave)"
       ],
       "gate": "pytest -q tests/test_documentation_contracts.py tests/test_capabilities_manifest.py; git diff --check"
