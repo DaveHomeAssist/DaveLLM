@@ -1,8 +1,10 @@
 # DaveLLM tool roadmap
 
-Brainstormed 2026-10-05. This is a candidate list, not an approved plan. Each idea still needs its own brief in `docs/briefs/` before work starts, and the accepted 2026-10-05 adapter-scope decision (finish the Notion adapter first) still stands.
+Brainstormed 2026-10-05; reconciled 2026-10-18. Dave subsequently approved all 100 candidates, and their source contracts are delivered. The accepted Tools100 decision in [NEXT_STEPS.json](NEXT_STEPS.json), the implementation/configuration contract in [TOOLS100.md](TOOLS100.md), and the dated evidence in [TOOLS100_READINESS.md](TOOLS100_READINESS.md) supersede the original first-slice proposal below. Build approval is settled; provider configuration, exact-call effects, inference and H9 remain separate gates.
 
-## Starting point
+The candidate descriptions, family grouping and suggested sequence below are preserved as **historical design context**, not current schemas, setup instructions or permission to repeat delivered work. Where a brainstorm differs from the implemented boundary (for example vector-index ownership or Notion configuration), the current Tools100 contract and generated capabilities catalog govern.
+
+## Historical starting point
 
 The catalog in `tests/fixtures/davellm/tool_catalog.json` has 25 tools:
 
@@ -174,7 +176,7 @@ None of the ideas below duplicates these.
 | 20 | `data.tools` | 93, 94, 97–99 | Calculator, time conversion, SQL over files, JSON schema validation, Mermaid rendering | Read | S |
 | 21 | `quality` | 10, 18–20 | Prompt lint, reference-prompt runs, performance and cost history; evidence for model choice, separate from H9 | Inference: approval and budget | M |
 
-## Suggested phases
+## Historical suggested phases
 
 | Phase | Families | Reason |
 |---|---|---|
@@ -184,11 +186,11 @@ None of the ideas below duplicates these.
 | 4 | 4, 5, 21, 2, 11 | Inference and higher-risk writes, after the routing and evidence work |
 | 5 | 8, 17, 18, 19 | Large integrations, built when needed |
 
-Phase 1 is not read-only: `node.wake` changes state and keeps its approval requirement. Phase 1 adds no connector to another service; `notify.push` (family 14) needs an outbound notification transport the repository does not have, so it sits in Phase 3 behind the accepted 2026-10-05 decision to finish the Notion adapter before other-service connectors. Notion adapter v2 (family 9) follows live write acceptance of the current adapter.
+The original sequence treated Phase 1 as more than read-only because `node.wake` changes state, and deferred `notify.push` until its outbound transport existed. That transport is now source-delivered; configured destination, exact-call approval and phone receipt remain separate. The original Notion-first acceptance work and later all-100 build decision are preserved in [NEXT_STEPS.json](NEXT_STEPS.json). Do not treat this historical sequence as an instruction to rebuild or newly authorize any effect.
 
-## Open decision
+## Superseded first-slice decision
 
-DL-TOOLS-01: which slice gets the first brief. Options:
+DL-TOOLS-01 was superseded by Dave's October 5 all-100 approval; it is no longer an open choice. The original options are retained for history only:
 
 - A: Phase 1 as one brief (recommended)
 - B: Notion adapter v2

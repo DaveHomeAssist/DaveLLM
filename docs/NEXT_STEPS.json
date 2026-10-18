@@ -10,6 +10,19 @@
   "status": "amber",
   "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent.",
   "evidence": {
+    "toolsSourceReconciliation20261018": {
+      "checkedOn": "2026-10-18",
+      "sourceRevision": "8f2fc9cffa509eb60ca80508441c95d978098ce2",
+      "source": "docs/TOOLS100_READINESS.md",
+      "scope": "TOOLS-010: documentation-only reconciliation of delivered tool source/fixtures, settled all-100 approval and dated installed evidence. No handler, fixture, UI, installed activation, provider, credential, helper, service, inference or H9 change.",
+      "sourceCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/39173987087",
+      "priorSourceCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/39100255344",
+      "verification": "Both recorded source revisions passed all three required Python 3.12/3.13/3.14 CI jobs. Source/fixture review confirms public numeric-address pinning with Host/TLS identity, redirect revalidation, mixed-address refusal, proxy bypass, vetted fallback and independent connections; catalog provenance is independently pinned. Evidence reused, no new live or local regression run.",
+      "acceptanceDelta": "DL-TOOLS-01 removed from open decisions because the accepted October 5 all-100 approval superseded it. The roadmap is labeled historical, revised web.fetch source evidence is separated from live qualification, and the existing October 17 installedToolsAcceptance receipt supersedes the October 12 absence of bounded PR86 activation evidence.",
+      "consideredItems": ["DL-TOOLS-01", "web.fetch/web.read public connection repair", "PR86 source excerpt correction", "PR77/PR78 readiness checker", "EX-01 through EX-21 deployment inputs"],
+      "remainingGates": "T10/T11 remain FAIL with spent pilot attempts; Duncan diagnostic remains closed after one CPU allocation failure; H9 remains unqualified. Each provider/helper/effect/physical lane needs its named inputs, capability and exact applicable grant. No current private configuration inspected; historical Missing rows do not block local/advisory tools. DL-TOOLUX-02 remains unanswered.",
+      "nextEligibleItem": "No additional accepted source/fixture defect established in this bounded review. Continue only a concrete accepted source defect or a separately scoped operation with established inputs/effect authority; this is not a whole-project queue-exhaustion claim."
+    },
     "backendInventoryRecovery": {
       "checkedOn": "2026-10-18",
       "problem": "The managed macOS backend can restart while Electron remains open. Model inventories were process-local, so an already-selected Walter model could be rejected with HTTP 409 before Walter was contacted.",
@@ -1030,7 +1043,6 @@
     "DL-UI-02 [Open, 2026-10-05]: desktop notifications when a reply finishes. Options: A only while the window is hidden or unfocused, with a Settings toggle on by default (recommended); B always; C none.",
     "DL-UI-03 [Open, 2026-10-05]: sending during a reply. Options: A refuse and keep the draft (built, recommended); B stop the current reply and send; C queue until the reply ends.",
     "DL-UI-04 [Open, 2026-10-05]: model capabilities band. Options: A vision, audio, tools, context and quantization chips per model from Ollama model details, needing a small router change (recommended); B vision only, as today.",
-    "DL-TOOLS-01 [Open, 2026-10-05]: first slice of the tool roadmap (docs/DAVELLM_TOOL_ROADMAP.md: 100 candidates refined to 21 families). Options: A Phase 1 read-only cluster reliability brief: cluster.models, node.diagnose/wake, server.ops, notify.push (recommended); B Notion adapter v2 after live write acceptance; C chat.history summaries; D other. Does not change the accepted 2026-10-05 adapter-scope decision and approves no implementation, inference or connector.",
     "DL-TOOLUX-02 [Open, 2026-10-16]: next tool-use slice. A reliability (recommended): path descriptions that point to file.search/file.list, deeper Markdown paths in the run context map, and the ten-request probe committed as an operator script so every change is measured; B no picker: a default read-only tool set per conversation with a visible Tools on state (option C of DL-TOOLUX-01); C web sources: show the pages web.read used under the answer (option D). A unlocks measured progress for B and C.",
     "DL-UI-06 [Open, 2026-10-16]: interface review fixes (DL-UI-REVIEW-01). A fix the five first items: label the re-apply action, make the sidebar dropdown a filter only, show tool mode on the Tools button, neutral age colours, one home each for routing, search and template (recommended); B only the two defects (re-apply icon, project dropdown); C defer.",
     "DL-LOG-01 [Open, 2026-10-16]: ~/Library/Logs/DaveLLM/launcher.log still holds message text written before DL-17 (#88) and sidebar search terms until #91 merges. A rotate the log once #91 merges (recommended); B keep it. Nothing is deleted without an answer."
@@ -1071,6 +1083,12 @@
       "status": "accepted",
       "date": "2026-10-05",
       "decision": "Dave explicitly approved all 100 expansion candidates and instructed tools-only work with no further routine approval questions. Work is serial; no subagents/new sessions or frozen UI continuation. Build approval preserves per-call approval gates and does not provision credentials or authorize live inference/H9/effects."
+    },
+    {
+      "id": "DL-TOOLS-01",
+      "status": "superseded by accepted Tools100 scope 2026-10-05",
+      "date": "2026-10-18",
+      "decision": "Record reconciliation, not a new approval: the original first-slice options (A Phase 1 cluster reliability, B Notion adapter v2, C chat.history summaries, D other) were superseded by Dave's October 5 all-100 build instruction. Preserve the original options in docs/DAVELLM_TOOL_ROADMAP.md; do not re-ask them or infer provider/inference/effect grants."
     },
     {
       "id": "Project completion scope 2026-10-05",
@@ -1182,7 +1200,7 @@
     },
     {
       "path": "docs/DAVELLM_TOOL_ROADMAP.md",
-      "why": "Candidate tool roadmap: 100 ideas, 21 refined families, phases and open decision DL-TOOLS-01"
+      "why": "Historical tool roadmap: 100 approved/source-delivered candidates, 21 families and original phases; DL-TOOLS-01 superseded by the accepted all-100 scope"
     },
     {
       "path": "docs/DAVELLM_TOOL_EXECUTION_PLAN.md",
