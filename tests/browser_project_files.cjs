@@ -55,6 +55,20 @@ const auth = { "X-API-Key": "project-files-fixture" };
                 await page.screenshot({ path: `/work/project-files-${theme}-${width}.png` });
             }
         }
+        await page.locator("#projectHomeClose").click();
+        await page.evaluate(() => {
+            activeToolRunId = "run_folder_preview";
+            renderToolRun({
+                run_id: activeToolRunId, status: "approval_required", reason_code: "approval_required",
+                context: { output_directory: "/tmp/project-output" },
+                snapshot: { steps: 1, transcript: [], pending_call: {
+                    call_id: "write_preview", tool_name: "file.write", permission: "write_files",
+                    arguments: { path: "monitor.py", content: "print('ok')" },
+                    expires_at: new Date(Date.now() + 300000).toISOString()
+                } }
+            });
+        });
+        assert.ok((await page.locator("#runLedgerApproval").innerText()).includes("Output folder: /tmp/project-output"));
         assert.deepEqual(errors, []);
         console.log("PASS: project folder save/readback, reopen, invalid-save preservation, keyboard focus, 10 theme/viewport checks");
     } finally {

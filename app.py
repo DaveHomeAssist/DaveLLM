@@ -1333,7 +1333,7 @@ def resolve_extended_tool_path(path: str) -> Path:
 def _run_extended_file_tool(name: str, implementation, params: Dict) -> ToolResult:
     """Only fixed, path-free messages reach the model; OS error text never does."""
     try:
-        payload = implementation(params, resolve=resolve_extended_tool_path, roots=TOOL_ROOTS)
+        payload = implementation(params, resolve=resolve_extended_tool_path, roots=run_tool_roots())
     except (PathNotAllowed, AmbiguousRelativePath, FileToolError) as exc:
         return ToolResult(tool=name, status="error", result="", error=str(exc))
     except Exception:
@@ -2294,6 +2294,13 @@ def validate_project_directory(value: str | None) -> str:
     except (OSError, RuntimeError, ValueError):
         pass
     raise HTTPException(422, "Output folder must be an existing directory inside DAVE_TOOL_ROOTS")
+
+
+def run_tool_roots() -> list[Path]:
+    binding = HOST_RUN_CONTEXT.get()
+    if binding and binding.project_id:
+        return [Path(binding.project_directory)] if binding.project_directory else []
+    return TOOL_ROOTS
 
 
 def anchor_run_tool_path(path: str) -> str:

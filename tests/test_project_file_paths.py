@@ -1,4 +1,5 @@
 """Project folder assignment and approved relative writes must agree on one destination."""
+import json
 from dataclasses import replace
 
 import httpx
@@ -91,3 +92,26 @@ def test_approved_write_keeps_starting_project_directory(router_factory, tmp_pat
         assert approved.json()['status'] == 'completed'
         assert (first / 'node_status_monitor.py').read_text() == 'print("saved")\n'
         assert not (second / 'node_status_monitor.py').exists()
+
+
+def test_project_file_listing_paths_roundtrip_with_multiple_global_roots(router_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("DAVE_ENABLE_EXTENDED_TOOLS", "true")
+    project = tmp_path / "nested" / "project"
+    project.mkdir(parents=True)
+    (project / "note.txt").write_text("project text")
+    other = tmp_path / "other-root"
+    other.mkdir()
+    router, _, _ = router_factory(tools=True, tool_roots=[str(tmp_path), str(other)])
+    binding = router.HostRunBinding('default', '', 'm', 100, 0.0, 'p', None, None, {},
+                                    project_directory=str(project))
+    token = router.HOST_RUN_CONTEXT.set(binding)
+    try:
+        listed = router.tool_file_list({"path": "."})
+        assert listed.status == 'success', listed.error
+        entry = json.loads(listed.result)['entries'][0]
+        assert entry['path'] == 'note.txt'
+        read = router.tool_file_read_lines({"path": entry['path']})
+        assert read.status == 'success', read.error
+        assert 'project text' in read.result
+    finally:
+        router.HOST_RUN_CONTEXT.reset(token)
