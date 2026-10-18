@@ -18,6 +18,14 @@
       "liveNode": "Walter answered GET /api/tags with HTTP 200 in 85.776 ms before source delivery. This proves node reachability, not installed repair activation.",
       "nextAction": "Complete protected source delivery and install the merged launcher/backend before repeating the already-open UI restart case."
     },
+    "onCallMonitor": {
+      "checkedOn": "2026-10-18",
+      "scope": "Add a durable on-call status surface to the existing Cluster view and route unchanged healthy hourly results there instead of chat.",
+      "source": "docs/briefs/DL-OPS-01-on-call-monitor.md",
+      "implementation": "Structured recorder with atomic owner-only writes and 168-check history; authenticated read endpoint; responsive Cluster card with current, stale, empty, recovery and recent-history states.",
+      "verification": "Focused Python API/recorder and JavaScript renderer checks pass locally. Full CI, browser viewport evidence, installed activation, one live write/readback and automation prompt update remain separate gates.",
+      "nextAction": "Complete source delivery, install merged source, record and read back a live check, then update the hourly heartbeat to publish every run and notify chat only on incidents."
+    },
     "launcherHandoff": {
       "checkedOn": "2026-10-17",
       "baselineRevision": "f6ca9cceec172fb55fb19919f6869e7372320a1b",

@@ -41,6 +41,17 @@ const run = () => ({ run_id: 'run_design', status: runStatus, reason_code: runSt
             if (path === '/nodes') return json(nodes);
             if (path === '/nodes/status') return json([{ node_id: 'fixture', status: 'online', latency: 9 }, { node_id: 'offline', status: 'offline', latency: null }]);
             if (path === '/nodes/fixture/models') return json({ models: [{ id: model }], error: null });
+            if (path === '/monitoring/on-call') return json({
+                version: 1, error: null,
+                current: {
+                    checked_at: new Date().toISOString(), overall: 'healthy', summary: 'All targets healthy.', recovery: null,
+                    targets: [
+                        { name: 'Local', endpoint: 'http://127.0.0.1:8000/health', status: 'healthy', latency_ms: 12.3, http_status: 200 },
+                        { name: 'Walter', endpoint: 'http://100.64.0.2:11434/api/tags', status: 'healthy', latency_ms: 85.8, http_status: 200 },
+                    ],
+                },
+                history: [{ checked_at: new Date().toISOString(), overall: 'healthy', summary: 'All targets healthy.' }],
+            });
             if (path === '/conversations') return json(conversations);
             if (/^\/conversations\/design_\d$/.test(path)) return json(conversations.find((c) => path.endsWith(c.conversation_id)));
             if (path.endsWith('/memories')) return json({ memories: [] });
@@ -104,6 +115,9 @@ const run = () => ({ run_id: 'run_design', status: runStatus, reason_code: runSt
         await page.locator('#clusterChecked').filter({ hasText: 'checked' }).waitFor();
         assert.equal(await page.locator('.node-card').count(), 2);
         assert.equal(await page.locator('.model-tag').innerText(), model);
+        assert.equal(await page.locator('#onCallState').innerText(), 'HEALTHY');
+        assert.equal(await page.locator('#onCallTargets .oncall-target').count(), 2);
+        assert.equal(await page.locator('#onCallHistory .oncall-history-bar').count(), 1);
         await page.keyboard.press('Escape');
         assert.equal(await page.locator('#clusterView').isVisible(), true);
         assert.equal(await page.locator('.node-url').first().isVisible(), false);

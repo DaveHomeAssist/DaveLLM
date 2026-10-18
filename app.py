@@ -4531,6 +4531,35 @@ async def monitoring_dashboard(_auth=Depends(require_api_key)):
         "recent_errors": RECENT_ERRORS
     }
 
+
+@app.get("/monitoring/on-call")
+def monitoring_on_call(_auth=Depends(require_api_key)):
+    """Return the bounded local history written by the hourly on-call task."""
+    path = BASE_DIR / "on_call_status.json"
+    empty = {
+        "version": 1,
+        "current": None,
+        "history": [],
+        "error": "No hourly status has been recorded yet.",
+    }
+    try:
+        if not path.is_file() or path.stat().st_size > 1024 * 1024:
+            return empty
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {**empty, "error": "The hourly status file could not be read."}
+    if not isinstance(payload, dict) or not isinstance(payload.get("history"), list):
+        return {**empty, "error": "The hourly status file has an invalid shape."}
+    current = payload.get("current")
+    if current is not None and not isinstance(current, dict):
+        return {**empty, "error": "The hourly status file has an invalid current record."}
+    return {
+        "version": 1,
+        "current": current,
+        "history": [item for item in payload["history"][-168:] if isinstance(item, dict)],
+        "error": None,
+    }
+
 def search_conversation_messages(
     query: str, user_id: str, top_k: int = 10, *,
     roles: Optional[frozenset] = None, existing_only: bool = False, fallback_chars: Optional[int] = 200,

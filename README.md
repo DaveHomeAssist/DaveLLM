@@ -107,6 +107,8 @@ The repository intentionally contains no real node addresses or verified model i
 
 `DAVE_DATA_DIR` relocates all eight persistence files and the project-upload directory. When unset, the current working directory remains the default.
 
+The Cluster view also reads the hourly on-call snapshot from `on_call_status.json` in `DAVE_DATA_DIR`. `scripts/record_monitor_status.py` is the only supported writer: it validates structured target records, writes atomically with owner-only permissions, and retains the latest 168 checks. The installed hourly automation calls it after every check; routine healthy results stay in Cluster, while incidents continue to notify the automation thread. See [DL-OPS-01](docs/briefs/DL-OPS-01-on-call-monitor.md).
+
 - `dave_conversations.json`
 - `dave_projects.json`
 - `dave_settings.json`

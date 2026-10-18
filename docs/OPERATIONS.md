@@ -209,6 +209,20 @@ The selected node's inventory could not be refreshed. Confirm the node answers `
 
 The selected model is not in the loaded inventory for that node. Choose an ID returned by the node-model endpoint.
 
+## Hourly on-call display
+
+The Cluster view reads `GET /monitoring/on-call`, backed by `on_call_status.json` in `DAVE_DATA_DIR`. Record one check with the repository script after measuring every target:
+
+```sh
+python3 scripts/record_monitor_status.py \
+  --overall healthy \
+  --summary "All targets healthy." \
+  --target Local http://127.0.0.1:8000/health healthy 12.3 200 \
+  --target Walter http://100.64.0.2:11434/api/tags healthy 85.8 200
+```
+
+Repeat `--target NAME ENDPOINT STATUS LATENCY_MS HTTP_STATUS` for every target; use `none` when latency or status is unavailable. For a recovery, add `--recovery-node`, `--recovery-steps`, and `--recovery-seconds`. The script writes atomically, retains 168 checks, and prints the exact output path. Do not write prose into the JSON file or store credentials, prompts, or model responses there.
+
 ## Completion evidence
 
 An operational verification report should record:
