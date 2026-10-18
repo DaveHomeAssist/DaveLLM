@@ -5,11 +5,19 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Persistent macOS backend service installed; project sidebar choice open",
+  "head": "Backend restart inventory recovery repaired; project sidebar choice open",
   "lastActivity": "2026-10-18",
   "status": "amber",
   "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent.",
   "evidence": {
+    "backendInventoryRecovery": {
+      "checkedOn": "2026-10-18",
+      "problem": "The managed macOS backend can restart while Electron remains open. Model inventories were process-local, so an already-selected Walter model could be rejected with HTTP 409 before Walter was contacted.",
+      "repair": "Async streaming chat, prompt-size and tool-run admission now rebuild a missing inventory from the selected node's live /api/tags response, validate the requested model and fail closed when refresh fails.",
+      "verification": "A lifecycle regression starts with an empty router inventory, reads the mocked node once and completes the tool run. Focused lifecycle/API tests and provenance/capability/limit/eval checks pass; exact-head CI and installed restart acceptance remain separate gates.",
+      "liveNode": "Walter answered GET /api/tags with HTTP 200 in 85.776 ms before source delivery. This proves node reachability, not installed repair activation.",
+      "nextAction": "Complete protected source delivery and install the merged launcher/backend before repeating the already-open UI restart case."
+    },
     "launcherHandoff": {
       "checkedOn": "2026-10-17",
       "baselineRevision": "f6ca9cceec172fb55fb19919f6869e7372320a1b",
