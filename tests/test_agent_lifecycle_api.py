@@ -85,6 +85,28 @@ def test_lifecycle_auth_tools_off_validation_and_completed_events(router_factory
     assert client.get(f"/tools/agent/runs/{run_id}", headers=AUTH).status_code == 410
 
 
+def test_lifecycle_reloads_inventory_after_router_restart(router_factory):
+    router, client, _ = router_factory(tools=True)
+    assert "node-test" not in router.MODEL_INVENTORY
+
+    with respx.mock(assert_all_called=True) as mock:
+        tags = mock.get(f"{TEST_NODE_URL}/api/tags").mock(return_value=httpx.Response(
+            200, json={"models": [{"name": MODEL, "model": MODEL}]},
+        ))
+        chat = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=httpx.Response(
+            200, json={"message": {"role": "assistant", "content": "Recovered."}, "done": True},
+        ))
+        created = new_run(client)
+        assert created.status_code == 200, created.text
+        final = settled(client, created.json()["run_id"])
+
+    assert final["status"] == "completed"
+    assert final["snapshot"]["last_content"] == "Recovered."
+    assert router.MODEL_INVENTORY["node-test"] == {MODEL}
+    assert tags.call_count == 1
+    assert chat.call_count == 1
+
+
 def test_lifecycle_selected_tools_filter_model_schemas(router_factory):
     _, client, _ = router_factory(tools=True)
     with respx.mock(assert_all_called=True) as mock:

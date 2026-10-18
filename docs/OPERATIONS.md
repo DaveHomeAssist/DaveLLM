@@ -203,7 +203,7 @@ Treat the node as unavailable. Verify its network and Ollama service through the
 
 ### Chat returns `409`
 
-The selected node's inventory has not loaded. Fetch `GET /nodes/{node_id}/models` successfully before retrying.
+The selected node's inventory could not be refreshed. Confirm the node answers `/api/tags`; async chat and tool-run routes retry that inventory automatically on first use after a backend restart.
 
 ### Chat returns `400` for the model
 
