@@ -22,6 +22,7 @@ const api = new Map([
     ["/nodes/status", [{ node_id: "fixture", status: "online", latency: 1 }]],
     ["/nodes/fixture/models", { models: ["fixture-model"] }],
     ["/monitoring/health", { model_health: {}, recent_errors: [] }],
+    ["/monitoring/on-call", { version: 1, current: null, history: [], error: "No hourly status has been recorded yet." }],
     ["/analytics/costs", { total_cost: 0, by_model: {} }],
 ]);
 const blocked = [];

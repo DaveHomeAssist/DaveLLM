@@ -284,6 +284,22 @@
                 <div id="hfStatus" class="fetcher-status"></div>
             </div>
 <section class="cluster-monitor">
+    <article class="card oncall-card" aria-labelledby="onCallHeading">
+    <div class="oncall-heading">
+        <div>
+            <span class="oncall-kicker">Hourly technician</span>
+            <h3 id="onCallHeading">On-call status</h3>
+        </div>
+        <span id="onCallState" class="oncall-state oncall-state-unknown">Waiting</span>
+    </div>
+    <p id="onCallFreshness">No hourly check has been recorded.</p>
+    <div id="onCallSummary" class="oncall-summary" role="status" aria-live="polite">The next scheduled check will publish here.</div>
+    <div id="onCallTargets" class="oncall-targets" aria-label="Hourly check targets"></div>
+    <div id="onCallRecovery" class="oncall-recovery" hidden></div>
+    <div class="oncall-history-heading"><span>Recent checks</span><small>last 24</small></div>
+    <div id="onCallHistory" class="oncall-history" aria-label="Recent hourly check history"></div>
+    <p class="oncall-policy">Healthy runs stay here. Chat is reserved for outages, failed recovery, and required action.</p>
+    </article>
     <article class="card">
     <h3>Recent errors</h3>
     <div id="clusterErrors">Not loaded</div>

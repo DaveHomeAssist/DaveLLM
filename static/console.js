@@ -344,7 +344,7 @@ async function refreshCluster() {
         } catch (_) { consoleModelInventory.set(node.id, { error: true }); }
     }));
     if (state.nodes.length) renderConsoleNodes(state.nodes);
-    const results = await Promise.allSettled(["/monitoring/health", "/analytics/costs"].map(async (path) => {
+    const results = await Promise.allSettled(["/monitoring/health", "/analytics/costs", "/monitoring/on-call"].map(async (path) => {
         const response = await fetch(routerEndpoint(path), { headers: authHeaders(), signal: AbortSignal.timeout(15000) });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -378,8 +378,73 @@ async function refreshCluster() {
         row(costBox, "Total recorded estimate", Number.isFinite(data.total_cost) ? `$${data.total_cost.toFixed(2)}` : "No data");
         for (const [model, cost] of Object.entries(data.by_model || {})) row(costBox, model, Number.isFinite(cost) ? `$${cost.toFixed(4)}` : "No data");
     } else costBox.textContent = `Unavailable: ${results[1].reason.message}`;
+    renderOnCallStatus(results[2]);
     const online = Object.values(state.nodeStatus).filter((node) => node.status === "online").length;
     checked.textContent = `${online} of ${state.nodes.length} nodes online · checked ${new Date().toLocaleTimeString()}${results.some((r) => r.status === "rejected") ? " · some metrics unavailable" : ""}`;
+}
+
+function monitorAge(checkedAt) {
+    const timestamp = Date.parse(checkedAt || "");
+    if (!Number.isFinite(timestamp)) return { label: "Time unavailable", stale: true };
+    const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
+    if (minutes < 2) return { label: "Updated just now", stale: false };
+    if (minutes < 60) return { label: `Updated ${minutes} minutes ago`, stale: false };
+    const hours = Math.round(minutes / 60);
+    return { label: `Updated ${hours} ${hours === 1 ? "hour" : "hours"} ago`, stale: minutes > 90 };
+}
+
+function renderOnCallStatus(result) {
+    const stateLabel = document.getElementById("onCallState");
+    const freshness = document.getElementById("onCallFreshness");
+    const summary = document.getElementById("onCallSummary");
+    const targets = document.getElementById("onCallTargets");
+    const recovery = document.getElementById("onCallRecovery");
+    const history = document.getElementById("onCallHistory");
+    targets.replaceChildren(); history.replaceChildren(); recovery.replaceChildren(); recovery.hidden = true;
+    const payload = result?.status === "fulfilled" ? result.value : null;
+    const current = payload?.current;
+    if (!current) {
+        stateLabel.className = "oncall-state oncall-state-unknown";
+        stateLabel.textContent = "Waiting";
+        freshness.textContent = payload?.error || result?.reason?.message || "Hourly status unavailable.";
+        summary.textContent = "The next scheduled check will publish here.";
+        return;
+    }
+    const age = monitorAge(current.checked_at);
+    const state = age.stale ? "degraded" : String(current.overall || "unknown");
+    stateLabel.className = `oncall-state oncall-state-${state}`;
+    stateLabel.textContent = age.stale ? "Stale" : state;
+    const checkedAt = Date.parse(current.checked_at || "");
+    freshness.textContent = Number.isFinite(checkedAt)
+        ? `${age.label} · ${new Date(checkedAt).toLocaleString()}`
+        : age.label;
+    summary.textContent = String(current.summary || "Hourly check recorded.");
+    for (const target of current.targets || []) {
+        const row = uiElement("div", "oncall-target");
+        const reading = Number.isFinite(target.latency_ms)
+            ? `${Number(target.latency_ms).toFixed(1)} ms · HTTP ${target.http_status || "—"}`
+            : `${String(target.status || "unknown").toUpperCase()} · HTTP ${target.http_status || "—"}`;
+        row.append(
+            uiElement("strong", "", String(target.name || "Unnamed target")),
+            uiElement("code", "", String(target.endpoint || "Endpoint unavailable")),
+            uiElement("span", `oncall-target-reading${target.status === "down" || target.status === "unresponsive" ? " is-down" : ""}`, reading),
+        );
+        targets.append(row);
+    }
+    if (!targets.childElementCount) targets.append(uiElement("p", "", "No target records were included."));
+    if (current.recovery) {
+        recovery.hidden = false;
+        const elapsed = Number.isFinite(current.recovery.elapsed_seconds) ? ` · ${current.recovery.elapsed_seconds}s` : "";
+        recovery.textContent = `${current.recovery.node || "Recovery"}${elapsed}: ${current.recovery.steps || "Recovery details unavailable."}`;
+    }
+    for (const item of (payload.history || []).slice(-24)) {
+        const bar = uiElement("span", "oncall-history-bar");
+        const historyState = ["healthy", "degraded", "outage", "recovered"].includes(item.overall) ? item.overall : "unknown";
+        bar.dataset.state = historyState;
+        bar.title = `${item.checked_at || "Time unavailable"}: ${item.summary || item.overall || "Unknown"}`;
+        history.append(bar);
+    }
+    if (!history.childElementCount) history.textContent = "No history yet.";
 }
 
 function renderConsoleNodes(nodes) {

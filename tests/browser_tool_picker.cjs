@@ -26,6 +26,7 @@ let recorded = 0;
             if (path === '/conversations') return json([]);
             if (path === '/projects') return json([]);
             if (path === '/monitoring/health') return json({ model_health: {}, recent_errors: [] });
+            if (path === '/monitoring/on-call') return json({ version: 1, current: null, history: [], error: 'No hourly status has been recorded yet.' });
             if (path === '/tools') return json({ tools: {
                 'calc.eval': { description: 'Evaluate bounded arithmetic', permission: 'read' },
                 'json.validate': { description: 'Validate JSON text', permission: 'read' },

@@ -668,7 +668,7 @@ def test_r4_the_token_never_reaches_logs_routes_events_or_the_transcript(
             "decision": "approve"})
         bodies += [paused, decided.json(),
                    client.get(f"/tools/agent/runs/{run_id}/events", headers=auth).json()]
-        for route in ("/health", "/nodes", "/nodes/status", "/tools", "/monitoring/health", "/analytics/costs"):
+        for route in ("/health", "/nodes", "/nodes/status", "/tools", "/monitoring/health", "/monitoring/on-call", "/analytics/costs"):
             bodies.append(client.get(route, headers=auth).text)
     assert decided.json()["status"] == "completed"
     everything = _json.dumps(bodies) + "\n".join(record.getMessage() for record in caplog.records)
