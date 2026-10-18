@@ -121,7 +121,8 @@ def test_macos_launcher_uses_keychain_and_live_tailscale_inventory():
         'DAVE_NODES="$nodes_json"',
         'DAVE_DATA_DIR="$DATA_DIR"',
         'DAVE_ENABLE_TOOLS="${DAVE_ENABLE_TOOLS:-true}"',
-        '"$NPM_BIN" start',
+        'DAVE_BACKEND_MANAGED=true',
+        '"${REPO_ROOT}/venv/bin/python" -m uvicorn',
     ):
         assert required in launcher
 
@@ -173,7 +174,7 @@ def test_macos_launcher_reads_tool_settings_only_from_private_files():
         'if [[ -z "${DAVE_TOOLPACK_CONFIG:-}" && -e "$toolpack_file" ]]; then',
         '(.enabled_tools | type) == "array" and (.enabled_tools | length) > 0',
         '<= 65536',
-        '"${tool_env[@]}" \\\n    "$NPM_BIN" start',
+        '"${REPO_ROOT}/venv/bin/python" -m uvicorn',
     ):
         assert required in launcher
 
@@ -210,6 +211,10 @@ def test_macos_installer_generates_a_key_and_one_click_app_without_printing_it()
         "Launcher Backups",
         "Library/Logs/DaveLLM",
         "Preserved existing Keychain item",
+        "com.davellm.backend",
+        "RunAtLoad",
+        "KeepAlive",
+        "backend.error.log",
     ):
         assert required in installer
 
@@ -222,6 +227,30 @@ def test_macos_installer_hands_off_without_waiting_for_the_app():
     assert '/usr/bin/nohup /bin/zsh ' in installer
     assert ' < /dev/null >> ' in installer
     assert ' 2>&1 &"' in installer
+
+
+def test_macos_launcher_manages_backend_with_launchd_and_refuses_unknown_listener():
+    launcher = LAUNCHER.read_text()
+    for required in (
+        'SERVICE_LABEL="${DAVE_BACKEND_SERVICE_LABEL:-com.davellm.backend}"',
+        '[[ "${1:-}" == "--backend-only" ]]',
+        'launchctl bootstrap',
+        'launchctl kickstart',
+        "refusing to start a duplicate",
+        "refusing to replace or duplicate its listener",
+        "http://127.0.0.1:8000/health",
+        "DAVE_BACKEND_MANAGED=true",
+    ):
+        assert required in launcher
+    assert "launchctl kill" not in launcher
+    assert "kill -9" not in launcher
+
+
+def test_macos_stop_command_unloads_only_the_named_backend_service():
+    stop_script = (REPO / "scripts" / "macos" / "stop-backend.sh").read_text()
+    assert "com.davellm.backend" in stop_script
+    assert 'launchctl bootout "$SERVICE_TARGET"' in stop_script
+    assert "kill" not in stop_script
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS AppleScript")

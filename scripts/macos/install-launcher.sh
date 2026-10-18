@@ -16,6 +16,9 @@ APP_SUPPORT_DIR="${HOME}/Library/Application Support/DaveLLM"
 BACKUP_DIR="${APP_SUPPORT_DIR}/Launcher Backups"
 LOG_DIR="${HOME}/Library/Logs/DaveLLM"
 LOG_PATH="${LOG_DIR}/launcher.log"
+SERVICE_LABEL="com.davellm.backend"
+LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
+SERVICE_PLIST="${LAUNCH_AGENTS_DIR}/${SERVICE_LABEL}.plist"
 
 fail() {
     print -u2 -- "DaveLLM launcher installer: $1"
@@ -54,7 +57,29 @@ else
     print -- "Created Keychain item: ${KEYCHAIN_SERVICE}"
 fi
 
-/bin/mkdir -p "$APP_DIR" "$BACKUP_DIR" "$LOG_DIR"
+/bin/mkdir -p "$APP_DIR" "$BACKUP_DIR" "$LOG_DIR" "$LAUNCH_AGENTS_DIR"
+
+service_plist_tmp="${SERVICE_PLIST}.tmp.$$"
+repo_xml="$(print -r -- "$RUNNER_PATH" | /usr/bin/sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g")"
+/bin/cat > "$service_plist_tmp" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${SERVICE_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>${repo_xml}</string><string>--backend-only</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>${LOG_DIR}/backend.log</string>
+  <key>StandardErrorPath</key><string>${LOG_DIR}/backend.error.log</string>
+  <key>ProcessType</key><string>Interactive</string>
+</dict>
+</plist>
+PLIST
+/usr/bin/plutil -lint "$service_plist_tmp" >/dev/null
+/bin/mv "$service_plist_tmp" "$SERVICE_PLIST"
 
 compiled_app="${APP_DIR}/.DaveLLM Launcher.$$.app"
 runner_escaped="$(escape_applescript "$RUNNER_PATH")"
@@ -93,5 +118,6 @@ fi
 /usr/bin/touch "$LOG_PATH"
 
 print -- "Installed: ${APP_PATH}"
+print -- "Installed backend service: ${SERVICE_PLIST}"
 print -- "Runtime log: ${LOG_PATH}"
 print -- "Double-click DaveLLM Launcher in ~/Applications to start DaveLLM."

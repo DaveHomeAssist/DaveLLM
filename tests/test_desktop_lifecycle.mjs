@@ -7,7 +7,7 @@ import vm from "node:vm";
 
 const source = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
 
-function desktop(hasLock) {
+function desktop(hasLock, env = {}) {
   const calls = { ready: 0, quit: 0, spawned: 0, restored: 0, focused: 0 };
   const app = new EventEmitter();
   app.requestSingleInstanceLock = () => hasLock;
@@ -24,7 +24,7 @@ function desktop(hasLock) {
       if (name === "http") return {};
       throw new Error(`Unexpected dependency: ${name}`);
     },
-    process: { env: {}, platform: "darwin", cwd: () => "/fixture" },
+    process: { env, platform: "darwin", cwd: () => "/fixture" },
     __dirname: "/fixture/desktop",
   });
   return { app, calls, setWindows(value) { windows = value; } };
@@ -52,5 +52,13 @@ test("primary desktop handles repeated launch without a second startup", () => {
   assert.equal(calls.restored, 1);
   assert.equal(calls.focused, 1);
   assert.equal(calls.ready, 1);
+  assert.equal(calls.spawned, 0);
+});
+
+test("managed desktop never owns or kills the backend", () => {
+  const { app, calls } = desktop(true, { DAVE_BACKEND_MANAGED: "true" });
+  assert.equal(calls.ready, 1);
+  assert.equal(calls.spawned, 0);
+  app.emit("before-quit");
   assert.equal(calls.spawned, 0);
 });

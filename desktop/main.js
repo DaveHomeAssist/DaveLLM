@@ -10,6 +10,7 @@ const PORT = process.env.DAVE_PORT || "8000";
 const HOST = "127.0.0.1";
 const API_BASE = `http://${HOST}:${PORT}`;
 const STARTUP_TIMEOUT_MS = Number(process.env.DAVE_STARTUP_TIMEOUT_MS || 15000);
+const BACKEND_MANAGED = process.env.DAVE_BACKEND_MANAGED === "true";
 process.env.DAVE_API_BASE = API_BASE;
 
 function startBackend() {
@@ -45,7 +46,7 @@ function probeHealth() {
   });
 }
 
-function waitForBackend(child) {
+function waitForBackend(child = null) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + STARTUP_TIMEOUT_MS;
     let settled = false;
@@ -53,8 +54,10 @@ function waitForBackend(child) {
     const finish = (error) => {
       if (settled) return;
       settled = true;
-      child.removeListener("error", onSpawnError);
-      child.removeListener("exit", onEarlyExit);
+      if (child) {
+        child.removeListener("error", onSpawnError);
+        child.removeListener("exit", onEarlyExit);
+      }
       if (error) reject(error);
       else resolve();
     };
@@ -62,8 +65,10 @@ function waitForBackend(child) {
     const onEarlyExit = (code, signal) => {
       finish(new Error(`Backend exited before readiness (code=${code}, signal=${signal || "none"})`));
     };
-    child.once("error", onSpawnError);
-    child.once("exit", onEarlyExit);
+    if (child) {
+      child.once("error", onSpawnError);
+      child.once("exit", onEarlyExit);
+    }
 
     const poll = async () => {
       if (await probeHealth()) {
@@ -127,9 +132,9 @@ function createWindow() {
 async function startDesktop() {
   try {
     installApiKeyInjection();
-    const child = startBackend();
+    const child = BACKEND_MANAGED ? null : startBackend();
     await waitForBackend(child);
-    child.once("exit", (code, signal) => {
+    child?.once("exit", (code, signal) => {
       backendReady = false;
       if (!shuttingDown) {
         dialog.showErrorBox(
@@ -178,5 +183,5 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   shuttingDown = true;
-  if (backend && !backend.killed) backend.kill();
+  if (!BACKEND_MANAGED && backend && !backend.killed) backend.kill();
 });
