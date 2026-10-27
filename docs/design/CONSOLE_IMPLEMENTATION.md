@@ -2,6 +2,10 @@
 
 The runtime in `static/` implements the supplied DaveLLM Redesign handoff with the existing FastAPI and Electron contracts. `docs/` remains the documentation site, not the application deployment.
 
+## Concurrent send preparation repair: October 27, 2026
+
+Claim one Send operation before attachment reads, conversation creation or budget requests yield. Previously a second press could pass the streaming guard while the first was awaiting preparation, producing duplicate requests and competing replies. The claim releases in `finally`, including rejected attachments and read failures, while the existing streaming and tool-approval guards remain. Focused Node regression tests reproduce two concurrent attachment reads before the repair and one afterward. No model invocation, tool activation, service change or inference qualification is part of this repair. Next: review the scoped PR; installed application acceptance remains separate.
+
 ## Compact workspace brief — October 7, 2026
 
 The operator has accepted the Tools menu entry point. The remaining layout problem

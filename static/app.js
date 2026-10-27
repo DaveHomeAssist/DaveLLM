@@ -3081,6 +3081,17 @@ async function sendMessage() {
     if (approvalBusy) { notifyConsole("Finish or stop the active tool run before sending. Your draft is preserved."); return; }
     // One reply at a time: a second stream would interleave with the first and lose its Stop button.
     if (state.streaming) { notifyConsole("A reply is still being written. Press Stop to end it, or wait for it to finish. Your draft is kept."); return; }
+    if (state.preparingMessage) { notifyConsole("A message is being prepared. Wait for it to send. Your draft is kept."); return; }
+    // Claim the send before attachment reads, conversation creation or budget requests yield.
+    state.preparingMessage = true;
+    try {
+        await sendPreparedMessage();
+    } finally {
+        state.preparingMessage = false;
+    }
+}
+
+async function sendPreparedMessage() {
     const prompt = promptInput.value.trim();
     const attached = await attachedFilePromptText();
     if (attached.tooLarge) {
