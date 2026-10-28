@@ -264,6 +264,17 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
     target = resolve(_option(arguments, "path", "."))
     if not target.is_dir():
         raise FileToolError(NOT_A_WORK_TREE)
+
+    # Git can consult .git/objects/info/alternates even for the initial
+    # rev-parse discovery probe. Refuse a hostile/special alternates file in a
+    # normal in-tree .git directory before starting Git, otherwise a FIFO can
+    # block discovery until the tool timeout. Linked/.git-file layouts still
+    # go through the privacy-preserving Git discovery path below.
+    direct_git = target / ".git"
+    if not direct_git.is_symlink() and direct_git.is_dir():
+        if _names_alternates(direct_git / "objects"):
+            raise FileToolError(UNSUPPORTED_REPOSITORY)
+
     git = git_executable()
     # Discovery may reach the tool root but never the folder above it.
     ceiling = {"GIT_CEILING_DIRECTORIES": str(deepest_root(target, roots).parent)}
