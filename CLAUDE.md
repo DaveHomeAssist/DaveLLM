@@ -119,7 +119,7 @@ git diff --check
 ## Current limits and open decisions
 
 - Real node reachability, installed model inventory, inference quality, Whisper execution, and hardware performance require cluster access and are not proven by repository tests.
-- Electron is pinned to `^44.0.0` (upgraded from `^30.0.0` per audit finding H-1, 2026-08-26). npm audit reports no known vulnerabilities at this line; keep the pin on a supported major.
+- Electron remains on supported major 44 with `^44.9.1`; the lockfile also resolves optional transitive undici to 7.30.1. The October 27, 2026 PR #102 repair clears the reproduced npm audit findings. Recheck the audit for the current lockfile rather than relying on this dated result.
 - FastAPI startup/shutdown event deprecation warnings are known; a lifespan migration is deferred because it is outside the P0 stabilization scope.
 - Conversation JSON and core project metadata remain compatible. Project Instructions, BRAIN revisions, uploaded-file indexes, and artifact history are normalized in `dave_project_context.db`; a full conversation migration remains deferred.
 

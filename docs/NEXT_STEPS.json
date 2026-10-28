@@ -1292,5 +1292,13 @@
     "scope": "Serialize Send before asynchronous preparation to prevent duplicate chat requests. Release on failure while preserving drafts.",
     "evidence": "Dominic Node 22: concurrent-send regression fails on the base; composer and console checks pass after repair. No inference or provider calls.",
     "nextAction": "Review the isolated PR. Installed browser acceptance and deployment remain open."
+  },
+  "pr102DependencyRepair": {
+    "sourceRevision": "a13dab564010e652d773a0eaec6efd5dc7ffe843",
+    "observedAt": "2026-10-28T00:43:38.781720+00:00",
+    "status": "dependency repair verified on Dominic; PR CI pending",
+    "scope": "Electron 44.0.0 to 44.9.1 and optional transitive undici 7.30.0 to 7.30.1; no other packages changed.",
+    "evidence": "Clean install and npm audit: zero vulnerabilities. 36 JavaScript tests and Chromium workspace fixture pass. Unmodified Electron navigation fixture passes 24 cases under Xvfb with software rendering and 256 MiB shared memory; default virtual GPU runs stalled. No inference or production service changes.",
+    "nextAction": "Collect exact updated PR CI. No merge, deployment or installed application acceptance is authorized by this repair."
   }
 }
