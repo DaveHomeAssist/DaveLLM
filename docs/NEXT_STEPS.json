@@ -72,7 +72,7 @@
       "limits": "The installed test used the current signed-in user session. Logout/login RunAtLoad persistence, reboot persistence, packaging outside the canonical checkout and physical operator acceptance remain separate gates.",
       "nextAction": "Complete protected source delivery, then verify one real logout/login cycle when operationally convenient."
     },
-    "checkedOn": "2026-10-17",
+    "checkedOn": "2026-10-28",
     "installedToolsAcceptance": {
       "checkedOn": "2026-10-17",
       "sourceRevision": "5f88b5ec4c56b0c3beee4fd302c3f880d24b16ae",
@@ -147,7 +147,7 @@
       "repairsDuringVerification": "Removed the old landscape page-scroll exception; added a short-height context disclosure; fixed its summary hitbox overlapping header actions and replaced an undefined menu background token with the existing panel color. Initial PR #83 CI 37626340860 exposed a legacy source test requiring the removed overflow exception (Python 3.12: 1368 passed, one failed). Updated that assertion to require the locked shell and reachable compact controls; replacement CI remains the merge gate.",
       "limits": "No inference, model changes, provider activation, backend restart, Notion writes or human acceptance. Previous blank-answer and provider-claim defects are outside this UI slice. Playwright is a dev-only regression dependency."
     },
-    "sourceRevision": "82830154aa7bfc8597ae75e92859368f11d8cab3",
+    "sourceRevision": "d5236e661d4b094861bea4cc4a5d755245822882",
     "notionTestLifecycleRepair": {
       "checkedOn": "2026-10-07",
       "baselineRevision": "aa4e351253b62b7b7e87faa170663d7cf44d38ed",
@@ -272,7 +272,7 @@
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; all three required PR checks passed and its source merged; installed/native acceptance remains separate.",
+    "scope": "October 28 scoped refresh: DL-CLI-01 source and installed command are verified as recorded in statelessCommand20261028; protected PR CI is a separate pending delivery gate. Other evidence below is historical and retains its original scope: Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; all three required PR checks passed and its source merged; installed/native acceptance remains separate.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -375,6 +375,8 @@
       "notProven": "Native Electron approval-card interaction, human acceptance, other installed-model inference and H9 qualification"
     },
     "sources": [
+      "docs/briefs/DL-CLI-01-stateless-command.md",
+      "scripts/davellm_ask.py",
       "docs/NOTION_ADAPTER_LIVE_ACCEPTANCE.md",
       "docs/DAVEHARNESS_IMPLEMENTATION_PLAN.md",
       "docs/DAVEHARNESS_H9_RESULTS.md",
