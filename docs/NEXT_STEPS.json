@@ -430,6 +430,13 @@
       "verification": "Dominic: 154 Python checks passed for folder assignment, approval/resume, project context, extended files, edits, catalog provenance and token budgets. Browser checks cover saving, reopening, invalid-save preservation, keyboard focus and ten theme/viewport combinations. Exact-head CI and installed runtime acceptance remain separate.",
       "nextAction": "Complete source delivery, then assign an existing allowed output folder in Project Home and start a new file run. Existing pending runs have no captured folder.",
       "limits": "No new tool roots, automatic directory assignment, live model inference, model qualification or Notion tool effects."
+    },
+    "standaloneMonitorParser": {
+      "checkedOn": "2026-10-18",
+      "scope": "Repair the generated standalone node_status_monitor.py; no live backend connection.",
+      "problem": "Wrong token offsets and parsing the ms suffix silently dropped nodes; recovery flag was inverted.",
+      "acceptance": "Healthy samples parse exact names, endpoints and latency; malformed and unsupported unhealthy reports fail explicitly without replacing prior state. Offline display and JSON save/load round trip tested in temporary storage.",
+      "nextAction": "Define the unhealthy report contract before connecting this standalone script to any backend; existing structured Cluster monitoring remains separate."
     }
   },
   "shipped": [

@@ -224,3 +224,18 @@ H9 action 55 adds the authorized live-evaluation runner `scripts/evaluate_live_d
 ### Optional console browser acceptance
 
 `tests/browser_console.cjs` exercises seven viewport widths, themes, colored age groups, safe Markdown, runtime selection, cluster state, project creation, approval rejection, streaming, and credential cancellation. It needs Playwright and a local Chrome binary from the developer environment; neither is a runtime dependency. Run it only against a disposable router with `DAVE_API_KEY=console-fixture-key`, an empty node list, tools enabled, and a temporary `DAVE_DATA_DIR`. Set `CONSOLE_URL` (default `http://127.0.0.1:8769`) and optionally `CHROME_BIN` and `CONSOLE_SCREENSHOTS`, then run `node tests/browser_console.cjs`. Model and run responses are fixtures; project creation uses the disposable backend. These tests do not qualify live model inference or physical phone keyboard behavior.
+
+## Standalone monitor sample
+
+`node_status_monitor.py` is an offline example, separate from the live Cluster
+monitor. Running `python node_status_monitor.py` displays fictional sample data
+and writes `node_status.json` in the current directory. It makes no network calls.
+
+The parser accepts `All targets healthy:`, semicolon-separated
+`name host:port latency ms` entries, and a final `No recovery action needed.`
+trailer. Bracketed IPv6 endpoints and `20ms` or `20 ms` are supported.
+Malformed, contradictory, and unsupported unhealthy summaries raise `ValueError`;
+callers must surface this error rather than treating retained prior data as a
+fresh health result. No unhealthy text contract or live backend adapter is wired.
+
+Offline regression check: `python -m pytest --noconftest tests/test_node_status_monitor.py`.
