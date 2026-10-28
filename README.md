@@ -82,6 +82,35 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 Open `http://127.0.0.1:8000`. Browser mode prompts for the key and keeps it in `sessionStorage`; it is not written to persistent `localStorage`. `/health` is public. Protected endpoints fail with `503` when the server key is unset and `401` when the supplied key is missing or wrong.
 
+## Command line inference
+
+`scripts/davellm_ask.py` sends one text prompt through the already running local
+router's stateless `/eval/chat` route. It checks the selected node's inventory
+first. It sends no tools or project context and saves no conversation.
+
+```bash
+python3 scripts/davellm_ask.py --node walter --model llama3:latest --max-tokens 64 'Reply with exactly: DAVELLM_COMMAND_OK'
+```
+
+Use a node ID and model that exist in your configured inventory. The client uses
+`DAVE_API_KEY`, or the launcher's existing macOS Keychain item when that variable
+is unset. `DAVE_KEYCHAIN_ACCOUNT` and `DAVE_KEYCHAIN_SERVICE` have the same meaning
+as in the launcher. It never prints the key or creates a credential.
+
+The default router is `http://127.0.0.1:8000`; `--api-base` or `DAVE_API_BASE` may
+select another loopback origin. Redirects and environment proxies are disabled.
+The default output budget is 128 tokens at temperature 0; `--max-tokens` changes
+the budget, and `--timeout` changes the completion timeout (default 180 seconds).
+Inventory checks wait at most 15 seconds. `--json` prints the router's reply and
+timing metadata instead of only the answer.
+
+Exit 0 means a nonempty reply finished normally; exit 1 means authentication,
+inventory, connection, timeout, invalid reply, empty reply or truncation failure;
+exit 2 means invalid arguments. Errors go to stderr with no answer on stdout.
+The client never retries, downloads a model or starts a service. A client timeout
+does not cancel work already accepted by the router. First use can include a
+model load, so it can take longer than subsequent calls.
+
 ## Ollama contract
 
 The UI loads nodes from `GET /nodes`, then loads the selected node's inventory from `GET /nodes/{node_id}/models`. The router queries Ollama `GET /api/tags`. Requests are accepted only when `node_id` is configured and `model` appears in that node's inventory. Streaming chat, prompt sizing, and tool-run routes rebuild a missing process-local inventory from `/api/tags` on first use, so an independently restarted backend still serves an already-open UI; a failed refresh remains a fail-closed `409`. Plain chat (`POST /chat`, `POST /chat/stream`, and conversation-summary generation) uses Ollama's native `POST /api/chat` through the shared helper in `davellm_ollama.py`, which sends the router's own `num_ctx` (the model's window capped at `DAVE_CHAT_NUM_CTX`, default `16384`) and `keep_alive` (`DAVE_CHAT_KEEP_ALIVE`, default `30m`, for chats in a conversation), so a node's own default context no longer decides plain chat. The bounded tool loop (`POST /tools/agent/run` and the lifecycle run routes) also uses native `POST /api/chat` (DL-TRANSPORT-01b): it sends the tool schemas, the same `num_ctx` and `keep_alive`, and a byte-capped read; DaveHarness reads the native reply directly, and only the tool-call arguments and tool-result names it writes back are converted. Ollama's OpenAI-compatible endpoint ignores `num_ctx` and `keep_alive` (verified on Ollama 0.33.3). Sampling is unchanged: `/v1` sent `top_p` 1.0, so the native payload sends `top_p` 1.0 too instead of the model's Modelfile default. Request-field mapping is in [INTEGRATION.md](INTEGRATION.md).

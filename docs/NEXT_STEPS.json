@@ -5,10 +5,10 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Dominic 4K operations wallboard specified; implementation not started",
-  "lastActivity": "2026-10-19",
+  "head": "Stateless command client implemented and verified against the existing router",
+  "lastActivity": "2026-10-28",
   "status": "amber",
-  "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent.",
+  "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent. October 28: DL-CLI-01 adds a local stateless command client; the installed command passed twice through the existing router and selected GPU node. This does not close the separate tool, wallboard, persistence or H9 gates.",
   "evidence": {
     "toolsSourceReconciliation20261018": {
       "checkedOn": "2026-10-18",
@@ -437,6 +437,40 @@
       "problem": "Wrong token offsets and parsing the ms suffix silently dropped nodes; recovery flag was inverted.",
       "acceptance": "Healthy samples parse exact names, endpoints and latency; malformed and unsupported unhealthy reports fail explicitly without replacing prior state. Offline display and JSON save/load round trip tested in temporary storage.",
       "nextAction": "Define the unhealthy report contract before connecting this standalone script to any backend; existing structured Cluster monitoring remains separate."
+    },
+    "statelessCommand20261028": {
+      "checkedOn": "2026-10-28",
+      "baselineRevision": "7e4a1f3ce3cca149e0d879f7b3bfff21cbf3c276",
+      "runningRouterRevision": "48dd5c2cc9bb04a7dbac49807285bee471a07556",
+      "source": "docs/briefs/DL-CLI-01-stateless-command.md",
+      "scope": "Directly authorized existing-router command interface only. Standard-library client; no backend, BRAIN CLI, network, dependency, service, model-download or tool changes.",
+      "implementation": "scripts/davellm_ask.py checks selected model inventory, then calls existing POST /eval/chat with caller text, temperature 0 and bounded output. Uses existing environment credential or macOS Keychain; loopback only, no proxies, no redirects, no automatic retries. Plain answer or JSON output; nonzero exit for invalid, unavailable, empty or truncated replies.",
+      "sourceVerification": "34 targeted pytest cases passed on the Mac in 0.31 seconds, including the existing BRAIN CLI cases. No test server started. Full required CI is a separate delivery gate.",
+      "installedVerification": {
+        "clientSha256": "672213aaab4b70532a70b1af98143bf60c4f63aec61e169968a02d0cd8958a05",
+        "node": "walter",
+        "model": "llama3:latest",
+        "routerVersion": "2.1.0",
+        "maxTokens": 64,
+        "expectedResponse": "DAVELLM_COMMAND_OK",
+        "runs": [
+          {
+            "finishedAt": "2026-10-28T19:56:47-04:00",
+            "exitCode": 0,
+            "seconds": 5.263,
+            "exactMatch": true
+          },
+          {
+            "finishedAt": "2026-10-28T19:56:48-04:00",
+            "exitCode": 0,
+            "seconds": 1.174,
+            "exactMatch": true
+          }
+        ],
+        "authentication": "Existing Keychain item; no API key in argv or child environment. Installed bytes match source. Mac runs client; Walter runs inference."
+      },
+      "limits": "Proves this command and selected model path only. Other-node inference, model quality, H9, streaming, Electron, tools, persistence and service recovery are not qualified. The installed router remains unchanged; source delivery tracked separately.",
+      "nextAction": "Reuse the installed command. Any command catalog or Stream Deck integration is a later scoped slice; preserve existing services and network."
     }
   },
   "shipped": [
@@ -987,6 +1021,23 @@
       ],
       "status": "implemented",
       "evidenceNote": "October 15 source repair on branch claude/elegant-hypatia-6f5b13. Targeted pytest and node checks passed on the Mac; full pytest on Dominic and protected CI are recorded in the PR. The installed app is unchanged until merge and relaunch."
+    },
+    {
+      "id": "DL-CLI-01",
+      "type": "workflow",
+      "sev": "P2",
+      "title": "Implemented and verified: repeatable stateless inference command",
+      "detail": "Local command reuses existing inventory and /eval/chat routes, existing authentication and an explicitly selected installed model. Two serial installed-command runs returned the exact requested marker. Existing BRAIN CLI, services and network are unchanged. Source delivery is separate from installed command acceptance.",
+      "files": [
+        "scripts/davellm_ask.py",
+        "tests/test_davellm_ask.py",
+        "docs/briefs/DL-CLI-01-stateless-command.md",
+        "README.md"
+      ],
+      "evidence": "test",
+      "phase": 3,
+      "status": "implemented",
+      "evidenceNote": "October 28: 34 targeted offline cases and two live command executions passed. See evidence.statelessCommand20261028. This does not renew H9 or any tool evaluation grant."
     }
   ],
   "phases": [
