@@ -19,7 +19,13 @@
       "priorSourceCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/39100255344",
       "verification": "Both recorded source revisions passed all three required Python 3.12/3.13/3.14 CI jobs. Source/fixture review confirms public numeric-address pinning with Host/TLS identity, redirect revalidation, mixed-address refusal, proxy bypass, vetted fallback and independent connections; catalog provenance is independently pinned. Evidence reused, no new live or local regression run.",
       "acceptanceDelta": "DL-TOOLS-01 removed from open decisions because the accepted October 5 all-100 approval superseded it. The roadmap is labeled historical, revised web.fetch source evidence is separated from live qualification, and the existing October 17 installedToolsAcceptance receipt supersedes the October 12 absence of bounded PR86 activation evidence.",
-      "consideredItems": ["DL-TOOLS-01", "web.fetch/web.read public connection repair", "PR86 source excerpt correction", "PR77/PR78 readiness checker", "EX-01 through EX-21 deployment inputs"],
+      "consideredItems": [
+        "DL-TOOLS-01",
+        "web.fetch/web.read public connection repair",
+        "PR86 source excerpt correction",
+        "PR77/PR78 readiness checker",
+        "EX-01 through EX-21 deployment inputs"
+      ],
       "remainingGates": "T10/T11 remain FAIL with spent pilot attempts; Duncan diagnostic remains closed after one CPU allocation failure; H9 remains unqualified. Each provider/helper/effect/physical lane needs its named inputs, capability and exact applicable grant. No current private configuration inspected; historical Missing rows do not block local/advisory tools. DL-TOOLUX-02 remains unanswered.",
       "nextEligibleItem": "No additional accepted source/fixture defect established in this bounded review. Continue only a concrete accepted source defect or a separately scoped operation with established inputs/effect authority; this is not a whole-project queue-exhaustion claim."
     },
@@ -774,7 +780,7 @@
       "type": "docs",
       "sev": "P3",
       "title": "Docs and release drift: manifest, check lists, no tags",
-      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
       "files": [
         "docs/design/DESIGN_OVERHAUL_MANIFEST.md",
         "CLAUDE.md:108",
@@ -786,7 +792,7 @@
         {
           "checkedOn": "2026-10-02",
           "title": "Docs and release drift: manifest, check lists, no tags",
-          "detail": "Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+          "detail": "Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
           "evidence": "code-read"
         }
       ],
@@ -1003,7 +1009,7 @@
       "goal": "Make docs match HEAD; record the H9, manifest and version decisions",
       "items": [
         "DL-03: relabel edit_outside_root case, fix table row, note baselines not comparable",
-        "DL-14: mark design manifest as-built, record §9 outcomes, fix CLAUDE.md check list",
+        "DL-14: mark design manifest as-built, record \u00a79 outcomes, fix CLAUDE.md check list",
         "Decide VERSION bump/CHANGELOG/tags and prune old branches (Dave)"
       ],
       "gate": "pytest -q tests/test_documentation_contracts.py tests/test_capabilities_manifest.py; git diff --check"
@@ -1278,5 +1284,21 @@
     "Historical console, dependency and release findings outside this package have not been re-audited.",
     "Dave's acceptance of the 2026-10-05 chat UI fixes in the Electron app; the reply-link handler in desktop/main.js loads only after the app restarts.",
     "Historical checkout divergence at 6aad6d6 is superseded: the model-context work started from clean canonical main d6e7972 matching origin/main."
-  ]
+  ],
+  "concurrentSendPreparation": {
+    "sourceRevision": "48dd5c2cc9bb04a7dbac49807285bee471a07556",
+    "observedAt": "2026-10-27T22:11:05.251500+00:00",
+    "status": "implemented and offline regression verified; PR review pending",
+    "scope": "Serialize Send before asynchronous preparation to prevent duplicate chat requests. Release on failure while preserving drafts.",
+    "evidence": "Dominic Node 22: concurrent-send regression fails on the base; composer and console checks pass after repair. No inference or provider calls.",
+    "nextAction": "Review the isolated PR. Installed browser acceptance and deployment remain open."
+  },
+  "pr102DependencyRepair": {
+    "sourceRevision": "a13dab564010e652d773a0eaec6efd5dc7ffe843",
+    "observedAt": "2026-10-28T00:43:38.781720+00:00",
+    "status": "dependency repair verified on Dominic; PR CI pending",
+    "scope": "Electron 44.0.0 to 44.9.1 and optional transitive undici 7.30.0 to 7.30.1; no other packages changed.",
+    "evidence": "Clean install and npm audit: zero vulnerabilities. 36 JavaScript tests and Chromium workspace fixture pass. Unmodified Electron navigation fixture passes 24 cases under Xvfb with software rendering and 256 MiB shared memory; default virtual GPU runs stalled. No inference or production service changes.",
+    "nextAction": "Collect exact updated PR CI. No merge, deployment or installed application acceptance is authorized by this repair."
+  }
 }

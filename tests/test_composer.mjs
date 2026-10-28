@@ -167,3 +167,46 @@ test("the size check renders only the latest draft's answer", async () => {
     assert.deepEqual(rendered.at(-1), null);  // an empty draft clears the line without a request
     assert.equal(pending.length, 2);
 });
+
+
+test("a second Send cannot enter while the first reads its attachment", async () => {
+    let release;
+    let reads = 0;
+    const reading = new Promise(resolve => { release = resolve; });
+    const promptInput = { value: "Keep this draft" };
+    const context = load(["sendMessage", "sendPreparedMessage"], {
+        approvalBusy: false, state: { streaming: false }, promptInput,
+        attachedFilePromptText: () => { reads += 1; return reading; },
+        notifyConsole: () => {},
+    });
+    const first = context.sendMessage();
+    const second = context.sendMessage();
+    const concurrentReads = reads;
+    release({ tooLarge: true });
+    await Promise.all([first, second]);
+    assert.equal(concurrentReads, 1, "only one send reaches asynchronous preparation");
+    assert.equal(promptInput.value, "Keep this draft");
+    await context.sendMessage();
+    assert.equal(reads, 2, "a rejected attachment releases the send lock for retry");
+});
+
+
+test("an attachment read error releases preparation without losing the draft", async () => {
+    let reads = 0;
+    const promptInput = { value: "Retry this draft" };
+    const context = load(["sendMessage", "sendPreparedMessage"], {
+        approvalBusy: false, state: { streaming: false }, promptInput,
+        attachedFilePromptText: async () => {
+            reads += 1;
+            if (reads === 1) throw new Error("Attachment read failed");
+            return { tooLarge: true };
+        },
+        notifyConsole: () => {},
+    });
+    await assert.rejects(context.sendMessage(), /Attachment read failed/);
+    assert.equal(context.state.preparingMessage, false);
+    assert.equal(promptInput.value, "Retry this draft");
+    await context.sendMessage();
+    assert.equal(reads, 2);
+    assert.equal(context.state.preparingMessage, false);
+});

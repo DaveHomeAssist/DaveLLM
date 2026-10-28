@@ -1,0 +1,130 @@
+{
+  "skill": "dependency-repair",
+  "scope": "PR 102 reproduced npm audit findings only",
+  "project": "DaveLLM",
+  "target": {
+    "revision": "a13dab564010e652d773a0eaec6efd5dc7ffe843 plus this repair",
+    "branch": "codex/prevent-concurrent-chat-send",
+    "environment": "Dominic isolated Docker; Node 22 audit/tests and Node 24 browser fixture image",
+    "artifact": "package-lock.json SHA256 d84219c46da3007319d20e983fbd7999d433d1b422e114c1423a50780201e155",
+    "platform": "Linux x64"
+  },
+  "requirements": [
+    {
+      "id": "electron-path",
+      "acceptance_criterion": "Trace affected dependency",
+      "required": true
+    },
+    {
+      "id": "electron-resolution",
+      "acceptance_criterion": "Resolve outside affected ranges",
+      "required": true
+    },
+    {
+      "id": "electron-owner",
+      "acceptance_criterion": "Requery original npm audit owner",
+      "required": true
+    },
+    {
+      "id": "undici-path",
+      "acceptance_criterion": "Trace affected dependency",
+      "required": true
+    },
+    {
+      "id": "undici-resolution",
+      "acceptance_criterion": "Resolve outside affected ranges",
+      "required": true
+    },
+    {
+      "id": "undici-owner",
+      "acceptance_criterion": "Requery original npm audit owner",
+      "required": true
+    },
+    {
+      "id": "compatibility",
+      "acceptance_criterion": "Install and exercise affected runtime",
+      "required": true
+    },
+    {
+      "id": "overlap",
+      "acceptance_criterion": "Preserve overlapping update work",
+      "required": true
+    }
+  ],
+  "evidence": [
+    {
+      "requirement_id": "electron-path",
+      "kind": "source",
+      "reference": "direct dev dependency electron",
+      "observed_at": "2026-10-28T00:44:01.604536+00:00",
+      "result": "pass",
+      "limitations": "Audit snapshot is time-specific, not deployed artifact proof."
+    },
+    {
+      "requirement_id": "electron-resolution",
+      "kind": "source",
+      "reference": "electron 44.9.1; prior aggregate affected range 44.0.0-alpha.1 - 44.9.0; https://github.com/advisories/GHSA-fw47-9c62-h3vw, https://github.com/advisories/GHSA-2p8c-gr87-2676, https://github.com/advisories/GHSA-x562-297c-g43g, https://github.com/advisories/GHSA-98mx-cjp9-gchm, https://github.com/advisories/GHSA-3qxv-5xgr-q7w9, https://github.com/advisories/GHSA-h3v5-h239-pg29, https://github.com/advisories/GHSA-997q-gvvc-jwmx, https://github.com/advisories/GHSA-jr5w-w6x2-84p9",
+      "observed_at": "2026-10-28T00:44:01.604536+00:00",
+      "result": "pass",
+      "limitations": "Audit snapshot is time-specific, not deployed artifact proof."
+    },
+    {
+      "requirement_id": "electron-owner",
+      "kind": "source",
+      "reference": "npm audit --package-lock-only --json and installed npm audit --audit-level=high: zero vulnerabilities",
+      "observed_at": "2026-10-28T00:44:01.604536+00:00",
+      "result": "pass",
+      "limitations": "Audit snapshot is time-specific, not deployed artifact proof."
+    },
+    {
+      "requirement_id": "undici-path",
+      "kind": "source",
+      "reference": "electron > @electron/get 5.1.0 > optional undici ^7.24.4",
+      "observed_at": "2026-10-28T00:44:01.604536+00:00",
+      "result": "pass",
+      "limitations": "Audit snapshot is time-specific, not deployed artifact proof."
+    },
+    {
+      "requirement_id": "undici-resolution",
+      "kind": "source",
+      "reference": "undici 7.30.1; prior aggregate affected range 7.0.0 - 7.30.0; https://github.com/advisories/GHSA-4qv8-2p9j-2685, https://github.com/advisories/GHSA-f72v-6w45-q472, https://github.com/advisories/GHSA-xjj6-f33q-929c, https://github.com/advisories/GHSA-4w7w-5xrc-9h26, https://github.com/advisories/GHSA-2m5v-pch6-74hx, https://github.com/advisories/GHSA-qrxm-fqhp-jwvm, https://github.com/advisories/GHSA-9fm3-97px-rjf6, https://github.com/advisories/GHSA-55wc-3pg8-jfw6",
+      "observed_at": "2026-10-28T00:44:01.604536+00:00",
+      "result": "pass",
+      "limitations": "Audit snapshot is time-specific, not deployed artifact proof."
+    },
+    {
+      "requirement_id": "undici-owner",
+      "kind": "source",
+      "reference": "npm audit --package-lock-only --json and installed npm audit --audit-level=high: zero vulnerabilities",
+      "observed_at": "2026-10-28T00:44:01.604536+00:00",
+      "result": "pass",
+      "limitations": "Audit snapshot is time-specific, not deployed artifact proof."
+    },
+    {
+      "requirement_id": "compatibility",
+      "kind": "runtime",
+      "reference": "npm ci; npm ls --depth=0; 36 JavaScript tests; Chromium workspace fixture; Electron 44.9.1 unmodified tests/browser_navigation.cjs: 24 navigation cases",
+      "observed_at": "2026-10-28T00:44:01.604536+00:00",
+      "result": "pass",
+      "limitations": "Xvfb required --disable-gpu and 256 MiB shared memory after default virtual display stalls. No installed Mac acceptance or inference."
+    },
+    {
+      "requirement_id": "overlap",
+      "kind": "source",
+      "reference": "Open PR 100 touches Python monitor and docs, no package manifests; left unchanged",
+      "observed_at": "2026-10-28T00:44:01.604536+00:00",
+      "result": "pass",
+      "limitations": "No competing dependency update PR found at collection."
+    }
+  ],
+  "changes_performed": [
+    "package.json: Electron constraint ^44.9.1",
+    "package-lock.json: Electron 44.9.1 and undici 7.30.1 only",
+    "CLAUDE.md: replace stale audit statement with dated result",
+    "docs/NEXT_STEPS.json: append scoped verification",
+    "docs/PR102_DEPENDENCY_REPAIR.yaml: this evidence record"
+  ],
+  "unresolved_decisions": [],
+  "blockers": [],
+  "next_action": "Collect CI for the pushed repair. No merge or deployment; installed macOS and human acceptance remain separate."
+}
