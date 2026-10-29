@@ -58,3 +58,15 @@ service, another model or sustained Mac inference is authorized by this slice.
   marker and exit 0 in 5.263 and 1.174 seconds.
 + Mac: client and authentication. Selected GPU node: inference. No services or
   network settings changed. Full required CI remains a separate source-delivery gate.
+
+## Source delivery gate
+
+PR #104 CI on `548cf83` reports 1488 passed, one skipped and one failed on each
+Python version. The failure is the existing Git FIFO refusal test, which returns
+`Git timed out` instead of the expected repository-layout refusal. The earlier
+main run at `7e4a1f3` failed the same assertion. The Git tool and its tests are
+unchanged here. This client is installed and verified; source merge remains
+gated on that separate regression. Later CI stages did not run.
+
+- [PR checks](https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40790985850)
+- [Baseline main checks](https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40774741767)

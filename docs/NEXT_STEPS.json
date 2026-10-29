@@ -5,10 +5,10 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Stateless command client implemented and verified against the existing router",
+  "head": "Installed stateless command verified; source CI has a pre-existing Git tool failure",
   "lastActivity": "2026-10-28",
   "status": "amber",
-  "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent. October 28: DL-CLI-01 adds a local stateless command client; the installed command passed twice through the existing router and selected GPU node. This does not close the separate tool, wallboard, persistence or H9 gates.",
+  "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent. October 28: DL-CLI-01 adds a local stateless command client; the installed command passed twice through the existing router and selected GPU node. This does not close the separate tool, wallboard, persistence or H9 gates. PR #104 CI hit the same Git FIFO refusal regression already present in baseline main; command installation and two live passes remain verified, while merge is gated.",
   "evidence": {
     "toolsSourceReconciliation20261018": {
       "checkedOn": "2026-10-18",
@@ -272,7 +272,7 @@
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "October 28 scoped refresh: DL-CLI-01 source and installed command are verified as recorded in statelessCommand20261028; protected PR CI is a separate pending delivery gate. Other evidence below is historical and retains its original scope: Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; all three required PR checks passed and its source merged; installed/native acceptance remains separate.",
+    "scope": "October 28 scoped refresh: DL-CLI-01 source and installed command are verified as recorded in statelessCommand20261028; protected PR CI is gated by the confirmed pre-existing Git FIFO refusal regression. Other evidence below is historical and retains its original scope: Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; all three required PR checks passed and its source merged; installed/native acceptance remains separate.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -472,7 +472,18 @@
         "authentication": "Existing Keychain item; no API key in argv or child environment. Installed bytes match source. Mac runs client; Walter runs inference."
       },
       "limits": "Proves this command and selected model path only. Other-node inference, model quality, H9, streaming, Electron, tools, persistence and service recovery are not qualified. The installed router remains unchanged; source delivery tracked separately.",
-      "nextAction": "Reuse the installed command. Any command catalog or Stream Deck integration is a later scoped slice; preserve existing services and network."
+      "nextAction": "Use the installed command. Resolve the separately scoped pre-existing Git FIFO refusal regression before source merge; do not change services or the network.",
+      "delivery": {
+        "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/104",
+        "implementationCommit": "d5236e661d4b094861bea4cc4a5d755245822882",
+        "testedHead": "548cf8356e12657eb41b5e79d22d583fabb6f0c3",
+        "ci": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40790985850",
+        "ciResult": "All Python 3.12/3.13/3.14 test steps reported 1488 passed, 1 skipped and 1 failed: tests/test_git_tools.py::test_special_file_alternates_are_refused_without_blocking returned Git timed out instead of Repository layout is not supported. Later gates did not run.",
+        "baselineRevision": "7e4a1f3ce3cca149e0d879f7b3bfff21cbf3c276",
+        "baselineCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40774741767",
+        "baselineEvidence": "Earlier main run failed the same test with the same assertion under Git 2.56.0. davellm_git.py, tests/test_git_tools.py and tests/hostile_git.py are byte-unchanged by this PR.",
+        "boundary": "No Git-tool implementation or test change is included. No merge or router update. A metadata-only follow-up records this gate; its CI remains separate."
+      }
     }
   },
   "shipped": [
@@ -1039,7 +1050,7 @@
       "evidence": "test",
       "phase": 3,
       "status": "implemented",
-      "evidenceNote": "October 28: 34 targeted offline cases and two live command executions passed. See evidence.statelessCommand20261028. This does not renew H9 or any tool evaluation grant."
+      "evidenceNote": "October 28: 34 targeted offline cases and two live command executions passed. See evidence.statelessCommand20261028. This does not renew H9 or any tool evaluation grant. Source CI on 548cf83 reports the same pre-existing Git FIFO regression as baseline main 7e4a1f3; see the delivery evidence. Source merge remains gated."
     }
   ],
   "phases": [
@@ -1343,7 +1354,8 @@
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
     "Dave's acceptance of the 2026-10-05 chat UI fixes in the Electron app; the reply-link handler in desktop/main.js loads only after the app restarts.",
-    "Historical checkout divergence at 6aad6d6 is superseded: the model-context work started from clean canonical main d6e7972 matching origin/main."
+    "Historical checkout divergence at 6aad6d6 is superseded: the model-context work started from clean canonical main d6e7972 matching origin/main.",
+    "PR #104 source delivery is not merged. Its initial CI failed on the Git FIFO regression already present on baseline main; the tracking-only follow-up does not repair that failure. Installed command acceptance is separate."
   ],
   "concurrentSendPreparation": {
     "sourceRevision": "48dd5c2cc9bb04a7dbac49807285bee471a07556",
