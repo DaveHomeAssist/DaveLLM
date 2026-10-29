@@ -264,12 +264,27 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
     target = resolve(_option(arguments, "path", "."))
     if not target.is_dir():
         raise FileToolError(NOT_A_WORK_TREE)
+
+    # Git can consult .git/objects/info/alternates even for the initial
+    # rev-parse discovery probe. Refuse a hostile/special alternates file in a
+    # normal in-tree .git directory before starting Git, otherwise a FIFO can
+    # block discovery until the tool timeout. Linked/.git-file layouts still
+    # go through the privacy-preserving Git discovery path below.
+    direct_git = target / ".git"
+    if not direct_git.is_symlink() and direct_git.is_dir():
+        if _names_alternates(direct_git / "objects"):
+            raise FileToolError(UNSUPPORTED_REPOSITORY)
+
     git = git_executable()
     # Discovery may reach the tool root but never the folder above it.
     ceiling = {"GIT_CEILING_DIRECTORIES": str(deepest_root(target, roots).parent)}
+    # Keep discovery to metadata paths that do not require Git to inspect the
+    # object database. Asking Git for `--git-path objects` can make it read
+    # objects/info/alternates before we have validated that file; a FIFO there
+    # would then block this very first probe until the tool timeout.
     probe = run_git(
         ("rev-parse", "--path-format=absolute", "--is-inside-work-tree", "--show-toplevel",
-         "--absolute-git-dir", "--git-common-dir", "--git-path", "objects"),
+         "--absolute-git-dir", "--git-common-dir"),
         cwd=target, env=git_environment(git, ceiling), deadline=deadline,
     )
     if probe.returncode != 0:
@@ -277,9 +292,14 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
             raise FileToolError(UNTRUSTED_REPOSITORY)
         raise FileToolError(NOT_A_WORK_TREE)
     fields = probe.stdout.decode("utf-8", "replace").split("\n")
-    if len(fields) < 5 or fields[0] != "true":
+    if len(fields) < 4 or fields[0] != "true":
         raise FileToolError(NOT_A_WORK_TREE)
-    top, git_dir, common_dir, objects = (_real(item) for item in fields[1:5])
+    top, git_dir, common_dir = (_real(item) for item in fields[1:4])
+    # With DaveLLM's from-scratch environment there is no inherited
+    # GIT_OBJECT_DIRECTORY. Git's own alternate-object mechanism is rejected
+    # below, so the primary object database is the common Git directory's
+    # objects folder. Resolve it ourselves instead of asking Git to inspect it.
+    objects = _real(str(common_dir / "objects"))
     for location in (top, git_dir, common_dir, objects):
         # The same answer as a folder that is not a repository, so a .git file or
         # symlink never reveals whether something outside is a Git directory.
