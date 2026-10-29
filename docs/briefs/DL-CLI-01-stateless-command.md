@@ -59,14 +59,28 @@ service, another model or sustained Mac inference is authorized by this slice.
 + Mac: client and authentication. Selected GPU node: inference. No services or
   network settings changed. Full required CI remains a separate source-delivery gate.
 
-## Source delivery gate
+## Source delivery and FIFO repair
 
-PR #104 CI on `548cf83` reports 1488 passed, one skipped and one failed on each
-Python version. The failure is the existing Git FIFO refusal test, which returns
-`Git timed out` instead of the expected repository-layout refusal. The earlier
-main run at `7e4a1f3` failed the same assertion. The Git tool and its tests are
-unchanged here. This client is installed and verified; source merge remains
-gated on that separate regression. Later CI stages did not run.
+The initial PR #104 run on `548cf83` reported 1488 passed, one skipped and one
+failed per Python version. Git's initial discovery could consult
+`objects/info/alternates` before DaveLLM checked it, causing a FIFO read to reach
+the Git timeout. Baseline main at `7e4a1f3` failed the same assertion. These runs
+are retained as historical evidence below.
 
-- [PR checks](https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40790985850)
-- [Baseline main checks](https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40774741767)
+The narrow fix subsequently landed in PR #103 at `14a241d` and is integrated into
+this branch by `50c86c5`. It preflights direct alternates before Git starts, removes
+`--git-path objects` from discovery and derives the primary object store from the
+validated common Git directory. Existing admission checks remain in place.
+
+On October 28, 37 targeted checks passed on the Mac in 13.97 seconds, including
+FIFO refusal, ordinary repository access, outside-root refusal and the CLI cases.
+Local Apple Git is 2.54.0; the required GitHub Python 3.12, 3.13 and 3.14 jobs cover
+the Git 2.56.0 environment that exposed the failure. Dave explicitly authorized
+merging PR #104 once these protected checks pass. The PR is the authoritative
+source for current check and merge confirmation. No service or network change
+is included. The running router and installed client remain unchanged.
+
+- [Current delivery record](https://github.com/DaveHomeAssist/DaveLLM/pull/104)
+- [Merged FIFO fix](https://github.com/DaveHomeAssist/DaveLLM/pull/103)
+- [Historical PR failure](https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40790985850)
+- [Historical baseline failure](https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40774741767)

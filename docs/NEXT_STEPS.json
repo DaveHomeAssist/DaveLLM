@@ -5,10 +5,10 @@
   "repos": [
     "DaveHomeAssist/DaveLLM"
   ],
-  "head": "Installed stateless command verified; source CI has a pre-existing Git tool failure",
+  "head": "Stateless command verified; merged Git FIFO fix integrated from main",
   "lastActivity": "2026-10-28",
   "status": "amber",
-  "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent. October 28: DL-CLI-01 adds a local stateless command client; the installed command passed twice through the existing router and selected GPU node. This does not close the separate tool, wallboard, persistence or H9 gates. PR #104 CI hit the same Git FIFO refusal regression already present in baseline main; command installation and two live passes remain verified, while merge is gated.",
+  "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent. October 28: DL-CLI-01 adds a local stateless command client; the installed command passed twice through the existing router and selected GPU node. This does not close the separate tool, wallboard, persistence or H9 gates. The earlier PR #104 FIFO failure is historical. The narrow fix from merged PR #103 is integrated, with 37 targeted checks passing; exact-head protected checks and PR #104 own source-delivery confirmation. Installed command acceptance remains separate.",
   "evidence": {
     "toolsSourceReconciliation20261018": {
       "checkedOn": "2026-10-18",
@@ -147,7 +147,7 @@
       "repairsDuringVerification": "Removed the old landscape page-scroll exception; added a short-height context disclosure; fixed its summary hitbox overlapping header actions and replaced an undefined menu background token with the existing panel color. Initial PR #83 CI 37626340860 exposed a legacy source test requiring the removed overflow exception (Python 3.12: 1368 passed, one failed). Updated that assertion to require the locked shell and reachable compact controls; replacement CI remains the merge gate.",
       "limits": "No inference, model changes, provider activation, backend restart, Notion writes or human acceptance. Previous blank-answer and provider-claim defects are outside this UI slice. Playwright is a dev-only regression dependency."
     },
-    "sourceRevision": "d5236e661d4b094861bea4cc4a5d755245822882",
+    "sourceRevision": "50c86c58dbd21ee8189460f5775c4dad63710175",
     "notionTestLifecycleRepair": {
       "checkedOn": "2026-10-07",
       "baselineRevision": "aa4e351253b62b7b7e87faa170663d7cf44d38ed",
@@ -272,7 +272,7 @@
       "sourceRevision": "bdbf91eb2dd405d28cdbd68ef7635bfdcc336642",
       "scope": "The preflight validation object below remains historical; newer adapter/security evidence is separately dated."
     },
-    "scope": "October 28 scoped refresh: DL-CLI-01 source and installed command are verified as recorded in statelessCommand20261028; protected PR CI is gated by the confirmed pre-existing Git FIFO refusal regression. Other evidence below is historical and retains its original scope: Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; all three required PR checks passed and its source merged; installed/native acceptance remains separate.",
+    "scope": "October 28 scoped refresh: DL-CLI-01 source and installed command are verified as recorded in statelessCommand20261028; the merged PR #103 FIFO fix is integrated; protected checks and source merge are confirmed by the PR #104 record. Other evidence below is historical and retains its original scope: Tools100 source delivery is complete at mergeRevision; subsequent tracking-only commits do not change that code. Historical Notion preflight, October 5 adapterReadiness/boundedLiveAcceptance and securityRepair evidence remain separately dated. Clean final source gates and protected GitHub CI pass; installed Tools100 acceptance remains separate. DL-05 navigation source evidence is added on 2026-10-06; all three required PR checks passed and its source merged; installed/native acceptance remains separate.",
     "securityRepair": {
       "checkedOn": "2026-10-05",
       "baselineRevision": "d1914c4f9f8a5a34e5b3f1810e0f7830a79680f2",
@@ -472,7 +472,7 @@
         "authentication": "Existing Keychain item; no API key in argv or child environment. Installed bytes match source. Mac runs client; Walter runs inference."
       },
       "limits": "Proves this command and selected model path only. Other-node inference, model quality, H9, streaming, Electron, tools, persistence and service recovery are not qualified. The installed router remains unchanged; source delivery tracked separately.",
-      "nextAction": "Use the installed command. Resolve the separately scoped pre-existing Git FIFO refusal regression before source merge; do not change services or the network.",
+      "nextAction": "Use the installed command. Verify all three required checks on the integrated candidate before the explicitly authorized PR #104 merge. Preserve existing services and network.",
       "delivery": {
         "pullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/104",
         "implementationCommit": "d5236e661d4b094861bea4cc4a5d755245822882",
@@ -482,8 +482,27 @@
         "baselineRevision": "7e4a1f3ce3cca149e0d879f7b3bfff21cbf3c276",
         "baselineCi": "https://github.com/DaveHomeAssist/DaveLLM/actions/runs/40774741767",
         "baselineEvidence": "Earlier main run failed the same test with the same assertion under Git 2.56.0. davellm_git.py, tests/test_git_tools.py and tests/hostile_git.py are byte-unchanged by this PR.",
-        "boundary": "No Git-tool implementation or test change is included. No merge or router update. A metadata-only follow-up records this gate; its CI remains separate."
+        "boundary": "The recorded failure applies to the historical 548cf83 run. Superseded by fifoAdmissionRepair20261028: merged PR #103 is now integrated. Current protected checks and merge state are authoritative at the PR #104 URL; no running-router update is part of this task.",
+        "supersededBy": "fifoAdmissionRepair20261028"
       }
+    },
+    "fifoAdmissionRepair20261028": {
+      "checkedOn": "2026-10-28",
+      "authorization": "Dave explicitly authorized the narrow FIFO fix, required checks and PR #104 merge when checks pass. No service or network change.",
+      "sourcePullRequest": "https://github.com/DaveHomeAssist/DaveLLM/pull/103",
+      "sourceFixRevision": "d76be39bb93472cb901b34f764e1cd585c782f77",
+      "sourceMergeRevision": "14a241d06e1c137923f6d35e690e72a1593ea44f",
+      "integrationRevision": "50c86c58dbd21ee8189460f5775c4dad63710175",
+      "cause": "Initial Git rev-parse discovery could consult objects/info/alternates before the existing bounded file check, causing a FIFO read to reach the Git timeout.",
+      "repair": "Reuse PR #103: preflight alternates for a direct in-tree .git directory, omit --git-path objects from discovery, and derive objects from the validated common Git directory under the existing clean environment. Keep all existing root, link, special-file and alternate-store refusals.",
+      "verification": "37 targeted tests passed on the Mac in 13.97 seconds, including FIFO refusal, ordinary repository access, outside-root .git-file refusal and existing CLI cases. Local Apple Git 2.54.0 is not the GitHub Git 2.56.0 environment, so the full protected CI matrix is required before merge.",
+      "requiredChecks": [
+        "checks (3.12)",
+        "checks (3.13)",
+        "checks (3.14)"
+      ],
+      "deliveryRecord": "https://github.com/DaveHomeAssist/DaveLLM/pull/104",
+      "limits": "Source repair and integration only. No service, network, configuration, dependency, model, installed-client or running-router change. Earlier failed runs remain historical evidence; no tests are weakened or disabled."
     }
   },
   "shipped": [
@@ -1050,7 +1069,7 @@
       "evidence": "test",
       "phase": 3,
       "status": "implemented",
-      "evidenceNote": "October 28: 34 targeted offline cases and two live command executions passed. See evidence.statelessCommand20261028. This does not renew H9 or any tool evaluation grant. Source CI on 548cf83 reports the same pre-existing Git FIFO regression as baseline main 7e4a1f3; see the delivery evidence. Source merge remains gated."
+      "evidenceNote": "October 28: 34 targeted offline cases and two live command executions passed. See evidence.statelessCommand20261028. This does not renew H9 or any tool evaluation grant. Source CI on 548cf83 reports the same pre-existing Git FIFO regression as baseline main 7e4a1f3; see the delivery evidence. Source merge remains gated. The earlier gate is superseded by fifoAdmissionRepair20261028: merged PR #103 is integrated and targeted checks pass. Current required checks and merge confirmation are owned by PR #104."
     }
   ],
   "phases": [
@@ -1354,8 +1373,7 @@
     "Screen reader behavior, physical phone keyboard behavior and native Electron approval flow require separate acceptance.",
     "Historical console, dependency and release findings outside this package have not been re-audited.",
     "Dave's acceptance of the 2026-10-05 chat UI fixes in the Electron app; the reply-link handler in desktop/main.js loads only after the app restarts.",
-    "Historical checkout divergence at 6aad6d6 is superseded: the model-context work started from clean canonical main d6e7972 matching origin/main.",
-    "PR #104 source delivery is not merged. Its initial CI failed on the Git FIFO regression already present on baseline main; the tracking-only follow-up does not repair that failure. Installed command acceptance is separate."
+    "Historical checkout divergence at 6aad6d6 is superseded: the model-context work started from clean canonical main d6e7972 matching origin/main."
   ],
   "concurrentSendPreparation": {
     "sourceRevision": "48dd5c2cc9bb04a7dbac49807285bee471a07556",
