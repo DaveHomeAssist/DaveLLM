@@ -1,6 +1,20 @@
 [run]
-source = daveharness
+# TA-01: measure the router, tools, CLI scripts and the status monitor as well
+# as DaveHarness, so the wider report shows coverage for the code that changes
+# most. The gate below still applies to DaveHarness only.
+source = .
+omit =
+    tests/*
+    desktop/*
+    deploy/*
+    docs/*
+    static/*
+    node_modules/*
+    */site-packages/*
 
 [report]
 show_missing = True
+# `coverage report` and `coverage xml` keep the DaveHarness gate; CI also prints
+# a report-only table for everything measured (see .github/workflows/ci.yml).
+include = daveharness/*
 fail_under = 85

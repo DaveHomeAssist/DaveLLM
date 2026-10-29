@@ -5624,7 +5624,6 @@ app.mount("/", RevalidatedStaticFiles(directory=STATIC_DIR, html=True), name="st
 # STARTUP/SHUTDOWN HOOKS
 # ============================================================
 
-@app.on_event("startup")
 async def startup_event():
     """Load conversations on startup."""
     print(f"✅ DaveLLM Router v{PRODUCT_VERSION} started")
@@ -5637,7 +5636,6 @@ async def startup_event():
         ]
     )
 
-@app.on_event("shutdown")
 async def shutdown_event():
     """Save conversations on shutdown."""
     for run_id in tuple(HOST_RUN_BINDINGS):
@@ -5654,6 +5652,28 @@ async def shutdown_event():
         BACKGROUND_TASKS.clear()
     save_conversations(CONVERSATIONS)
     print("💾 Conversations saved to disk")
+
+
+from contextlib import asynccontextmanager as _asynccontextmanager  # noqa: E402
+
+
+@_asynccontextmanager
+async def _router_lifespan(_app):
+    """Startup and shutdown work (TA-05: replaces the deprecated on_event hooks).
+
+    Wired through the router here, below the pinned tool handlers, so their
+    provenance fingerprints in tests/test_tool_catalog_provenance.py hold.
+    """
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
+app.router.lifespan_context = _router_lifespan
+
+
 async def background_summarizer():
     """Periodically summarize older conversations to reduce on-demand latency."""
     while True:

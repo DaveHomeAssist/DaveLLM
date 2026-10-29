@@ -324,6 +324,58 @@ def test_special_file_alternates_are_refused_without_blocking(router, hostile_gi
     assert [(item.status, item.error) for item in outcome] == [("error", UNSUPPORTED_REPOSITORY)]
 
 
+
+# TA-03 (#103): discovery through a linked worktree's .git file ----------------------------------
+
+def linked_worktree(hostile_git):
+    """A clean repository and a linked worktree of it, both inside the tool root."""
+    builder = _Builder(hostile_git.base)
+    main = builder.init(hostile_git.at("wt-main"))
+    builder.commit(main, "Initial", {"README.md": "worktree fixture\n"})
+    builder.git(main, "worktree", "add", "-q", str(hostile_git.at("wt-linked")))
+    assert (hostile_git.at("wt-linked") / ".git").is_file()
+    return main, hostile_git.at("wt-linked")
+
+
+def test_linked_worktree_with_special_file_alternates_is_refused_without_blocking(router, hostile_git):
+    main, _ = linked_worktree(hostile_git)
+    assert run(router, "git.status", path="wt-linked").status == "success"  # admitted before the FIFO
+    info = main / ".git" / "objects" / "info"
+    info.mkdir(exist_ok=True)
+    pipe = info / "alternates"
+    os.mkfifo(pipe)
+    outcome = []
+    started = time.monotonic()
+    worker = threading.Thread(target=lambda: outcome.append(run(router, "git.status", path="wt-linked")),
+                              daemon=True)
+    worker.start()
+    worker.join(20)
+    try:  # release a reader stuck on the pipe, so a regression fails instead of hanging the suite
+        os.close(os.open(pipe, os.O_WRONLY | os.O_NONBLOCK))
+    except OSError:
+        pass
+    worker.join(20)
+    assert time.monotonic() - started < 20
+    assert [(item.status, item.error) for item in outcome] == [("error", UNSUPPORTED_REPOSITORY)]
+
+
+@pytest.mark.parametrize(("keep", "expected"), [(4, "success"), (3, NOT_A_WORK_TREE)])
+def test_discovery_probe_needs_all_four_fields(router, hostile_git, monkeypatch, keep, expected):
+    real_run_git = davellm_git.run_git
+
+    def trimmed(args, **kwargs):
+        result = real_run_git(args, **kwargs)
+        if "--git-common-dir" in args and result.returncode == 0:
+            lines = result.stdout.decode().split("\n")[:keep]
+            return davellm_git.GitResult(result.returncode, "\n".join(lines).encode(), result.stderr,
+                                         result.truncated)
+        return result
+
+    monkeypatch.setattr(davellm_git, "run_git", trimmed)
+    execution = run(router, "git.status", path="repo")
+    assert (execution.status if expected == "success" else execution.error) == expected
+
+
 def test_results_and_errors_never_show_absolute_paths(router, hostile_git):  # 7
     calls = [
         ("git.status", {"path": str(hostile_git.at("repo"))}), ("git.status", {"path": "big"}),

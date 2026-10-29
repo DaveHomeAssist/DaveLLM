@@ -40,6 +40,9 @@ jobs:
           python -m coverage report
           python -m coverage xml
 
+      - name: Wider coverage (report only, no gate)
+        run: python -m coverage report --include='*' --fail-under=0 --skip-covered --sort=cover
+
       - name: Notion adapter coverage
         run: |
           python -m coverage run --rcfile=/dev/null --branch --source=davellm_notion --data-file=.coverage-notion -m pytest -q tests/test_notion_tools.py tests/test_notion_adversarial.py tests/test_notion_independent_review.py
