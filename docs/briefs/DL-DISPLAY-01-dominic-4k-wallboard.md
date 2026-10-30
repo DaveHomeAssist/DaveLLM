@@ -281,3 +281,18 @@ Results are `success`, `invalid`, `refused` or `unavailable`. Success proves the
 Service/kiosk templates, installer selection, activation and installed or human acceptance remain open. Source preparation can continue independently of the queued candidate CI.
 
 Dominic source verification: all 24 projection and publisher tests pass with Python 3.12 in an isolated container. The fixture invokes the real receiver as a subprocess against disposable files; it does not contact a publication host. Required repository CI remains separate.
+
+
+## Loopback service preparation scope
+
+Prepare an allowlisted read-only HTTP server and a staged user-service bundle. The server binds IPv4 loopback only, exposes exactly the four wallboard assets plus the sanitized status projection, disables caching and rejects directory, symlink and traversal requests. Missing or invalid status must fail without serving raw operational input. The stager writes only to a new explicit directory, records content hashes, and refuses existing destinations. It never installs, enables or starts a service. Test real loopback HTTP and staged bundle verification in an isolated runner container. Kiosk runtime/account selection and real installation remain separate from these source fixtures.
+
+## Loopback service source receipt, October 30, 2026
+
+The stdlib server serves only the four display assets and a revalidated projection on IPv4 loopback, port 8766 by default. It accepts only localhost or 127.0.0.1 Host headers for its bound port. Exact original request targets prevent HTTP parser normalization from widening the route allowlist. Reads are limited to regular, non-symlink files below 1 MiB; unknown routes, write methods, invalid status and unexpected Host headers are refused. Responses disable caching and carry a restrictive content security policy. Publication time is preserved, never refreshed by a read.
+
+`python3 scripts/stage_wallboard.py /tmp/davellm-wallboard-bundle` creates a new private staging directory and verifies SHA-256 hashes for the eight bundled files. The destination must not already exist. `python3 scripts/stage_wallboard.py /tmp/davellm-wallboard-bundle --verify` checks its contents again without modifying it. Staging is preparation only. The bundle includes a user service template, but the command neither copies that template into a service directory nor invokes systemctl.
+
+The template expects reviewed assets in the service owner's `.local/share/davellm-wallboard` directory and the publisher's private status file in `.local/state/davellm-wallboard/status.json`. The future display account reads HTTP only; it needs no direct access to the status file or publisher credentials. This refines the earlier proposed direct-file access and system-service design. Login persistence, account selection and the kiosk supervisor still require an installation plan. A future operator can stop an authorized installation with `systemctl --user stop davellm-wallboard.service`; this sprint does not run it or any enable/start/reload command.
+
+Dominic passed all 38 projection, publisher, HTTP and staging fixtures with Python 3.12, plus the real staged-server Chromium smoke check for rendering, CSP, theme switching, invalid-source warnings and zero external requests. `systemd-analyze --user verify` passed for the template without activation. The browser runs headlessly in an isolated container. No installed service, boot behavior, physical output, resource coexistence or human acceptance is claimed. Repository CI remains a separate delivery gate.

@@ -8,7 +8,7 @@
   "head": "Stateless command verified; merged Git FIFO fix integrated from main",
   "lastActivity": "2026-10-30",
   "status": "amber",
-  "statusReason": "Wallboard Slice A implemented and verified on Dominic in an isolated checkout based on c527059. Shared Cluster/display renderer, bounded projection exporter, and fixture-only wallboard pass focused Python, DOM and six-viewport browser checks. Source delivery and CI remain separate from merge, installation, physical display, inference and human acceptance.",
+  "statusReason": "Wallboard source slices are implemented and verified on Dominic. Server staging passes 38 focused Python tests, actual staged-server browser smoke and systemd unit validation. Candidate CI, merge, installation, physical display and human acceptance are separate.",
   "evidence": {
     "toolsSourceReconciliation20261018": {
       "checkedOn": "2026-10-18",
@@ -524,12 +524,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Prepare wallboard service and installer source fixtures",
-    "why": "Projection, wallboard and bounded publisher source are implemented. Publisher installation and display activation remain separate.",
-    "doneWhen": "Service and installer definitions validate in a disposable environment, with loopback binding, existing-service preservation and explicit activation gates.",
+    "title": "Review kiosk runtime and installation plan",
+    "why": "Projection, publisher, allowlisted loopback server and inert bundle staging are implemented and verified with synthetic data.",
+    "doneWhen": "A source installation plan specifies runtime, account, rollback and acceptance gates without activating services.",
     "effort": "M",
     "owner": "Codex",
-    "blockedBy": "Actual deployment, service activation and physical display output excluded. Minimal kiosk runtime selection remains an installation decision."
+    "blockedBy": "Installation, service activation, releases and physical display output remain excluded. Kiosk runtime/account selection remains open."
   },
   "findings": [
     {
@@ -1405,5 +1405,13 @@
     "verification": "Dominic: 24 focused projection and publisher tests pass, including real receiver subprocess, interrupted writes, symlink refusal, timeout/retry and lost acknowledgement. Full repository CI remains separate.",
     "delivery": "Source candidate prepared for stacked PR; branch push and CI verified separately.",
     "next": "Prepare service and installer source fixtures without activating services."
+  },
+  "wallboardService1030": {
+    "branch": "codex/wallboard-server-1030",
+    "base": "79b7bd3aa40a9de294019e848c109f3a445a387d",
+    "scope": "Loopback HTTP service and inert hash-verified bundle source. No service installation or activation.",
+    "verification": "Dominic: 38 projection/publisher/HTTP/staging tests; real staged Python service browser smoke; systemd user unit syntax pass. Full repository CI separate.",
+    "delivery": "Prepared stacked source candidate; push and PR evidence maintained separately.",
+    "next": "Review minimal kiosk runtime and installation plan; no activation, deployment or hardware output."
   }
 }
