@@ -524,12 +524,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Review kiosk runtime and installation plan",
-    "why": "Projection, publisher, allowlisted loopback server and inert bundle staging are implemented and verified with synthetic data.",
-    "doneWhen": "A source installation plan specifies runtime, account, rollback and acceptance gates without activating services.",
+    "title": "Qualify kiosk installation prerequisites when activation is authorized",
+    "why": "Projection, publisher, server and staging source are implemented. The installation plan now identifies browser packaging, capacity, login/session ownership and rollback gates.",
+    "doneWhen": "An authorized installation session qualifies runtime and capacity, installs without disturbing existing services, and records separate physical and operator acceptance.",
     "effort": "M",
-    "owner": "Codex",
-    "blockedBy": "Installation, service activation, releases and physical display output remain excluded. Kiosk runtime/account selection remains open."
+    "owner": "Dave and installation owner",
+    "blockedBy": "Deployment and hardware output excluded. Target has no Cage/browser runtime; Chromium uses Snap; installation capacity and dedicated-session compatibility are unverified."
   },
   "findings": [
     {
@@ -1412,6 +1412,6 @@
     "scope": "Loopback HTTP service and inert hash-verified bundle source. No service installation or activation.",
     "verification": "Dominic: 38 projection/publisher/HTTP/staging tests; real staged Python service browser smoke; systemd user unit syntax pass. Full repository CI separate.",
     "delivery": "Prepared stacked source candidate; push and PR evidence maintained separately.",
-    "next": "Review minimal kiosk runtime and installation plan; no activation, deployment or hardware output."
+    "next": "Installation plan recorded. Runtime, capacity, deployment and physical acceptance gates remain; continue other eligible source work."
   }
 }
