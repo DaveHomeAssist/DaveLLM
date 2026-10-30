@@ -91,6 +91,7 @@ jobs:
           npx playwright install --with-deps chromium
           node tests/browser_workspace.cjs
           node tests/browser_wallboard.cjs
+          node tests/browser_wallboard_service.cjs
 
       - name: Console keyboard and landmark fixtures
         if: matrix.python == '3.14'

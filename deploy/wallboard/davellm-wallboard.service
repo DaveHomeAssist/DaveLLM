@@ -1,0 +1,17 @@
+[Unit]
+Description=DaveLLM read only loopback wallboard
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/share/davellm-wallboard/serve_wallboard.py --root %h/.local/share/davellm-wallboard --status %h/.local/state/davellm-wallboard/status.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=default.target
