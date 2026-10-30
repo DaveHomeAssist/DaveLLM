@@ -266,3 +266,18 @@ Implemented the shared Cluster and display renderer, standalone wallboard shell,
 Dominic passed 12 Python projection checks, ten DOM/console checks and browser fixtures at six viewports, including 4K, ultrawide and compact 320 by 256. Theme persistence, missing and malformed input, outage retention and delayed/stale boundaries passed. The compact screenshot was inspected. Required PR CI and source review remain separate.
 
 Export with `python scripts/export_wallboard_status.py SOURCE_JSON OUTPUT_JSON` using explicit local paths. This command writes a local projection only. Publisher, service installer, physical display activation, startup, resource coexistence and human acceptance remain open. No runtime or service was changed in this slice.
+
+
+## Slice B publisher source, October 30, 2026
+
+The bounded publisher accepts a recorder file, validates it through the existing projection exporter, and transfers only the sanitized projection. It invokes the existing SSH alias with BatchMode and strict host key checking, a five-second connection bound and a fifteen-second attempt bound. One retry sends identical bytes. Remote error text and payload bodies are never printed.
+
+The receiver requires an existing private directory owned by the remote user. It rejects symlink destinations, verifies the transferred digest, writes a unique sibling temporary file, flushes it, checks owner and exact readback, then atomically replaces the destination. It installs no server, service, account, timer or display runtime.
+
+After separately authorized installation and publication, the CLI is `python scripts/publish_wallboard_status.py SOURCE_JSON --host DOCUMENTED_ALIAS --destination ABSOLUTE_STATUS_PATH`. This sprint runs only synthetic transport and isolated temporary-directory fixtures. No actual wallboard publication is authorized or performed.
+
+Results are `success`, `invalid`, `refused` or `unavailable`. Success proves the receiver acknowledged an atomic file update, not that a screen changed. Invalid input and failures before replacement preserve the previous file. A timeout after remote replacement can lose the acknowledgement: `unavailable` therefore means activation is unconfirmed, rather than proving the old file remained. Retrying identical bytes is idempotent; the lost-acknowledgement regression covers this boundary explicitly. A later installed verifier must read the destination before resolving an ambiguous result.
+
+Service/kiosk templates, installer selection, activation and installed or human acceptance remain open. Source preparation can continue independently of the queued candidate CI.
+
+Dominic source verification: all 24 projection and publisher tests pass with Python 3.12 in an isolated container. The fixture invokes the real receiver as a subprocess against disposable files; it does not contact a publication host. Required repository CI remains separate.
