@@ -6,9 +6,9 @@
     "DaveHomeAssist/DaveLLM"
   ],
   "head": "Stateless command verified; merged Git FIFO fix integrated from main",
-  "lastActivity": "2026-10-28",
+  "lastActivity": "2026-10-30",
   "status": "amber",
-  "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent. October 28: DL-CLI-01 adds a local stateless command client; the installed command passed twice through the existing router and selected GPU node. This does not close the separate tool, wallboard, persistence or H9 gates. The earlier PR #104 FIFO failure is historical. The narrow fix from merged PR #103 is integrated, with 37 targeted checks passing; exact-head protected checks and PR #104 own source-delivery confirmation. Installed command acceptance remains separate.",
+  "statusReason": "Wallboard Slice A implemented and verified on Dominic in an isolated checkout based on c527059. Shared Cluster/display renderer, bounded projection exporter, and fixture-only wallboard pass focused Python, DOM and six-viewport browser checks. Source delivery and CI remain separate from merge, installation, physical display, inference and human acceptance.",
   "evidence": {
     "toolsSourceReconciliation20261018": {
       "checkedOn": "2026-10-18",
@@ -503,6 +503,13 @@
       ],
       "deliveryRecord": "https://github.com/DaveHomeAssist/DaveLLM/pull/104",
       "limits": "Source repair and integration only. No service, network, configuration, dependency, model, installed-client or running-router change. Earlier failed runs remain historical evidence; no tests are weakened or disabled."
+    },
+    "wallboardSliceA20261030": {
+      "sourceBase": "c527059a2319393cdea1de784c0e42622fbab7a2",
+      "branch": "codex/wallboard-source-sprint-1030",
+      "host": "Dominic",
+      "verification": "Python3.12: 12 projection checks pass; Node24.17: 10 DOM/console checks pass; Playwright1.61.1: six viewports, light/dark reload, malformed/missing data, outage retention and 75/120-minute freshness pass. Compact screenshot inspected.",
+      "limits": "No runtime service, publisher, display activation, merge, deployment, inference or hardware output. Physical and human acceptance remain open."
     }
   },
   "shipped": [
@@ -517,12 +524,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Build the first Dominic wallboard slice",
-    "why": "Dominic has a confirmed attached 4K panel but no active desktop or kiosk runtime. The existing on-call snapshot is already the authoritative source and can drive a read-only display without placing the DaveLLM API key on Dominic.",
-    "doneWhen": "The shared renderer and safe display projection pass source tests, Dominic boots into the loopback-only wallboard, stale data cannot appear healthy, and one hourly-style record appears on both Cluster and the physical screen with matching values.",
+    "title": "Review wallboard source, then prepare bounded publication",
+    "why": "Slice A source verification passed; review and required CI precede any merge. Publication and installer remain separate from display activation.",
+    "doneWhen": "Source review and required checks pass; publication is fixture-tested before separately authorized installation and physical acceptance.",
     "effort": "M",
     "owner": "codex",
-    "blockedBy": "Implementation and installed-service mutation have not started; physical EDID, effective scale, boot path and performance acceptance remain to be measured on Dominic."
+    "blockedBy": "Merge, deployment and hardware activation excluded by current sprint instruction."
   },
   "findings": [
     {
@@ -853,7 +860,7 @@
       "type": "docs",
       "sev": "P3",
       "title": "Docs and release drift: manifest, check lists, no tags",
-      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
       "files": [
         "docs/design/DESIGN_OVERHAUL_MANIFEST.md",
         "CLAUDE.md:108",
@@ -865,7 +872,7 @@
         {
           "checkedOn": "2026-10-02",
           "title": "Docs and release drift: manifest, check lists, no tags",
-          "detail": "Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+          "detail": "Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
           "evidence": "code-read"
         }
       ],
@@ -1099,7 +1106,7 @@
       "goal": "Make docs match HEAD; record the H9, manifest and version decisions",
       "items": [
         "DL-03: relabel edit_outside_root case, fix table row, note baselines not comparable",
-        "DL-14: mark design manifest as-built, record \u00a79 outcomes, fix CLAUDE.md check list",
+        "DL-14: mark design manifest as-built, record §9 outcomes, fix CLAUDE.md check list",
         "Decide VERSION bump/CHANGELOG/tags and prune old branches (Dave)"
       ],
       "gate": "pytest -q tests/test_documentation_contracts.py tests/test_capabilities_manifest.py; git diff --check"

@@ -10,7 +10,7 @@ const root = path.resolve(__dirname, "../static");
 const tools = Object.fromEntries(Array.from({ length: 35 }, (_, i) => [i === 0 ? "calc.eval" : `fixture.tool${i}`, {
     description: "Read bounded information without changing anything. This deliberately long description must remain one line.", permission: "read",
 }]));
-const assets = new Set(["/", "/index.html", "/style.css", "/console.js", "/app.js", "/anticipation.js", "/prompt-contract.js", "/brand.svg", "/favicon.svg", "/vendor/lucide/lucide.svg", "/vendor/gsap/gsap.min.js"]);
+const assets = new Set(["/", "/index.html", "/style.css", "/console.js", "/on-call.js", "/app.js", "/anticipation.js", "/prompt-contract.js", "/brand.svg", "/favicon.svg", "/vendor/lucide/lucide.svg", "/vendor/gsap/gsap.min.js"]);
 const api = {
     "/tools": { tools }, "/projects": { projects: [] }, "/conversations": [],
     "/nodes": [{ id: "fixture", name: "Fixture", url: "http://fixture.invalid" }],

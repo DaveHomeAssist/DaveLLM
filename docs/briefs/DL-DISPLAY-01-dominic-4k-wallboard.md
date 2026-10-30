@@ -258,3 +258,11 @@ Each later source must define its own timestamp, refresh interval, stale thresho
 ## Evidence boundaries
 
 This brief is a proposed build contract, not implementation approval or evidence that Dominic's display is configured. Source tests will not prove the physical panel, boot path, effective scale, operator readability, or inference coexistence. Those remain installed and human-acceptance gates.
+
+## Slice A source receipt, October 30, 2026
+
+Implemented the shared Cluster and display renderer, standalone wallboard shell, and a bounded projection exporter. Free-form summaries and recovery commands are replaced with fixed display text; endpoint credentials, query strings, invalid states, non-finite metrics and inconsistent healthy results are refused. Invalid input preserves the existing destination.
+
+Dominic passed 12 Python projection checks, ten DOM/console checks and browser fixtures at six viewports, including 4K, ultrawide and compact 320 by 256. Theme persistence, missing and malformed input, outage retention and delayed/stale boundaries passed. The compact screenshot was inspected. Required PR CI and source review remain separate.
+
+Export with `python scripts/export_wallboard_status.py SOURCE_JSON OUTPUT_JSON` using explicit local paths. This command writes a local projection only. Publisher, service installer, physical display activation, startup, resource coexistence and human acceptance remain open. No runtime or service was changed in this slice.

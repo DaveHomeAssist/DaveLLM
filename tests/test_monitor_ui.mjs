@@ -27,12 +27,13 @@ function loadMonitor() {
         "onCallState", "onCallFreshness", "onCallSummary", "onCallTargets", "onCallRecovery", "onCallHistory",
     ].map((id) => [id, element()]));
     const context = {
-        document: { getElementById: (id) => ids[id] },
+        document: { getElementById: (id) => ids[id], createElement: () => element() },
         uiElement: (_tag, className = "", text = "") => Object.assign(element(), { className, textContent: text }),
         console,
     };
     vm.createContext(context);
-    vm.runInContext(`${extract("monitorAge")}\n${extract("renderOnCallStatus")}\nglobalThis.renderOnCallStatus = renderOnCallStatus;`, context);
+    vm.runInContext(readFileSync(new URL("../static/on-call.js", import.meta.url), "utf8"), context);
+    vm.runInContext(`${extract("renderOnCallStatus")}\nglobalThis.renderOnCallStatus = renderOnCallStatus;`, context);
     return { context, ids };
 }
 
@@ -68,3 +69,11 @@ test("on-call monitor never presents missing or stale data as healthy", () => {
     assert.equal(stale.ids.onCallState.textContent, "Stale");
     assert.match(stale.ids.onCallState.className, /degraded/);
 });
+
+ test("shared freshness rejects future timestamps and uses the 75/120 minute boundaries", () => {
+ const {context} = loadMonitor();
+ const age = context.DaveOnCall.age;
+ assert.equal(age(new Date(Date.now()+120000).toISOString()).stale, true);
+ assert.equal(age(new Date(Date.now()-119*60000).toISOString()).stale, false);
+ assert.equal(age(new Date(Date.now()-121*60000).toISOString()).stale, true);
+ });

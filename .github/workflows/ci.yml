@@ -65,7 +65,7 @@ jobs:
 
       - name: JavaScript syntax check
         run: |
-          for file in static/app.js static/console.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js; do
+          for file in static/app.js static/console.js static/on-call.js static/wallboard.js static/anticipation.js static/prompt-contract.js static/vendor/gsap/gsap.min.js desktop/main.js desktop/preload.js; do
             node --check "$file"
           done
 
@@ -90,6 +90,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           node tests/browser_workspace.cjs
+          node tests/browser_wallboard.cjs
 
       - name: Console keyboard and landmark fixtures
         if: matrix.python == '3.14'
