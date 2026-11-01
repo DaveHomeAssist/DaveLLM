@@ -74,6 +74,7 @@ let anticipationRecord = window.DaveAnticipation.createRecord();
 let notepadSaveTimer = null;
 let notepadLoadedProjectId = null;
 let notepadLoading = false;
+let notepadLoadSequence = 0;
 let instructionPreviewMode = "layered";
 let projectHomeData = null;
 let projectHomeProjectId = null;
@@ -2538,6 +2539,11 @@ function activeNotepadProjectId() {
 }
 
 async function loadProjectNotepad(projectId) {
+    // Fast project switches can return answers out of order. Only the newest
+    // load for the project that is still active may fill the notepad, or a late
+    // answer for A would replace B's notes and make autosave write them to A.
+    const sequence = ++notepadLoadSequence;
+    const stale = () => sequence !== notepadLoadSequence || activeNotepadProjectId() !== projectId;
     notepadLoading = true;
     notepadStatus.textContent = "Loading...";
     try {
@@ -2547,16 +2553,18 @@ async function loadProjectNotepad(projectId) {
         );
         if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
         const data = await response.json();
+        if (stale()) return;
         notepadInput.value = data.content || "";
         notepadLoadedProjectId = projectId;
         const project = projects.find((item) => item.project_id === projectId);
         notepadProjectName.textContent = project?.name || "Current project";
         notepadStatus.textContent = data.updated_at ? "Saved" : "Ready. Autosaves as you type.";
     } catch (error) {
+        if (stale()) return;
         console.error("Failed to load notepad:", error);
         notepadStatus.textContent = `Load failed: ${error.message}`;
     } finally {
-        notepadLoading = false;
+        if (sequence === notepadLoadSequence) notepadLoading = false;
     }
 }
 
