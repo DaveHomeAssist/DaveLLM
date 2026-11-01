@@ -2452,6 +2452,27 @@ class PersistenceError(RuntimeError):
 PERSISTENCE_FAILED = "Changes could not be saved to disk"
 
 
+def keep_incomplete_reply(conversation: dict, partial: str, error: str) -> str:
+    """Save a reply the model stopped mid-way, marked incomplete, and return the error to report.
+
+    Whitespace-only output saves nothing. Inline image data is redacted as in a normal reply.
+    If the save fails, the in-memory message is dropped and the persistence error is returned.
+    """
+    partial = re.sub(r"data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9\/+=]+", "[image]", partial)
+    if not partial.strip():
+        return error
+    messages = conversation.setdefault("messages", [])
+    messages.append({"role": "assistant", "content": partial, "incomplete": True, "error": error})
+    conversation["updated_at"] = datetime.now().isoformat()
+    try:
+        save_conversations(CONVERSATIONS)
+    except PersistenceError:
+        messages.pop()
+        record_error("stream_partial", PERSISTENCE_FAILED)
+        return PERSISTENCE_FAILED
+    return error
+
+
 def _write_json_atomically(path: Path, value: Any, label: str) -> None:
     """Atomic write for safety — prevents corruption on crash.
 
@@ -5510,6 +5531,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         tool_calls: List[dict] = []
         start_time = time.time()
         had_error = False
+        interrupted = None  # the model's in-band error, reported after any partial reply is kept
         first_token_at = None
         thinking_sent = False
         stats = None
@@ -5541,11 +5563,11 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                 stats = stream_stats(stream.metrics, first_token_at - start_time if first_token_at else None)
         except OllamaStreamError as e:
             # An in-band {"error"} NDJSON line (for example a runner crash) ends the reply. /v1 hid it
-            # as an empty delta and the partial text was saved as a normal reply; now the client gets
-            # an error event like any other node failure and the partial reply is not persisted.
+            # as an empty delta and the partial text was saved as a normal reply; now the partial text
+            # is kept but marked incomplete, and the client gets an error event after it is saved.
             record_error("stream_node_error", str(e))
             print(f"⚠️ Node stream error after {len(full_response)} chars: {e}")
-            yield f"data: {json.dumps({'error': f'Model stopped with an error: {str(e)[:200]}', 'done': True})}\n\n"
+            interrupted = f"Model stopped with an error: {str(e)[:200]}"
             had_error = True
         except httpx.TimeoutException:
             yield f"data: {json.dumps({'error': 'Node timed out', 'done': True})}\n\n"
@@ -5643,6 +5665,10 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                 had_error = True
             except Exception as e:
                 record_error("stream_finalize", str(e))
+
+        if interrupted is not None:
+            interrupted = keep_incomplete_reply(conversation, full_response, interrupted)
+            yield f"data: {json.dumps({'error': interrupted, 'done': True})}\n\n"
 
         if stats and not had_error and notice is None:
             yield f"data: {json.dumps({'stats': stats, 'done': False})}\n\n"
