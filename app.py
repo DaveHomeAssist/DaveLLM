@@ -1156,14 +1156,14 @@ def tool_file_read(params: Dict) -> ToolResult:
     """Read file contents with size limit."""
     try:
         safe_path = resolve_tool_path(params.get("path", ""))
-        
-        # Check file size
-        if safe_path.stat().st_size > MAX_FILE_SIZE:
+
+        # DLA-03: the open never leaves the admitted root (no symlinked component, no hard link,
+        # regular files only), and the size limit is checked on the opened file, not the path.
+        try:
+            content = contained_read_text(safe_path, TOOL_ROOTS, MAX_FILE_SIZE)
+        except ContainedFileTooLarge:
             return ToolResult(tool="file.read", status="error", result="", error=f"File too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)")
-        
-        with open(safe_path, "r") as f:
-            content = f.read()
-        
+
         return ToolResult(tool="file.read", status="success", result=content[:MAX_TOOL_OUTPUT])
     except Exception as e:
         return ToolResult(tool="file.read", status="error", result="", error=str(e))
@@ -1180,10 +1180,10 @@ def tool_file_write(params: Dict) -> ToolResult:
 
         safe_path = resolve_tool_path(path)
 
-        safe_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(safe_path, "w") as f:
-            f.write(content)
-        
+        # DLA-03: parents are created and the file opened through descriptors below the admitted
+        # root without following a symlink; a hard-linked or non-regular target is refused.
+        contained_write_text(safe_path, TOOL_ROOTS, content, append=False)
+
         return ToolResult(tool="file.write", status="success", result=f"Wrote {len(content)} bytes to {safe_path}")
     except Exception as e:
         return ToolResult(tool="file.write", status="error", result="", error=str(e))
@@ -1198,10 +1198,10 @@ def tool_file_append(params: Dict) -> ToolResult:
             return ToolResult(tool="file.append", status="error", result="", error=f"Content too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)")
 
         safe_path = resolve_tool_path(path)
-        safe_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(safe_path, "a") as f:
-            f.write(content)
-        
+        # DLA-03: the same contained open as file.write, appending
+        # instead of replacing.
+        contained_write_text(safe_path, TOOL_ROOTS, content, append=True)
+
         return ToolResult(tool="file.append", status="success", result=f"Appended {len(content)} bytes to {safe_path}")
     except Exception as e:
         return ToolResult(tool="file.append", status="error", result="", error=str(e))
@@ -2450,6 +2450,9 @@ class PersistenceError(RuntimeError):
 
 
 PERSISTENCE_FAILED = "Changes could not be saved to disk"
+
+# DLA-03: final I/O of the qualified file.read, file.write and file.append handlers.
+from davellm_contained_io import ContainedFileTooLarge, contained_read_text, contained_write_text  # noqa: E402
 
 
 def _write_json_atomically(path: Path, value: Any, label: str) -> None:
