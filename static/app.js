@@ -3375,8 +3375,7 @@ async function sendPreparedMessage() {
             // Leave content as-is and exit loop
         } else {
             console.error("Chat error:", err);
-            streamingMsg.content = `❌ Error: ${err.message}`;
-            streamingMsg.role = "error";
+            endReplyWithError(streamingMsg, err.message);
         }
         streamingMsg.isStreaming = false;
         renderMessages();
@@ -3390,6 +3389,26 @@ async function sendPreparedMessage() {
         renderPredictions();
         schedulePromptSizeCheck();  // a draft typed meanwhile now follows a longer history
     }
+}
+
+// A reply the model stopped mid-way keeps its text, marked incomplete, as the router saves it;
+// a failure before any text replaces the bubble with the error.
+function endReplyWithError(msg, errorText) {
+    if (String(msg.content || "").trim()) {
+        msg.incomplete = true;
+        msg.error = errorText;
+    } else {
+        msg.content = `❌ Error: ${errorText}`;
+        msg.role = "error";
+    }
+}
+
+function incompleteNotice(m) {
+    const notice = document.createElement("div");
+    notice.className = "message-incomplete";
+    notice.setAttribute("role", "note");
+    notice.textContent = `Incomplete reply: ${m.error || "the model stopped before finishing."}`;
+    return notice;
 }
 
 // The composer's Send button stops the reply while one streams; say so.
@@ -3675,6 +3694,11 @@ function renderMessages() {
             const working = workingLine(m);
             msgDiv.appendChild(working);
             liveMessageViews.set(m, { content: contentSpan, label: working.querySelector(".working-label") });
+        }
+
+        if (!m.isStreaming && m.incomplete) {
+            msgDiv.classList.add("message-is-incomplete");
+            msgDiv.appendChild(incompleteNotice(m));
         }
 
         if (!m.isStreaming && m.stats) {

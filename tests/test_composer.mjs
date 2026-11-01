@@ -174,7 +174,7 @@ test("a second Send cannot enter while the first reads its attachment", async ()
     let reads = 0;
     const reading = new Promise(resolve => { release = resolve; });
     const promptInput = { value: "Keep this draft" };
-    const context = load(["sendMessage", "sendPreparedMessage"], {
+    const context = load(["sendMessage", "sendPreparedMessage", "endReplyWithError"], {
         approvalBusy: false, state: { streaming: false }, promptInput,
         attachedFilePromptText: () => { reads += 1; return reading; },
         notifyConsole: () => {},
@@ -194,7 +194,7 @@ test("a second Send cannot enter while the first reads its attachment", async ()
 test("an attachment read error releases preparation without losing the draft", async () => {
     let reads = 0;
     const promptInput = { value: "Retry this draft" };
-    const context = load(["sendMessage", "sendPreparedMessage"], {
+    const context = load(["sendMessage", "sendPreparedMessage", "endReplyWithError"], {
         approvalBusy: false, state: { streaming: false }, promptInput,
         attachedFilePromptText: async () => {
             reads += 1;
@@ -258,7 +258,7 @@ function sendContext({ createConversation, streamFetch }) {
         setInterval: () => 0, clearInterval: () => {}, AbortController, TextDecoder, TextEncoder,
         console: { log: () => {}, warn: () => {}, error: () => {} },
     };
-    load(["sendMessage", "sendPreparedMessage"], context);
+    load(["sendMessage", "sendPreparedMessage", "endReplyWithError"], context);
     return { context, notices, chatRequests, state, promptInput };
 }
 
