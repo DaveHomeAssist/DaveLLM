@@ -34,6 +34,7 @@ import re
 import selectors
 import shutil
 import signal
+import stat
 import subprocess
 import time
 from dataclasses import dataclass
@@ -271,17 +272,22 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
     # normal in-tree .git directory before starting Git, otherwise a FIFO can
     # block discovery until the tool timeout. Linked/.git-file layouts still
     # go through the privacy-preserving Git discovery path below.
+    # The probe also opens HEAD, config and commondir, so a FIFO, link or other
+    # non-regular file at any of those names is refused here too, before Git
+    # can block on it (DLA-02).
     direct_git = target / ".git"
     if not direct_git.is_symlink() and direct_git.is_dir():
-        if _names_alternates(direct_git / "objects"):
+        if _special_metadata(direct_git) or _names_alternates(direct_git / "objects"):
             raise FileToolError(UNSUPPORTED_REPOSITORY)
     elif not direct_git.is_symlink() and direct_git.is_file():
         # A linked worktree's .git file: newer Git (2.5x) opens the common
         # directory's objects/info/alternates during the rev-parse probe too, so
         # check it first. Only locations inside the roots are inspected, so the
         # answer never reveals anything about a .git file that points outside.
-        common = _linked_common_dir(target, direct_git, roots)
-        if common is not None and _names_alternates(common / "objects"):
+        git_dir, common = _linked_dirs(target, direct_git, roots)
+        if git_dir is not None and _special_metadata(git_dir):
+            raise FileToolError(UNSUPPORTED_REPOSITORY)
+        if common is not None and (_special_metadata(common) or _names_alternates(common / "objects")):
             raise FileToolError(UNSUPPORTED_REPOSITORY)
 
     git = git_executable()
@@ -327,11 +333,34 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
     return Repository(top, display, env, deadline)
 
 
-def _linked_common_dir(target: Path, dotgit: Path, roots: Sequence[Path]) -> Path | None:
-    """The common Git directory a ``.git`` file names, when it lies inside the roots.
+# Files Git opens while discovering a repository, before anything we validate later.
+DISCOVERY_METADATA = ("HEAD", "config", "commondir", "gitdir")
+
+
+def _special_metadata(git_dir: Path) -> bool:
+    """Whether a discovery file in ``git_dir`` is a link or special file Git could block on.
+
+    Checked with lstat only, so nothing is opened and nothing outside is followed.
+    A symlink here would be refused by ``_free_of_links`` after the probe anyway.
+    """
+    for name in DISCOVERY_METADATA:
+        try:
+            mode = (git_dir / name).lstat().st_mode
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return True
+        if not stat.S_ISREG(mode):
+            return True
+    return False
+
+
+def _linked_dirs(target: Path, dotgit: Path, roots: Sequence[Path]) -> tuple[Path | None, Path | None]:
+    """The worktree Git directory a ``.git`` file names and its common directory,
+    each only when it lies inside the roots.
 
     Both ``.git`` and ``commondir`` are read like any extended-tool file (no link
-    following, non-blocking, bounded). Anything unexpected returns None and the
+    following, non-blocking, bounded). Anything unexpected gives None and the
     regular discovery below decides, with its usual fixed messages.
     """
     def admitted(path: Path) -> Path | None:
@@ -341,21 +370,21 @@ def _linked_common_dir(target: Path, dotgit: Path, roots: Sequence[Path]) -> Pat
     try:
         text = read_admitted_bytes(dotgit, GITFILE_MAX_BYTES).decode("utf-8")
     except (FileToolError, OSError, UnicodeDecodeError):
-        return None
+        return None, None
     line = text.split("\n", 1)[0].rstrip("\r")
     if not line.startswith("gitdir: "):
-        return None
+        return None, None
     git_dir = admitted(target / line[len("gitdir: "):])
     if git_dir is None:
-        return None
+        return None, None
     try:
         named = read_admitted_bytes(git_dir / "commondir", GITFILE_MAX_BYTES).decode("utf-8")
     except FileToolError as exc:
-        return git_dir if str(exc) == FILE_NOT_FOUND else None
+        return git_dir, (git_dir if str(exc) == FILE_NOT_FOUND else None)
     except (OSError, UnicodeDecodeError):
-        return None
+        return git_dir, None
     named = named.split("\n", 1)[0].rstrip("\r")
-    return admitted(git_dir / named) if named else None
+    return git_dir, (admitted(git_dir / named) if named else None)
 
 
 def _names_alternates(objects: Path) -> bool:
