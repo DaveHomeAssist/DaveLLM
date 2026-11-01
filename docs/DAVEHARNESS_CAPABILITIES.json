@@ -244,6 +244,7 @@
           "false"
         ]
       ],
+      "GITFILE_MAX_BYTES": 4096,
       "GIT_CAPTURE_BYTES": 1048576,
       "GIT_DIR_MAX_ENTRIES": 100000,
       "GIT_FAILED": "Git command failed",

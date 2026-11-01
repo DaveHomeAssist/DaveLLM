@@ -59,6 +59,7 @@ FILE_MAX_CHARS = 1_024
 TEXT_FIELD_CHARS = 300
 SHOW_BODY_CHARS = 2_000
 ALTERNATES_MAX_BYTES = 65_536  # a real alternates file is a few lines
+GITFILE_MAX_BYTES = 4_096  # a .git file or commondir holds one path
 GIT_DIR_MAX_ENTRIES = 100_000  # entries checked for links in the Git directory before it is refused
 MIN_GIT_VERSION = (2, 32)
 
@@ -274,6 +275,14 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
     if not direct_git.is_symlink() and direct_git.is_dir():
         if _names_alternates(direct_git / "objects"):
             raise FileToolError(UNSUPPORTED_REPOSITORY)
+    elif not direct_git.is_symlink() and direct_git.is_file():
+        # A linked worktree's .git file: newer Git (2.5x) opens the common
+        # directory's objects/info/alternates during the rev-parse probe too, so
+        # check it first. Only locations inside the roots are inspected, so the
+        # answer never reveals anything about a .git file that points outside.
+        common = _linked_common_dir(target, direct_git, roots)
+        if common is not None and _names_alternates(common / "objects"):
+            raise FileToolError(UNSUPPORTED_REPOSITORY)
 
     git = git_executable()
     # Discovery may reach the tool root but never the folder above it.
@@ -316,6 +325,37 @@ def open_repository(arguments: Mapping[str, Any], resolve: Callable[[str], Path]
     env = git_environment(git, located, _filter_overrides(listing.stdout))
     display = relative_display(top, deepest_root(top, roots))
     return Repository(top, display, env, deadline)
+
+
+def _linked_common_dir(target: Path, dotgit: Path, roots: Sequence[Path]) -> Path | None:
+    """The common Git directory a ``.git`` file names, when it lies inside the roots.
+
+    Both ``.git`` and ``commondir`` are read like any extended-tool file (no link
+    following, non-blocking, bounded). Anything unexpected returns None and the
+    regular discovery below decides, with its usual fixed messages.
+    """
+    def admitted(path: Path) -> Path | None:
+        real = _real(str(path))
+        return real if _inside(real, roots) and not has_secret_component(real) else None
+
+    try:
+        text = read_admitted_bytes(dotgit, GITFILE_MAX_BYTES).decode("utf-8")
+    except (FileToolError, OSError, UnicodeDecodeError):
+        return None
+    line = text.split("\n", 1)[0].rstrip("\r")
+    if not line.startswith("gitdir: "):
+        return None
+    git_dir = admitted(target / line[len("gitdir: "):])
+    if git_dir is None:
+        return None
+    try:
+        named = read_admitted_bytes(git_dir / "commondir", GITFILE_MAX_BYTES).decode("utf-8")
+    except FileToolError as exc:
+        return git_dir if str(exc) == FILE_NOT_FOUND else None
+    except (OSError, UnicodeDecodeError):
+        return None
+    named = named.split("\n", 1)[0].rstrip("\r")
+    return admitted(git_dir / named) if named else None
 
 
 def _names_alternates(objects: Path) -> bool:

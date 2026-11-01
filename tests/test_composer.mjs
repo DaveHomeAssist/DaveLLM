@@ -210,3 +210,124 @@ test("an attachment read error releases preparation without losing the draft", a
     assert.equal(reads, 2);
     assert.equal(context.state.preparingMessage, false);
 });
+
+
+// TA-02: the happy path. The lock must hold through conversation creation, the
+// budget request and the start of the stream, so a second Send (Enter plus the
+// button) never posts a second chat request, and it must be released after.
+function sendContext({ createConversation, streamFetch }) {
+    const notices = [];
+    const chatRequests = [];
+    const state = {
+        streaming: false, sessionId: null, conversations: {}, pendingImages: [],
+        nodes: [{ id: "node-a" }], selectedNode: "node-a", modelMeta: { "model-a": {} },
+        stats: { totalMessages: 0, totalTokens: 0 }, autoScroll: false,
+    };
+    const promptInput = { value: "Hello there", style: {} };
+    const context = {
+        approvalBusy: false, state, promptInput,
+        notifyConsole: (message) => notices.push(message),
+        attachedFilePromptText: async () => ({ text: "" }),
+        window: {
+            DavePrompt: { buildDisplayedPrompt: (prompt) => prompt },
+            DaveAnticipation: { incrementUsage: (record) => record },
+        },
+        supportFlag: null, templateSelect: { value: "general" }, selectedProjectId: null,
+        currentConversation: () => state.conversations[state.sessionId],
+        createNewConversation: () => createConversation(state),
+        createConversationFromTemplate: async () => null,
+        modelSelect: { value: "model-a" }, routeStatus: null,
+        getSelectedModelMeta: () => ({ vision: false }),
+        imageStatus: { textContent: "" }, imageInput: { value: "" }, fileInput: null, fileStatus: null, audioStatus: null,
+        routerEndpoint: (path) => `http://router.test${path}`,
+        authHeaders: (extra = {}) => extra,
+        fetch: async (url, init = {}) => {
+            if (url.endsWith("/analytics/costs")) return { ok: true, json: async () => ({ total_cost: 0 }) };
+            if (url.endsWith("/chat/stream")) {
+                chatRequests.push(JSON.parse(init.body));
+                return streamFetch();
+            }
+            throw new Error(`unexpected request ${url}`);
+        },
+        updateStatsDisplay: () => {}, anticipationRecord: {}, writeAnticipationRecord: () => {}, updateAnticipationPreferences: () => {},
+        schedulePromptSizeCheck: () => {}, sessionStorage: { removeItem: () => {} }, DRAFT_SESSION_KEY: "draft",
+        undoPredictionBtn: null, renderMessages: () => {}, showRelevantMemories: () => {}, setStreamingUi: () => {},
+        renderConversationList: () => {}, renderLiveMessage: () => {}, renderPredictions: () => {},
+        readerCanSee: () => true, markConversationUnread: () => {}, loadConversationHistory: async () => {},
+        streamStatusText: () => "", confirm: () => true,
+        setInterval: () => 0, clearInterval: () => {}, AbortController, TextDecoder, TextEncoder,
+        console: { log: () => {}, warn: () => {}, error: () => {} },
+    };
+    load(["sendMessage", "sendPreparedMessage"], context);
+    return { context, notices, chatRequests, state, promptInput };
+}
+
+function doneStream() {
+    const chunks = [new TextEncoder().encode('data: {"token":"Hi"}\ndata: {"done":true}\n')];
+    return {
+        ok: true,
+        body: { getReader: () => ({ read: async () => (chunks.length ? { done: false, value: chunks.shift() } : { done: true }) }) },
+    };
+}
+
+test("a second Send during a successful send's preparation posts exactly one chat request", async () => {
+    let releaseCreate;
+    const creating = new Promise((resolve) => { releaseCreate = resolve; });
+    const { context, notices, chatRequests, state } = sendContext({
+        createConversation: async (s) => {
+            await creating;
+            s.sessionId = "c1";
+            s.conversations.c1 = { title: "Chat", messages: [] };
+        },
+        streamFetch: doneStream,
+    });
+
+    const first = context.sendMessage();      // Enter key
+    const second = context.sendMessage();     // the Send button, same moment
+    assert.equal(state.preparingMessage, true, "the first send holds the lock while it prepares");
+    releaseCreate();
+    await Promise.all([first, second]);
+
+    assert.equal(chatRequests.length, 1, "exactly one chat request");
+    assert.equal(chatRequests[0].prompt, "Hello there");
+    assert.equal(state.preparingMessage, false, "the lock is released after the send");
+    assert.equal(state.streaming, false);
+    assert.deepEqual(notices, ["A message is being prepared. Wait for it to send. Your draft is kept."]);
+    const reply = state.conversations.c1.messages.at(-1);
+    assert.equal(reply.role, "assistant");
+    assert.equal(reply.content, "Hi");
+
+    // The next message sends normally once the first has finished.
+    context.promptInput.value = "Second message";
+    await context.sendMessage();
+    assert.equal(chatRequests.length, 2);
+    assert.equal(state.preparingMessage, false);
+});
+
+test("a stream request that fails releases the send lock and reports the error", async () => {
+    let attempts = 0;
+    const { context, chatRequests, state } = sendContext({
+        createConversation: async (s) => {
+            s.sessionId = "c1";
+            s.conversations.c1 = { title: "Chat", messages: [] };
+        },
+        streamFetch: async () => {
+            attempts += 1;
+            if (attempts === 1) throw new Error("router unreachable");
+            return doneStream();
+        },
+    });
+
+    await context.sendMessage();
+    assert.equal(chatRequests.length, 1);
+    assert.equal(state.preparingMessage, false, "a failed stream does not leave the lock held");
+    assert.equal(state.streaming, false);
+    const messages = state.conversations.c1.messages;
+    assert.equal(messages.at(-2).content, "Hello there", "the sent prompt stays in the conversation");
+    assert.equal(messages.at(-1).role, "error");
+    assert.match(messages.at(-1).content, /router unreachable/);
+
+    context.promptInput.value = "Retry";
+    await context.sendMessage();
+    assert.equal(chatRequests.length, 2, "the user can send again after the failure");
+});
