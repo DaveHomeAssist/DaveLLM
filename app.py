@@ -887,10 +887,10 @@ async def fetch_node_models(node: NodeConfig) -> dict:
                         }
                     )
 
-                print(
-                    f"✅ Fetched {len(normalized_models)} models from {node.name}: "
-                    f"{[m['id'] for m in normalized_models]}"
-                )
+                # Ollama's /api/show capabilities override the name guess (helper under MEMORY STORAGE).
+                await apply_show_capabilities(node, normalized_models)
+                print(f"✅ Fetched {len(normalized_models)} models from {node.name}: "
+                      f"{[m['id'] for m in normalized_models]}")
                 return {"models": normalized_models, "error": None}
 
             print(
@@ -2476,6 +2476,64 @@ def _write_json_atomically(path: Path, value: Any, label: str) -> None:
 async def persistence_error_handler(_request: Request, _exc: PersistenceError) -> JSONResponse:
     """A request whose change did not reach disk fails instead of acknowledging it."""
     return JSONResponse({"detail": PERSISTENCE_FAILED}, status_code=503)
+
+
+# Ollama reports what a model can do in POST /api/show ("capabilities": ["completion",
+# "vision", ...]). /api/tags does not, so names alone mislabel models such as
+# qwen3.5 or gemma3. The lookup is bounded: a few models at a time, a short
+# timeout each, at most SHOW_LOOKUP_LIMIT per inventory, and results cached
+# per node and model. A failed lookup keeps the name guess and says so.
+SHOW_LOOKUP_LIMIT = 32
+SHOW_LOOKUP_CONCURRENCY = 4
+SHOW_LOOKUP_TIMEOUT = 3.0
+SHOW_CACHE_SECONDS = 600.0
+SHOW_CAPABILITIES_CACHE: Dict[tuple, tuple] = {}
+
+
+def show_capabilities(body: object) -> Optional[List[str]]:
+    """The capabilities list from an /api/show body, or None when it has none."""
+    capabilities = body.get("capabilities") if isinstance(body, dict) else None
+    if not isinstance(capabilities, list) or not all(isinstance(item, str) for item in capabilities):
+        return None
+    return [item.lower() for item in capabilities]
+
+
+async def apply_show_capabilities(node: "NodeConfig", models: List[dict]) -> None:
+    """Set each model's ``vision`` from /api/show and record where it came from.
+
+    ``capabilities_source`` is ``"ollama"`` when the node answered with a
+    capabilities list, and ``"name"`` when it did not (lookup failed, timed
+    out, was over the limit, or the node predates capabilities).
+    """
+    now = time.monotonic()
+    gate = asyncio.Semaphore(SHOW_LOOKUP_CONCURRENCY)
+
+    async def lookup(client: httpx.AsyncClient, model: dict) -> None:
+        key = (node.url, model["id"])
+        cached = SHOW_CAPABILITIES_CACHE.get(key)
+        if cached is not None and now - cached[0] < SHOW_CACHE_SECONDS:
+            capabilities = cached[1]
+        else:
+            capabilities = None
+            try:
+                async with gate:
+                    resp = await client.post(f"{node.url}/api/show", json={"model": model["id"]})
+                if resp.is_success:
+                    capabilities = show_capabilities(resp.json())
+            except Exception:
+                capabilities = None
+            if capabilities is not None:
+                SHOW_CAPABILITIES_CACHE[key] = (now, capabilities)
+        if capabilities is None:
+            model["capabilities_source"] = "name"
+        else:
+            model["vision"] = "vision" in capabilities
+            model["capabilities_source"] = "ollama"
+
+    for model in models[SHOW_LOOKUP_LIMIT:]:
+        model["capabilities_source"] = "name"
+    async with httpx.AsyncClient(timeout=SHOW_LOOKUP_TIMEOUT) as client:
+        await asyncio.gather(*(lookup(client, model) for model in models[:SHOW_LOOKUP_LIMIT]))
 
 
 def new_conversation_record(user_id: str, project_id: Optional[str]) -> dict:

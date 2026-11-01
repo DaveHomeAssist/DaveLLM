@@ -138,7 +138,8 @@ def test_inventory_backed_node_and_model_selection(router_factory):
         mock_inventory(mock)
         inventory = client.get("/nodes/node-test/models", headers=AUTH)
         assert inventory.status_code == 200
-        assert inventory.json()["models"] == [{"id": MODEL_ID, "vision": False}]
+        # No /api/show answer here, so vision falls back to the name guess and says so.
+        assert inventory.json()["models"] == [{"id": MODEL_ID, "vision": False, "capabilities_source": "name"}]
 
         node_chat = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_json("selected correctly"))
         wrong_node = client.post(
