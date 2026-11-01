@@ -43,6 +43,11 @@ def slow_node():
 
             def do_POST(self):
                 self.rfile.read(int(self.headers["Content-Length"]))
+                if self.path == "/api/show":  # inventory capability lookup: no capabilities, answered at once
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 try:
                     if mode == "headers" and stop.wait(1.5):
                         return

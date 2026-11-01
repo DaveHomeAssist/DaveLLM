@@ -769,6 +769,13 @@ function normalizeModelMeta(model) {
     const id = typeof model === "string" ? model : (model.id || model.model || model.name);
     if (!id) return null;
 
+    // The router read the node's own capabilities list (Ollama /api/show), so it
+    // decides both ways: a vision model with a plain name is vision-capable, and a
+    // text-only model whose alias looks like vision stays text-only.
+    if (typeof model === "object" && model.capabilities_source === "ollama") {
+        return { id, vision: Boolean(model.vision), capabilitiesSource: "ollama" };
+    }
+
     let vision = modelIdLooksVisionCapable(id);
 
     if (typeof model === "object") {
@@ -789,7 +796,7 @@ function normalizeModelMeta(model) {
         if (model.vision || model.supports_vision) vision = true;
     }
 
-    return { id, vision };
+    return { id, vision, capabilitiesSource: "name" };
 }
 
 function getSelectedModelMeta() {

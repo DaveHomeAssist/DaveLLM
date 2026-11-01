@@ -54,12 +54,12 @@ Returns configured node objects with `id`, `name`, and `url`.
   "node_id": "<configured-node-id>",
   "node_name": "<configured-display-name>",
   "models": [
-    {"id": "<ollama-model-id>", "vision": false}
+    {"id": "<ollama-model-id>", "vision": false, "capabilities_source": "ollama"}
   ]
 }
 ```
 
-The model IDs are taken from Ollama `/api/tags`; they are not synthesized by the router.
+The model IDs are taken from Ollama `/api/tags`; they are not synthesized by the router. `vision` comes from the `capabilities` list in Ollama `POST /api/show` (`capabilities_source: "ollama"`). When that lookup fails, times out, is over the per-inventory limit (32 models, 4 at a time, 3 s each, successful answers cached for 10 minutes), or the node returns no capabilities, `vision` is the router's name guess and `capabilities_source` is `"name"`. The web UI trusts an `"ollama"` answer both ways and applies its own name guess only to `"name"`.
 
 ### `POST /conversations/from_template`
 
