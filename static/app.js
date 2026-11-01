@@ -75,6 +75,7 @@ let notepadSaveTimer = null;
 let notepadLoadedProjectId = null;
 let notepadLoading = false;
 let notepadLoadSequence = 0;
+let modelLoadSequence = 0;
 let instructionPreviewMode = "layered";
 let projectHomeData = null;
 let projectHomeProjectId = null;
@@ -2958,16 +2959,23 @@ async function loadModelsFromNode(preferredModelId = null) {
     }
 
     const previousModel = preferredModelId || modelSelect.value;
+    // Node changes can return inventories out of order. Only the newest request
+    // for the node that is still selected may fill the model list, so node B
+    // never shows node A's models and metadata.
+    const nodeId = state.selectedNode;
+    const sequence = ++modelLoadSequence;
+    const stale = () => sequence !== modelLoadSequence || state.selectedNode !== nodeId;
     replaceSelectOptions(modelSelect, "Loading models...");
     modelSelect.disabled = true;
 
     try {
-        const res = await fetch(routerEndpoint(`/nodes/${state.selectedNode}/models`), {
+        const res = await fetch(routerEndpoint(`/nodes/${nodeId}/models`), {
             headers: authHeaders()
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
+        if (stale()) return null;
         const models = data.models || [];
         const nodeError = data.error || null;
         const normalizedModels = models
@@ -2985,7 +2993,7 @@ async function loadModelsFromNode(preferredModelId = null) {
             opt.textContent = nodeError ? "Node unreachable" : "No models pulled on node";
             opt.title = nodeError || "";
             modelSelect.appendChild(opt);
-            if (nodeError) console.error(`Node ${state.selectedNode}: ${nodeError}`);
+            if (nodeError) console.error(`Node ${nodeId}: ${nodeError}`);
         } else {
             normalizedModels.forEach((meta) => {
                 state.modelMeta[meta.id] = meta;
@@ -3005,13 +3013,14 @@ async function loadModelsFromNode(preferredModelId = null) {
             }
         }
 
-        console.log(`✅ Loaded ${normalizedModels.length} models from ${state.selectedNode}`);
+        console.log(`✅ Loaded ${normalizedModels.length} models from ${nodeId}`);
         modelSelect.disabled = false;
         updateImageSupportNotice();
         updateContextStrip();
         renderPredictions();
         return modelSelect.value;
     } catch (err) {
+        if (stale()) return null;
         console.error("Failed to load models:", err);
         state.modelMeta = {};
         replaceSelectOptions(modelSelect, "Error loading models");
