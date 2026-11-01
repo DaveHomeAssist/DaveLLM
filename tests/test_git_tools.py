@@ -821,3 +821,47 @@ def test_runner_caps_captured_output_and_stops_git(hostile_git):
     whole = davellm_git.run_git(("log", "--format=%H"), cwd=hostile_git.at("history"),
                                 deadline=time.monotonic() + davellm_git.GIT_TIMEOUT_SECONDS)
     assert (whole.truncated, whole.returncode, len(whole.stdout)) == (False, 0, 60 * 41)
+
+
+# DLA-02: hostile metadata Git reads during the discovery probe ----------------------------------
+
+def _refused_promptly(router, path, pipe):
+    """The call is refused with the fixed message without waiting on the FIFO."""
+    outcome = []
+    started = time.monotonic()
+    worker = threading.Thread(target=lambda: outcome.append(run(router, "git.status", path=path)), daemon=True)
+    worker.start()
+    worker.join(20)
+    try:  # release a reader stuck on the pipe, so a regression fails instead of hanging the suite
+        os.close(os.open(pipe, os.O_WRONLY | os.O_NONBLOCK))
+    except OSError:
+        pass
+    worker.join(20)
+    elapsed = time.monotonic() - started
+    assert [(item.status, item.error) for item in outcome] == [("error", UNSUPPORTED_REPOSITORY)], path
+    # Refused before Git starts, well inside the 8-second Git deadline.
+    assert elapsed < davellm_git.GIT_TIMEOUT_SECONDS / 2, (path, elapsed)
+
+
+@pytest.mark.parametrize("name", ["HEAD", "config", "commondir", "gitdir"])
+def test_special_discovery_metadata_is_refused_before_the_git_probe(router, hostile_git, name):
+    _, git_dir = small_repo(hostile_git, f"meta-{name.lower()}")
+    pipe = git_dir / name
+    if pipe.exists():
+        pipe.unlink()
+    os.mkfifo(pipe)
+    _refused_promptly(router, f"meta-{name.lower()}", pipe)
+
+
+@pytest.mark.parametrize("name", ["HEAD", "config", "commondir"])
+def test_linked_worktree_special_metadata_is_refused_before_the_git_probe(router, hostile_git, name):
+    main, linked = linked_worktree(hostile_git)
+    assert run(router, "git.status", path="wt-linked").status == "success"  # admitted before the FIFO
+    if name == "config":
+        pipe = main / ".git" / "config"
+    else:
+        worktrees = main / ".git" / "worktrees"
+        pipe = next(worktrees.iterdir()) / name
+    pipe.unlink()
+    os.mkfifo(pipe)
+    _refused_promptly(router, "wt-linked", pipe)
