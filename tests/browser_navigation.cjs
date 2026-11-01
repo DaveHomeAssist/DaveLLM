@@ -13,7 +13,7 @@ const root = path.resolve(__dirname, "..");
 const baseline = "179a79c0459a77976249bbf1f7a3672496726dcc";
 const views = { chat: "Chat", projects: "Projects", cluster: "Cluster", settings: "Settings" };
 const assets = new Set([
-    "index.html", "style.css", "console.js", "prompt-contract.js", "anticipation.js",
+    "index.html", "style.css", "console.js", "on-call.js", "prompt-contract.js", "anticipation.js",
     "app.js", "vendor/gsap/gsap.min.js", "vendor/lucide/lucide.svg", "brand.svg", "favicon.svg",
 ]);
 const api = new Map([
