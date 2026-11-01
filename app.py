@@ -5540,11 +5540,13 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                         yield f"data: {json.dumps({'token': chunk.content, 'done': False})}\n\n"
                 stats = stream_stats(stream.metrics, first_token_at - start_time if first_token_at else None)
         except OllamaStreamError as e:
-            # /v1 parity: Ollama's openai.go ChatWriter.writeResponse unmarshals an in-band {"error"}
-            # NDJSON line into an empty api.ChatResponse, so /v1 emitted delta.content == "" and then
-            # EOF; the partial reply is kept. Recorded for /monitoring/health; DL-UX-01 owns making it visible.
+            # An in-band {"error"} NDJSON line (for example a runner crash) ends the reply. /v1 hid it
+            # as an empty delta and the partial text was saved as a normal reply; now the client gets
+            # an error event like any other node failure and the partial reply is not persisted.
             record_error("stream_node_error", str(e))
             print(f"⚠️ Node stream error after {len(full_response)} chars: {e}")
+            yield f"data: {json.dumps({'error': f'Model stopped with an error: {str(e)[:200]}', 'done': True})}\n\n"
+            had_error = True
         except httpx.TimeoutException:
             yield f"data: {json.dumps({'error': 'Node timed out', 'done': True})}\n\n"
             had_error = True

@@ -188,7 +188,7 @@ data: {"notice":"The model tried to use a tool (browser.run) instead of replying
 data: {"token":"","done":true,"message_count":1}
 ```
 
-Node failures (timeout, connection refused, non-2xx status, unexpected exception) are returned as SSE error events. The renderer promotes `error` events into the visible chat error state rather than treating them as JSON parse failures. An in-band Ollama `{"error": ...}` NDJSON line at any point, including before the first token, is not an error event: the stream ends with the normal terminal event and the partial reply (possibly empty) is persisted, exactly as the `/v1` transport behaved (its OpenAI layer rendered that line as an empty delta). The router records it as a `stream_node_error` entry in `GET /monitoring/health` `recent_errors`; DL-UX-01 owns turning it into a visible error.
+Node failures (timeout, connection refused, non-2xx status, unexpected exception) are returned as SSE error events. The renderer promotes `error` events into the visible chat error state rather than treating them as JSON parse failures. An in-band Ollama `{"error": ...}` NDJSON line at any point, including before the first token (for example a runner crash), is an error event too: `{"error": "Model stopped with an error: <node message, first 200 characters>", "done": true}`, then the normal terminal event. The partial reply is not persisted and no `stats` or tool-call notice follows. (The `/v1` transport rendered that line as an empty delta, so a crash once looked like a complete reply.) The router also records it as a `stream_node_error` entry in `GET /monitoring/health` `recent_errors`.
 
 ### `GET /conversations/{conversation_id}/export`
 
