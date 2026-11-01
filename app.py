@@ -371,14 +371,14 @@ def load_conversations() -> Dict[str, dict]:
     return migrated
 
 def save_conversations(conversations: Dict[str, dict]):
-    """Atomic write for safety — prevents corruption on crash."""
-    tmp = DATA_FILE.with_suffix(".tmp")
-    try:
-        with open(tmp, "w") as f:
-            json.dump(conversations, f, indent=2)
-        tmp.replace(DATA_FILE)  # Atomic rename
-    except IOError as e:
-        print(f"⚠️ Failed to save conversations: {e}")
+    """Atomic write for safety — prevents corruption on crash.
+
+    Raises PersistenceError when the write fails, so no caller reports the
+    change as saved. The helper lives under MEMORY STORAGE, below the tool
+    handlers whose source lines tests/test_tool_catalog_provenance.py pins,
+    so these savers keep their original line counts.
+    """
+    _write_json_atomically(DATA_FILE, conversations, "conversations")
 
 def load_projects() -> Dict[str, dict]:
     if not PROJECTS_FILE.exists():
@@ -391,13 +391,13 @@ def load_projects() -> Dict[str, dict]:
         return {}
 
 def save_projects(projects: Dict[str, dict]):
-    tmp = PROJECTS_FILE.with_suffix(".tmp")
-    try:
-        with open(tmp, "w") as f:
-            json.dump(projects, f, indent=2)
-        tmp.replace(PROJECTS_FILE)
-    except IOError as e:
-        print(f"⚠️ Failed to save projects: {e}")
+    """Atomic write of the projects store.
+
+    Raises PersistenceError when the write fails, so no caller reports the
+    change as saved (see save_conversations). The temporary file is removed
+    on failure.
+    """
+    _write_json_atomically(PROJECTS_FILE, projects, "projects")
 
 
 def load_settings() -> Dict[str, str]:
@@ -413,13 +413,13 @@ def load_settings() -> Dict[str, str]:
 
 
 def save_settings(settings: Dict[str, str]):
-    tmp = SETTINGS_FILE.with_suffix(".tmp")
-    try:
-        with open(tmp, "w") as f:
-            json.dump(settings, f, indent=2)
-        tmp.replace(SETTINGS_FILE)
-    except IOError as e:
-        print(f"⚠️ Failed to save settings: {e}")
+    """Atomic write of the settings store.
+
+    Raises PersistenceError when the write fails, so no caller reports the
+    change as saved (see save_conversations). The temporary file is removed
+    on failure.
+    """
+    _write_json_atomically(SETTINGS_FILE, settings, "settings")
 
 # Load existing conversations on startup
 CONVERSATIONS: Dict[str, dict] = load_conversations()
@@ -2444,6 +2444,39 @@ HARNESS = Harness(
 # ============================================================
 # MEMORY STORAGE
 # ============================================================
+
+class PersistenceError(RuntimeError):
+    """A change could not be written to disk, so it must not be reported as saved."""
+
+
+PERSISTENCE_FAILED = "Changes could not be saved to disk"
+
+
+def _write_json_atomically(path: Path, value: Any, label: str) -> None:
+    """Atomic write for safety — prevents corruption on crash.
+
+    A failure removes the partial temporary file and raises PersistenceError,
+    so callers never acknowledge a change that is not on disk.
+    """
+    tmp = path.with_suffix(".tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(value, f, indent=2)
+        tmp.replace(path)  # Atomic rename
+    except OSError as e:
+        print(f"⚠️ Failed to save {label}: {e}")
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise PersistenceError(f"Failed to save {label}") from e
+
+
+@app.exception_handler(PersistenceError)
+async def persistence_error_handler(_request: Request, _exc: PersistenceError) -> JSONResponse:
+    """A request whose change did not reach disk fails instead of acknowledging it."""
+    return JSONResponse({"detail": PERSISTENCE_FAILED}, status_code=503)
+
 
 def new_conversation_record(user_id: str, project_id: Optional[str]) -> dict:
     """The record a first message creates; the size check (DL-ROUTE-05) sizes against it unsaved."""
@@ -5475,8 +5508,13 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         notice = None if had_error else tool_call_only_notice(full_response, tool_calls)
         if notice is not None:
             conversation["updated_at"] = datetime.now().isoformat()
-            save_conversations(CONVERSATIONS)
-            yield f"data: {json.dumps({**notice, 'done': False})}\n\n"
+            try:
+                save_conversations(CONVERSATIONS)
+            except PersistenceError:
+                yield f"data: {json.dumps({'error': PERSISTENCE_FAILED, 'done': True})}\n\n"
+                had_error = True
+            else:
+                yield f"data: {json.dumps({**notice, 'done': False})}\n\n"
 
         # Post-process and persist only if we actually got a response (and no fatal stream error)
         if not had_error and notice is None:
@@ -5539,6 +5577,10 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                     log_performance(user_id, req.conversation_id, preferred_model, actual_tokens, cost, latency_ms, comp_score)
                 except Exception as e:
                     record_error("perf_log", str(e))
+            except PersistenceError:
+                record_error("stream_finalize", PERSISTENCE_FAILED)
+                yield f"data: {json.dumps({'error': PERSISTENCE_FAILED, 'done': True})}\n\n"
+                had_error = True
             except Exception as e:
                 record_error("stream_finalize", str(e))
 
@@ -5650,8 +5692,11 @@ async def shutdown_event():
     if BACKGROUND_TASKS:
         await asyncio.gather(*BACKGROUND_TASKS, return_exceptions=True)
         BACKGROUND_TASKS.clear()
-    save_conversations(CONVERSATIONS)
-    print("💾 Conversations saved to disk")
+    try:
+        save_conversations(CONVERSATIONS)
+        print("💾 Conversations saved to disk")
+    except PersistenceError:
+        record_error("shutdown_save", PERSISTENCE_FAILED)
 
 
 from contextlib import asynccontextmanager as _asynccontextmanager  # noqa: E402
