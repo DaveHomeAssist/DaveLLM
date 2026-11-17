@@ -1,0 +1,181 @@
+{
+  "started_utc": "2026-11-17T06:44:42Z",
+  "mode": "live",
+  "host": "Walter",
+  "generator": {
+    "available": true,
+    "comfyui_version": "0.43.0",
+    "device": "cuda:0 NVIDIA GeForce RTX 3070 Laptop GPU : cudaMallocAsync",
+    "checkpoint": "sd_xl_turbo_1.0_fp16.safetensors"
+  },
+  "limits": {
+    "max_pixels": 1048576,
+    "max_steps": 8,
+    "max_quality_pixels": 2359296,
+    "max_quality_steps": 8
+  },
+  "timings": [
+    {
+      "case": "C1",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 9483,
+      "round_trip_ms": 9531
+    },
+    {
+      "case": "C2",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 3077,
+      "round_trip_ms": 3125
+    },
+    {
+      "case": "C3",
+      "stage": "draft",
+      "size": "1024x576",
+      "generator_ms": 3094,
+      "round_trip_ms": 3141
+    },
+    {
+      "case": "C1",
+      "stage": "quality",
+      "size": "1152x1152",
+      "generator_ms": 3250,
+      "round_trip_ms": 3328
+    }
+  ],
+  "checks": [
+    {
+      "check": "generator reachable",
+      "pass": true,
+      "detail": "comfyui 0.43.0 on cuda:0 NVIDIA GeForce RTX 3070 Laptop GPU : cudaMallocAsync"
+    },
+    {
+      "check": "C1 draft generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "C1 PNG is 768x768",
+      "pass": true,
+      "detail": "got (768, 768)"
+    },
+    {
+      "check": "C1 manifest has provenance",
+      "pass": true,
+      "detail": "id img-20261117T064452Z-75f165f2"
+    },
+    {
+      "check": "C1 saved file matches",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "C2 draft generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "C2 PNG is 768x768",
+      "pass": true,
+      "detail": "got (768, 768)"
+    },
+    {
+      "check": "C2 manifest has provenance",
+      "pass": true,
+      "detail": "id img-20261117T064455Z-2647b167"
+    },
+    {
+      "check": "C2 saved file matches",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "C3 draft generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "C3 PNG is 1024x576",
+      "pass": true,
+      "detail": "got (1024, 576)"
+    },
+    {
+      "check": "C3 manifest has provenance",
+      "pass": true,
+      "detail": "id img-20261117T064458Z-e92a9026"
+    },
+    {
+      "check": "C3 saved file matches",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "same seed and settings reproduce the draft byte-for-byte",
+      "pass": true,
+      "detail": "identical"
+    },
+    {
+      "check": "save=false leaves no library entry",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "quality pass generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "quality pass keeps seed and links its draft",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "quality pass is 1.5x the draft",
+      "pass": true,
+      "detail": "got (1152, 1152)"
+    },
+    {
+      "check": "over-limit request pauses for approval and generates nothing",
+      "pass": true,
+      "detail": "proposed {'width': 1024, 'height': 1024, 'steps': 4}"
+    },
+    {
+      "check": "material rewrite needs review by default",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "formatting-only change generates without review",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "suggest mode never sends a rewrite",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "per-image delete removes file and manifest",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "retention prunes images past 90 days",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "purge-all needs the exact confirmation and empties the library",
+      "pass": true,
+      "detail": "deleted 3"
+    },
+    {
+      "check": "nothing left on disk after purge",
+      "pass": true,
+      "detail": ""
+    }
+  ],
+  "passed": 26,
+  "total": 26
+}

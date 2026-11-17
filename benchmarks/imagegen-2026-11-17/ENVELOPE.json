@@ -1,0 +1,23 @@
+[
+  {
+    "stage": "draft",
+    "size": "1024x1024",
+    "http": 200,
+    "generator_ms": 6813,
+    "round_trip_ms": 6905
+  },
+  {
+    "stage": "quality",
+    "size": "1536x1536",
+    "http": 200,
+    "generator_ms": 5656,
+    "round_trip_ms": 5781
+  },
+  {
+    "stage": "draft",
+    "size": "1024x576",
+    "http": 200,
+    "generator_ms": 3609,
+    "round_trip_ms": 3657
+  }
+]

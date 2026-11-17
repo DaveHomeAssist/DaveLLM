@@ -3087,6 +3087,89 @@ class ChatRequest(BaseModel):
     node_id: Optional[str] = None
     project_id: Optional[str] = None
 
+# ============================================================
+# LOCAL IMAGE GENERATION (kept below the pinned tool handlers)
+# ============================================================
+from davellm_comfy import (
+    ComfyError,
+    ImageSpec,
+    QualityPass,
+    SUPPORTED_SAMPLERS,
+    SUPPORTED_SCHEDULERS,
+    data_url as image_data_url,
+    generate as comfy_generate,
+    new_seed as new_image_seed,
+    status as comfy_status,
+)  # noqa: E402
+import davellm_image_policy as image_policy
+from davellm_image_store import ImageNotFound, ImageStore, parse_retention_days
+COMFY_URL = os.getenv("DAVE_COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
+COMFY_CHECKPOINT = os.getenv("DAVE_COMFY_CHECKPOINT", "sd_xl_turbo_1.0_fp16.safetensors")
+# Generated images stay on this host: <DAVE_DATA_DIR>/images unless DAVE_IMAGE_DIR moves them.
+IMAGE_STORE = ImageStore(
+    Path(os.getenv("DAVE_IMAGE_DIR") or (BASE_DIR / "images")),
+    parse_retention_days(os.getenv("DAVE_IMAGE_RETENTION_DAYS")),
+)
+IMAGE_LIMITS = image_policy.load_limits()
+
+
+class ImageQualityOptions(BaseModel):
+    scale: float = Field(default=1.5, ge=1.0, le=2.0)
+    steps: int = Field(default=4, ge=1, le=50)
+    denoise: float = Field(default=0.45, ge=0.1, le=0.9)
+
+
+class ImagePolicyFields(BaseModel):
+    prompt_behavior: Literal["suggest", "review", "auto"] = image_policy.DEFAULT_PROMPT_BEHAVIOR
+    approval_mode: Literal["always", "material", "none"] = image_policy.DEFAULT_APPROVAL_MODE
+    approved: bool = False
+    accept_reduction: bool = False
+
+
+class ImageGenerateRequest(ImagePolicyFields):
+    prompt: str = Field(min_length=1, max_length=4000)
+    structured_prompt: Optional[str] = Field(default=None, min_length=1, max_length=4000)
+    negative_prompt: str = Field(default="", max_length=2000)
+    enhanced: bool = False
+    width: int = Field(default=768, ge=256, le=2048, multiple_of=64)
+    height: int = Field(default=768, ge=256, le=2048, multiple_of=64)
+    steps: int = Field(default=4, ge=1, le=50)
+    cfg: float = Field(default=1.0, ge=0.0, le=10.0)
+    sampler: str = "euler"
+    scheduler: str = "simple"
+    seed: Optional[int] = Field(default=None, ge=0, lt=2**63)
+    save: bool = True
+
+    @field_validator("sampler")
+    @classmethod
+    def _sampler_supported(cls, value: str) -> str:
+        if value not in SUPPORTED_SAMPLERS:
+            raise ValueError(f"sampler must be one of {', '.join(SUPPORTED_SAMPLERS)}")
+        return value
+
+    @field_validator("scheduler")
+    @classmethod
+    def _scheduler_supported(cls, value: str) -> str:
+        if value not in SUPPORTED_SCHEDULERS:
+            raise ValueError(f"scheduler must be one of {', '.join(SUPPORTED_SCHEDULERS)}")
+        return value
+
+
+class ImageQualityRequest(ImagePolicyFields):
+    quality: ImageQualityOptions = Field(default_factory=ImageQualityOptions)
+    save: bool = True
+
+
+class ImageEnhanceRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    prompt_behavior: Literal["suggest", "review", "auto"] = image_policy.DEFAULT_PROMPT_BEHAVIOR
+    node_id: Optional[str] = None
+    model: Optional[str] = None
+
+
+class ImagePurgeRequest(BaseModel):
+    confirm: str
+
 class RoutePreferences(BaseModel):
     max_cost: Optional[float] = None
     min_quality: Optional[float] = None
@@ -5105,6 +5188,240 @@ def resync_conversation_project(conversation_id: str, req: ResyncRequest, user_i
         "project_id": project_id,
         "system_prompt": result["system_prompt"],
     }
+
+IMAGE_ENHANCE_SYSTEM_PROMPT = (
+    "You rewrite image-generation prompts. Preserve the subject, the intent and every explicit "
+    "constraint (counts, exact text, exclusions, sizes, style). Improve phrasing and structure only. "
+    "Do not add new subjects, styles or exclusions. Reply with the rewritten prompt only."
+)
+
+
+def _image_error(status_code: int, detail: dict) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"detail": detail})
+
+
+def _run_image(spec: ImageSpec, *, manifest: dict, save: bool) -> dict:
+    result = comfy_generate(COMFY_URL, COMFY_CHECKPOINT, spec)
+    model_info = {
+        "generator": "ComfyUI",
+        "checkpoint": COMFY_CHECKPOINT,
+        "workflow_version": spec.workflow_version,
+        "comfyui_version": comfy_status(COMFY_URL).get("comfyui_version"),
+    }
+    record = {
+        **manifest,
+        "seed": result["seed"],
+        "settings": spec.settings(),
+        "output": {"width": result["width"], "height": result["height"], "content_type": result["content_type"]},
+        "model": model_info,
+        "duration_ms": result["duration_ms"],
+    }
+    saved = None
+    if save:
+        saved = IMAGE_STORE.save(result["bytes"], record)
+    return {
+        "id": saved["id"] if saved else None,
+        "saved": bool(saved),
+        "image": image_data_url(result["content_type"], result["bytes"]),
+        "seed": result["seed"],
+        "width": result["width"],
+        "height": result["height"],
+        "duration_ms": result["duration_ms"],
+        "stage": record["stage"],
+        "manifest": saved or record,
+    }
+
+
+@app.get("/image/status")
+def image_status(_auth=Depends(require_api_key)):
+    IMAGE_STORE.prune()
+    return {
+        **comfy_status(COMFY_URL),
+        "checkpoint": COMFY_CHECKPOINT,
+        "limits": IMAGE_LIMITS.as_dict(),
+        "defaults": {
+            "prompt_behavior": image_policy.DEFAULT_PROMPT_BEHAVIOR,
+            "approval_mode": image_policy.DEFAULT_APPROVAL_MODE,
+            "width": 768, "height": 768, "steps": 4, "cfg": 1.0,
+            "sampler": "euler", "scheduler": "simple",
+        },
+        "controls": {"samplers": list(SUPPORTED_SAMPLERS), "schedulers": list(SUPPORTED_SCHEDULERS)},
+        "storage": IMAGE_STORE.summary(),
+    }
+
+
+@app.post("/image/enhance")
+def image_enhance(req: ImageEnhanceRequest, _auth=Depends(require_api_key)):
+    """Opt-in LLM rewrite (design 5B). Never generates an image by itself."""
+    try:
+        node = get_node_by_id(req.node_id) if req.node_id else None
+    except HTTPException:
+        raise
+    candidates = [
+        (n, m) for n in ([node] if node else NODE_CONFIGS)
+        for m in sorted(MODEL_INVENTORY.get(n.id, set()))
+        if not req.model or m == req.model
+    ]
+    if not candidates:
+        raise HTTPException(503, "No local text model is available to enhance the prompt")
+    target, model_id = candidates[0]
+    try:
+        with NODE_ACTIVITY.track(target.url):
+            result = ollama_chat(
+                target.url, model_id,
+                [
+                    {"role": "system", "content": IMAGE_ENHANCE_SYSTEM_PROMPT},
+                    {"role": "user", "content": req.prompt},
+                ],
+                stream=False, timeout=60, num_predict=300, temperature=0.4,
+                options=chat_node_options(target, model_id), keep_alive=chat_keep_alive(None),
+            )
+    except Exception as exc:  # transport errors are reported, never retried silently
+        raise HTTPException(503, f"Prompt enhancement failed: {describe_node_error(target, exc)}") from exc
+    proposed = (result.content or "").strip().strip('"').strip()
+    if not proposed:
+        raise HTTPException(503, "The enhancement model returned an empty prompt")
+    return {
+        "original": req.prompt,
+        "proposed": proposed[:4000],
+        "material_change": image_policy.is_material_change(req.prompt, proposed),
+        "usable_for_generation": req.prompt_behavior != "suggest",
+        "node_id": target.id,
+        "model": model_id,
+    }
+
+
+@app.post("/image/generate")
+async def image_generate(req: ImageGenerateRequest, _auth=Depends(require_api_key)):
+    decision = image_policy.decide(
+        original=req.prompt, structured=req.structured_prompt,
+        prompt_behavior=req.prompt_behavior, approval_mode=req.approval_mode, approved=req.approved,
+    )
+    if not decision.allowed:
+        status_code = 422 if decision.code == "suggest_only" else 409
+        return _image_error(status_code, {**decision.as_detail(), "prompt_for_model": decision.prompt_for_model})
+    width, height, steps = req.width, req.height, req.steps
+    reduced_from = None
+    over = image_policy.hardware_check(width=width, height=height, steps=steps, limits=IMAGE_LIMITS)
+    if over:
+        if not req.accept_reduction:
+            return _image_error(409, over)
+        reduced_from = {"width": width, "height": height, "steps": steps}
+        width, height, steps = over["proposed"]["width"], over["proposed"]["height"], over["proposed"]["steps"]
+    spec = ImageSpec(
+        prompt=decision.prompt_for_model, negative_prompt=req.negative_prompt,
+        width=width, height=height, steps=steps, cfg=req.cfg,
+        sampler=req.sampler, scheduler=req.scheduler,
+        seed=req.seed if req.seed is not None else new_image_seed(),
+    )
+    manifest = {
+        "stage": "draft",
+        "parent_id": None,
+        "original_prompt": req.prompt,
+        "structured_prompt": decision.prompt_for_model,
+        "negative_prompt": req.negative_prompt,
+        "enhanced": req.enhanced,
+        "material_change": decision.material_change,
+        "prompt_behavior": req.prompt_behavior,
+        "approval_mode": req.approval_mode,
+        "approved": req.approved,
+        "reduced_from": reduced_from,
+    }
+    try:
+        return await asyncio.to_thread(_run_image, spec, manifest=manifest, save=req.save)
+    except ComfyError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.get("/image/library")
+def image_library(_auth=Depends(require_api_key)):
+    IMAGE_STORE.prune()
+    return {"images": IMAGE_STORE.list(), "storage": IMAGE_STORE.summary()}
+
+
+@app.post("/image/purge")
+def image_purge(req: ImagePurgeRequest, _auth=Depends(require_api_key)):
+    if req.confirm != "DELETE ALL IMAGES":
+        raise HTTPException(400, "Send confirm='DELETE ALL IMAGES' to purge the image library")
+    return {"deleted": IMAGE_STORE.purge()}
+
+
+@app.get("/image/{image_id}/manifest")
+def image_manifest(image_id: str, _auth=Depends(require_api_key)):
+    try:
+        return IMAGE_STORE.manifest(image_id)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+
+
+@app.get("/image/{image_id}/file")
+def image_file(image_id: str, _auth=Depends(require_api_key)):
+    try:
+        path = IMAGE_STORE.image_path(image_id)
+        content_type = IMAGE_STORE.manifest(image_id).get("output", {}).get("content_type", "image/png")
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    return Response(path.read_bytes(), media_type=content_type, headers={"Cache-Control": "no-store"})
+
+
+@app.delete("/image/{image_id}")
+def image_delete(image_id: str, _auth=Depends(require_api_key)):
+    try:
+        IMAGE_STORE.delete(image_id)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    return {"deleted": image_id}
+
+
+@app.post("/image/{image_id}/quality")
+async def image_quality(image_id: str, req: ImageQualityRequest, _auth=Depends(require_api_key)):
+    """Optional quality pass (design 4C): same prompt, seed and settings, refined at a larger size."""
+    try:
+        parent = IMAGE_STORE.manifest(image_id)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Draft not found; quality passes need a saved draft") from exc
+    if req.approval_mode == "always" and not req.approved:
+        return _image_error(409, {"code": "review_required", "material_change": False,
+                                  "message": "Approval mode is 'always': confirm the quality pass first."})
+    settings = dict(parent.get("settings") or {})
+    quality = QualityPass(scale=req.quality.scale, steps=req.quality.steps, denoise=req.quality.denoise)
+    spec = ImageSpec(
+        prompt=parent.get("structured_prompt") or parent.get("original_prompt", ""),
+        negative_prompt=parent.get("negative_prompt", ""),
+        width=int(settings.get("width", 768)), height=int(settings.get("height", 768)),
+        steps=int(settings.get("steps", 4)), cfg=float(settings.get("cfg", 1.0)),
+        sampler=settings.get("sampler", "euler"), scheduler=settings.get("scheduler", "simple"),
+        seed=int(parent["seed"]), quality=quality,
+    )
+    reduced_from = None
+    over = image_policy.hardware_check(
+        width=spec.width, height=spec.height, steps=spec.steps, limits=IMAGE_LIMITS,
+        quality_size=spec.output_size(), quality_steps=quality.steps,
+    )
+    if over:
+        if not req.accept_reduction:
+            return _image_error(409, over)
+        reduced_from = {"quality_scale": quality.scale, "quality_steps": quality.steps}
+        quality.scale = over["proposed"].get("quality_scale", quality.scale)
+        quality.steps = over["proposed"].get("quality_steps", quality.steps)
+    manifest = {
+        "stage": "quality",
+        "parent_id": image_id,
+        "original_prompt": parent.get("original_prompt", ""),
+        "structured_prompt": spec.prompt,
+        "negative_prompt": spec.negative_prompt,
+        "enhanced": parent.get("enhanced", False),
+        "material_change": parent.get("material_change", False),
+        "prompt_behavior": req.prompt_behavior,
+        "approval_mode": req.approval_mode,
+        "approved": req.approved,
+        "reduced_from": reduced_from,
+    }
+    try:
+        return await asyncio.to_thread(_run_image, spec, manifest=manifest, save=req.save)
+    except ComfyError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):
