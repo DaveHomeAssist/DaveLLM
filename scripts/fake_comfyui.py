@@ -15,6 +15,7 @@ import hashlib
 import json
 import struct
 import threading
+import time
 import uuid
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -45,29 +46,72 @@ def make_png(width: int, height: int, key: bytes) -> bytes:
 
 
 def _output_size(graph: dict[str, Any]) -> tuple[int, int]:
-    if "10" in graph:
-        inputs = graph["10"]["inputs"]
-        return int(inputs["width"]), int(inputs["height"])
-    inputs = graph["5"]["inputs"]
+    node = graph.get("10") or graph.get("5") or graph.get("14")
+    inputs = node["inputs"]
     return int(inputs["width"]), int(inputs["height"])
 
 
-def validate_graph(graph: dict[str, Any]) -> None:
-    required = {"3": "KSampler", "4": "CheckpointLoaderSimple", "5": "EmptyLatentImage",
-                "6": "CLIPTextEncode", "7": "CLIPTextEncode", "8": "VAEDecode", "9": "PreviewImage"}
+def validate_graph(graph: dict[str, Any], uploads: dict[str, bytes] | None = None) -> None:
+    required = {"3": "KSampler", "4": "CheckpointLoaderSimple",
+                "6": "CLIPTextEncode", "7": "CLIPTextEncode", "8": "VAEDecode", "9": "PreviewImage",
+                "20": "ImageScale", "21": "PreviewImage"}
     for node_id, class_type in required.items():
         if graph.get(node_id, {}).get("class_type") != class_type:
             raise ValueError(f"node {node_id} must be {class_type}")
     if "10" in graph and graph.get("11", {}).get("class_type") != "KSampler":
         raise ValueError("quality graphs need a refinement KSampler at node 11")
+    latent = graph["3"]["inputs"]["latent_image"][0]
+    if latent == "5":
+        if graph["5"].get("class_type") != "EmptyLatentImage":
+            raise ValueError("text-to-image graphs need EmptyLatentImage at node 5")
+    elif latent in ("13", "16"):
+        for node_id, class_type in {"12": "LoadImage", "14": "ImageScale", "13": "VAEEncode"}.items():
+            if graph.get(node_id, {}).get("class_type") != class_type:
+                raise ValueError(f"node {node_id} must be {class_type}")
+        if uploads is not None and graph["12"]["inputs"]["image"] not in uploads:
+            raise ValueError("source image was not uploaded")
+        if latent == "16":
+            for node_id, class_type in {"15": "LoadImageMask", "17": "MaskToImage", "18": "ImageScale",
+                                        "19": "ImageToMask", "16": "SetLatentNoiseMask"}.items():
+                if graph.get(node_id, {}).get("class_type") != class_type:
+                    raise ValueError(f"node {node_id} must be {class_type}")
+            if uploads is not None and graph["15"]["inputs"]["image"] not in uploads:
+                raise ValueError("mask was not uploaded")
+    else:
+        raise ValueError("unknown latent source")
+
+
+def _multipart(body: bytes, content_type: str) -> dict[str, tuple[str | None, bytes]]:
+    boundary = content_type.split("boundary=", 1)[1].strip().strip('"').encode()
+    fields = {}
+    for part in body.split(b"--" + boundary):
+        if b"\r\n\r\n" not in part:
+            continue
+        head, value = part.split(b"\r\n\r\n", 1)
+        value = value[:-2] if value.endswith(b"\r\n") else value
+        headers = head.decode("latin-1")
+        if 'name="' not in headers:
+            continue
+        name = headers.split('name="', 1)[1].split('"', 1)[0]
+        filename = headers.split('filename="', 1)[1].split('"', 1)[0] if 'filename="' in headers else None
+        fields[name] = (filename, value)
+    return fields
 
 
 class FakeComfy:
-    def __init__(self, *, fail: bool = False):
+    def __init__(self, *, fail: bool = False, delay: float = 0.0):
         self.fail = fail
+        self.delay = delay  # seconds before a prompt "finishes", for queue and cancel tests
         self.history: dict[str, Any] = {}
+        self.ready_at: dict[str, float] = {}
+        self.interrupted: set[str] = set()
         self.images: dict[str, bytes] = {}
+        self.uploads: dict[str, bytes] = {}
+        self.upload_types: list[str] = []
         self.graphs: list[dict[str, Any]] = []
+        self.interrupt_calls = 0
+        self.timeline: list[tuple[float, float]] = []  # (queued, finishes) per prompt
+        self._lock = threading.Lock()
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -99,7 +143,13 @@ class FakeComfy:
                                             "devices": [{"name": "fake-cpu"}]})
                 if parsed.path.startswith("/history/"):
                     prompt_id = parsed.path.rsplit("/", 1)[-1]
-                    entry = fake.history.get(prompt_id)
+                    with fake._lock:
+                        if prompt_id in fake.interrupted:
+                            entry = {"outputs": {}, "status": {"status_str": "error"}}
+                        elif time.monotonic() < fake.ready_at.get(prompt_id, 0):
+                            entry = None
+                        else:
+                            entry = fake.history.get(prompt_id)
                     return self._json(200, {prompt_id: entry} if entry else {})
                 if parsed.path == "/view":
                     name = parse_qs(parsed.query).get("filename", [""])[0]
@@ -115,12 +165,32 @@ class FakeComfy:
                 return self._json(404, {"error": "not found"})
 
             def do_POST(self):  # noqa: N802
-                if urlparse(self.path).path != "/prompt":
-                    return self._json(404, {"error": "not found"})
+                path = urlparse(self.path).path
                 length = int(self.headers.get("Content-Length", "0"))
-                graph = json.loads(self.rfile.read(length) or b"{}").get("prompt", {})
+                raw = self.rfile.read(length) if length else b""
+                if path == "/upload/image":
+                    fields = _multipart(raw, self.headers.get("Content-Type", ""))
+                    filename, data = fields["image"]
+                    kind = fields.get("type", (None, b"input"))[1].decode()
+                    fake.upload_types.append(kind)
+                    fake.uploads[f"{filename} [{kind}]"] = data
+                    return self._json(200, {"name": filename, "subfolder": "", "type": kind})
+                if path == "/interrupt":
+                    fake.interrupt_calls += 1
+                    body = json.loads(raw or b"{}")
+                    with fake._lock:
+                        targets = [body["prompt_id"]] if body.get("prompt_id") else list(fake.ready_at)
+                        for prompt_id in targets:
+                            if time.monotonic() < fake.ready_at.get(prompt_id, 0):
+                                fake.interrupted.add(prompt_id)
+                    return self._json(200, {})
+                if path == "/queue":
+                    return self._json(200, {})
+                if path != "/prompt":
+                    return self._json(404, {"error": "not found"})
+                graph = json.loads(raw or b"{}").get("prompt", {})
                 try:
-                    validate_graph(graph)
+                    validate_graph(graph, fake.uploads)
                 except (ValueError, KeyError, TypeError) as exc:
                     return self._json(400, {"error": str(exc)})
                 fake.graphs.append(graph)
@@ -129,17 +199,29 @@ class FakeComfy:
                     fake.history[prompt_id] = {"outputs": {}, "status": {"status_str": "error"}}
                     return self._json(200, {"prompt_id": prompt_id})
                 width, height = _output_size(graph)
+                source = graph.get("12", {}).get("inputs", {}).get("image")
+                mask = graph.get("15", {}).get("inputs", {}).get("image")
                 key = json.dumps({
                     "positive": graph["6"]["inputs"]["text"], "negative": graph["7"]["inputs"]["text"],
                     "seed": graph["3"]["inputs"]["seed"], "steps": graph["3"]["inputs"]["steps"],
+                    "denoise": graph["3"]["inputs"]["denoise"],
                     "size": [width, height], "quality": "10" in graph,
+                    "source": hashlib.sha256(fake.uploads[source]).hexdigest() if source else None,
+                    "mask": hashlib.sha256(fake.uploads[mask]).hexdigest() if mask else None,
                 }, sort_keys=True).encode()
                 filename = f"DaveLLM_temp_{prompt_id[:8]}.png"
+                thumb_name = f"DaveLLM_thumb_{prompt_id[:8]}.png"
                 fake.images[filename] = make_png(width, height, key)
-                fake.history[prompt_id] = {
-                    "outputs": {"9": {"images": [{"filename": filename, "subfolder": "", "type": "temp"}]}},
-                    "status": {"status_str": "success"},
-                }
+                tw, th = int(graph["20"]["inputs"]["width"]), int(graph["20"]["inputs"]["height"])
+                fake.images[thumb_name] = make_png(tw, th, key)
+                with fake._lock:
+                    fake.ready_at[prompt_id] = time.monotonic() + fake.delay
+                    fake.timeline.append((time.monotonic(), fake.ready_at[prompt_id]))
+                    fake.history[prompt_id] = {
+                        "outputs": {"9": {"images": [{"filename": filename, "subfolder": "", "type": "temp"}]},
+                                    "21": {"images": [{"filename": thumb_name, "subfolder": "", "type": "temp"}]}},
+                        "status": {"status_str": "success"},
+                    }
                 return self._json(200, {"prompt_id": prompt_id})
 
         self._server = ThreadingHTTPServer((host, port), Handler)
@@ -157,8 +239,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8189)
+    parser.add_argument("--delay", type=float, default=0.0, help="seconds each prompt takes, to see the queue")
     args = parser.parse_args()
-    fake = FakeComfy().start(args.host, args.port)
+    fake = FakeComfy(delay=args.delay).start(args.host, args.port)
     print(f"fake ComfyUI listening on {fake.url}", flush=True)
     try:
         threading.Event().wait()
