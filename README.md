@@ -142,6 +142,7 @@ export DAVE_IMAGE_DIR="$DAVE_DATA_DIR/images"   # default; local disk only
 export DAVE_IMAGE_RETENTION_DAYS=90             # 0 keeps images until deleted
 export DAVE_IMAGE_MAX_PIXELS=1048576            # validated draft envelope
 export DAVE_IMAGE_MAX_QUALITY_PIXELS=2359296    # validated quality-pass envelope
+export DAVE_IMAGE_ENHANCE_MODEL='llama3:latest' # text model for Enhance prompt; unset = first installed model alphabetically
 ```
 
 **Storage.** Each saved image is `<id>.png` plus a `<id>.json` manifest (original and structured prompt, negative prompt, seed, settings, checkpoint, workflow and ComfyUI version, UTC time, duration, hash). Nothing is uploaded. Untick **Save to the local image library** to keep nothing. The workflow ends in ComfyUI's `PreviewImage` node, so ComfyUI keeps only a temporary copy that it clears on restart, and DaveLLM's delete and purge are authoritative. Generated images are not written into conversation JSON.

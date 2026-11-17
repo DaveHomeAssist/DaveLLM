@@ -3111,6 +3111,9 @@ IMAGE_STORE = ImageStore(
     parse_retention_days(os.getenv("DAVE_IMAGE_RETENTION_DAYS")),
 )
 IMAGE_LIMITS = image_policy.load_limits()
+# Text model used by Enhance prompt. Unset picks the first installed model alphabetically,
+# which can be a model too large to share the GPU with ComfyUI, so set it on GPU hosts.
+IMAGE_ENHANCE_MODEL = (os.getenv("DAVE_IMAGE_ENHANCE_MODEL") or "").strip() or None
 
 
 class ImageQualityOptions(BaseModel):
@@ -5257,11 +5260,14 @@ def image_enhance(req: ImageEnhanceRequest, _auth=Depends(require_api_key)):
         node = get_node_by_id(req.node_id) if req.node_id else None
     except HTTPException:
         raise
+    wanted = req.model or IMAGE_ENHANCE_MODEL
     candidates = [
         (n, m) for n in ([node] if node else NODE_CONFIGS)
         for m in sorted(MODEL_INVENTORY.get(n.id, set()))
-        if not req.model or m == req.model
+        if not wanted or m == wanted
     ]
+    if wanted and not candidates:
+        raise HTTPException(503, f"Enhancement model {wanted!r} is not installed on any connected node")
     if not candidates:
         raise HTTPException(503, "No local text model is available to enhance the prompt")
     target, model_id = candidates[0]

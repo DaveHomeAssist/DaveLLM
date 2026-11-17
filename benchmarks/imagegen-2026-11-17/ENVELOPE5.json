@@ -1,0 +1,224 @@
+{
+  "vram_idle_mib": 416,
+  "vram_total_mib": 8192,
+  "rows": [
+    {
+      "case": "draft",
+      "run": 1,
+      "status": "ok",
+      "output": "1024x1024",
+      "generator_ms": 2577,
+      "wall_ms": 2577,
+      "peak_vram_mib": 6978
+    },
+    {
+      "case": "draft",
+      "run": 2,
+      "status": "ok",
+      "output": "1024x1024",
+      "generator_ms": 2594,
+      "wall_ms": 2594,
+      "peak_vram_mib": 6626
+    },
+    {
+      "case": "draft",
+      "run": 3,
+      "status": "ok",
+      "output": "1024x1024",
+      "generator_ms": 2547,
+      "wall_ms": 2547,
+      "peak_vram_mib": 7010
+    },
+    {
+      "case": "draft",
+      "run": 4,
+      "status": "ok",
+      "output": "1024x1024",
+      "generator_ms": 2563,
+      "wall_ms": 2563,
+      "peak_vram_mib": 7010
+    },
+    {
+      "case": "draft",
+      "run": 5,
+      "status": "ok",
+      "output": "1024x1024",
+      "generator_ms": 2561,
+      "wall_ms": 2561,
+      "peak_vram_mib": 7010
+    },
+    {
+      "case": "draft-above",
+      "run": 1,
+      "status": "ok",
+      "output": "1088x1088",
+      "generator_ms": 3125,
+      "wall_ms": 3141,
+      "peak_vram_mib": 7234
+    },
+    {
+      "case": "draft-above",
+      "run": 2,
+      "status": "ok",
+      "output": "1088x1088",
+      "generator_ms": 3062,
+      "wall_ms": 3062,
+      "peak_vram_mib": 7234
+    },
+    {
+      "case": "draft-above",
+      "run": 3,
+      "status": "ok",
+      "output": "1088x1088",
+      "generator_ms": 3062,
+      "wall_ms": 3062,
+      "peak_vram_mib": 7234
+    },
+    {
+      "case": "draft-above",
+      "run": 4,
+      "status": "ok",
+      "output": "1088x1088",
+      "generator_ms": 3266,
+      "wall_ms": 3266,
+      "peak_vram_mib": 7234
+    },
+    {
+      "case": "draft-above",
+      "run": 5,
+      "status": "ok",
+      "output": "1088x1088",
+      "generator_ms": 3063,
+      "wall_ms": 3063,
+      "peak_vram_mib": 7234
+    },
+    {
+      "case": "quality",
+      "run": 1,
+      "status": "ok",
+      "output": "1536x1536",
+      "generator_ms": 8452,
+      "wall_ms": 8452,
+      "peak_vram_mib": 6978
+    },
+    {
+      "case": "quality",
+      "run": 2,
+      "status": "ok",
+      "output": "1536x1536",
+      "generator_ms": 9188,
+      "wall_ms": 9188,
+      "peak_vram_mib": 6978
+    },
+    {
+      "case": "quality",
+      "run": 3,
+      "status": "ok",
+      "output": "1536x1536",
+      "generator_ms": 9657,
+      "wall_ms": 9657,
+      "peak_vram_mib": 6978
+    },
+    {
+      "case": "quality",
+      "run": 4,
+      "status": "ok",
+      "output": "1536x1536",
+      "generator_ms": 10844,
+      "wall_ms": 10844,
+      "peak_vram_mib": 6978
+    },
+    {
+      "case": "quality",
+      "run": 5,
+      "status": "ok",
+      "output": "1536x1536",
+      "generator_ms": 11750,
+      "wall_ms": 11750,
+      "peak_vram_mib": 6978
+    },
+    {
+      "case": "quality-above",
+      "run": 1,
+      "status": "ok",
+      "output": "1600x1600",
+      "generator_ms": 13281,
+      "wall_ms": 13281,
+      "peak_vram_mib": 6980
+    },
+    {
+      "case": "quality-above",
+      "run": 2,
+      "status": "ok",
+      "output": "1600x1600",
+      "generator_ms": 14328,
+      "wall_ms": 14328,
+      "peak_vram_mib": 6980
+    },
+    {
+      "case": "quality-above",
+      "run": 3,
+      "status": "ok",
+      "output": "1600x1600",
+      "generator_ms": 15516,
+      "wall_ms": 15516,
+      "peak_vram_mib": 6980
+    },
+    {
+      "case": "quality-above",
+      "run": 4,
+      "status": "ok",
+      "output": "1600x1600",
+      "generator_ms": 16921,
+      "wall_ms": 16921,
+      "peak_vram_mib": 6980
+    },
+    {
+      "case": "quality-above",
+      "run": 5,
+      "status": "ok",
+      "output": "1600x1600",
+      "generator_ms": 17061,
+      "wall_ms": 17061,
+      "peak_vram_mib": 6980
+    }
+  ],
+  "summary": {
+    "draft": {
+      "ok": 5,
+      "runs": 5,
+      "output": "1024x1024",
+      "min_ms": 2547,
+      "median_ms": 2563,
+      "max_ms": 2594,
+      "peak_vram_mib": 7010
+    },
+    "draft-above": {
+      "ok": 5,
+      "runs": 5,
+      "output": "1088x1088",
+      "min_ms": 3062,
+      "median_ms": 3063,
+      "max_ms": 3266,
+      "peak_vram_mib": 7234
+    },
+    "quality": {
+      "ok": 5,
+      "runs": 5,
+      "output": "1536x1536",
+      "min_ms": 8452,
+      "median_ms": 9657,
+      "max_ms": 11750,
+      "peak_vram_mib": 6978
+    },
+    "quality-above": {
+      "ok": 5,
+      "runs": 5,
+      "output": "1600x1600",
+      "min_ms": 13281,
+      "median_ms": 15516,
+      "max_ms": 17061,
+      "peak_vram_mib": 6980
+    }
+  }
+}
