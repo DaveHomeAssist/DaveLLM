@@ -69,7 +69,8 @@ def test_status_reports_defaults_limits_and_local_storage(image_router):
     assert status["defaults"]["prompt_behavior"] == "review"
     assert status["defaults"]["approval_mode"] == "material"
     assert status["limits"]["max_pixels"] == 1024 * 1024
-    assert status["storage"] == {"count": 0, "retention_days": 90, "location": "local-disk"}
+    assert status["storage"] == {"count": 0, "favorites": 0, "retention_days": 90,
+                                 "favorites_exempt_from_retention": True, "location": "local-disk"}
 
 
 def test_status_when_generator_is_down(router_factory, monkeypatch):
@@ -94,14 +95,14 @@ def test_generate_saves_image_and_manifest_on_local_disk(image_router):
     assert body["image"].startswith("data:image/png;base64,")
     image_id = body["id"]
     files = sorted(p.name for p in (data_dir / "images").iterdir())
-    assert files == [f"{image_id}.json", f"{image_id}.png"]
+    assert files == [f"{image_id}.json", f"{image_id}.png", f"{image_id}.thumb.png"]
     manifest = json.loads((data_dir / "images" / f"{image_id}.json").read_text())
     assert manifest["original_prompt"] == "stage lights"
     assert manifest["structured_prompt"] == "stage lights"
     assert manifest["negative_prompt"] == "text"
     assert manifest["settings"]["width"] == 512 and manifest["settings"]["sampler"] == "euler"
     assert manifest["model"]["checkpoint"] == "sd_xl_turbo_1.0_fp16.safetensors"
-    assert manifest["model"]["workflow_version"] == "sdxl-turbo-draft-v1"
+    assert manifest["model"]["workflow_version"] == "sdxl-turbo-draft-v2"
     assert manifest["created_utc"].endswith("Z")
     # The graph wrote to ComfyUI's temp output, never its permanent output folder.
     assert fake.graphs[-1]["9"]["class_type"] == "PreviewImage"
@@ -320,7 +321,8 @@ def test_enhance_without_a_model_is_explicit(image_router):
 
 def test_workflow_shapes():
     draft = build_workflow(ImageSpec(prompt="p", seed=3), "ckpt")
-    assert set(draft) == {"3", "4", "5", "6", "7", "8", "9"}
+    assert set(draft) == {"3", "4", "5", "6", "7", "8", "9", "20", "21"}
+    assert draft["20"]["inputs"]["width"] == 256 and draft["21"]["class_type"] == "PreviewImage"
     quality = build_workflow(ImageSpec(prompt="p", seed=3, quality=QualityPass()), "ckpt")
     assert quality["10"]["inputs"]["width"] == 1152 and quality["11"]["inputs"]["seed"] == 3
     with pytest.raises(ValueError):

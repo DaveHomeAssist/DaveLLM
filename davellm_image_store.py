@@ -5,6 +5,12 @@ Every saved image is two files under one directory on the serving host:
 The directory defaults to ``<DAVE_DATA_DIR>/images`` and can be moved with
 ``DAVE_IMAGE_DIR``. ``DAVE_IMAGE_RETENTION_DAYS`` (default 90, ``0`` keeps
 images until deleted) bounds how long prompts and images stay on disk.
+
+A third file, ``<id>.thumb.png``, holds a small preview rendered by ComfyUI.
+
+Favorites and collections live in the manifest's ``library`` field.
+Favorites are exempt from the retention purge: they stay until you unfavorite
+or delete them. "Delete all" still removes favorites, because it is explicit.
 """
 
 from __future__ import annotations
@@ -22,6 +28,8 @@ from typing import Any, Optional
 DEFAULT_RETENTION_DAYS = 90
 IMAGE_ID_RE = re.compile(r"^img-\d{8}T\d{6}Z-[0-9a-f]{8}$")
 MANIFEST_SCHEMA = "davellm.image.manifest/1"
+COLLECTION_RE = re.compile(r"^[\w][\w .'&()-]{0,39}$")
+MAX_COLLECTIONS_PER_IMAGE = 20
 
 
 class ImageNotFound(KeyError):
@@ -66,6 +74,10 @@ class ImageStore:
             raise ImageNotFound(image_id)
         return self.root / f"{image_id}.png", self.root / f"{image_id}.json"
 
+    def _thumb_path(self, image_id: str) -> Path:
+        self._paths(image_id)
+        return self.root / f"{image_id}.thumb.png"
+
     @staticmethod
     def _write_atomic(path: Path, payload: bytes) -> None:
         tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
@@ -76,7 +88,8 @@ class ImageStore:
         os.replace(tmp, path)
 
     # -- operations ----------------------------------------------------------
-    def save(self, png: bytes, manifest: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, Any]:
+    def save(self, png: bytes, manifest: dict[str, Any], *, now: Optional[datetime] = None,
+             thumbnail: Optional[bytes] = None) -> dict[str, Any]:
         moment = now or _utc_now()
         image_id = f"img-{moment.strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(4)}"
         record = {
@@ -86,14 +99,85 @@ class ImageStore:
             "created_utc": _iso(moment),
             "png_sha256": hashlib.sha256(png).hexdigest(),
             "bytes": len(png),
+            "library": {"favorite": False, "collections": []},
         }
         with self._lock:
             self._ensure_root()
             image_path, manifest_path = self._paths(image_id)
             self._write_atomic(image_path, png)
+            if thumbnail:
+                self._write_atomic(self._thumb_path(image_id), thumbnail)
             self._write_atomic(manifest_path, json.dumps(record, indent=2, sort_keys=True).encode("utf-8"))
         self.prune()
         return record
+
+    def thumb_path(self, image_id: str) -> Path:
+        """The stored preview, or the full image for records saved before previews existed."""
+        thumb = self._thumb_path(image_id)
+        return thumb if thumb.is_file() else self.image_path(image_id)
+
+    def update_library(self, image_id: str, *, favorite: Optional[bool] = None,
+                       collections: Optional[list[str]] = None) -> dict[str, Any]:
+        cleaned = None
+        if collections is not None:
+            cleaned = []
+            for name in collections:
+                name = " ".join(str(name).split())
+                if not COLLECTION_RE.match(name):
+                    raise ValueError(f"invalid collection name {name!r}")
+                if name not in cleaned:
+                    cleaned.append(name)
+            if len(cleaned) > MAX_COLLECTIONS_PER_IMAGE:
+                raise ValueError("too many collections")
+        with self._lock:
+            record = self.manifest(image_id)
+            library = dict(record.get("library") or {"favorite": False, "collections": []})
+            if favorite is not None:
+                library["favorite"] = bool(favorite)
+            if cleaned is not None:
+                library["collections"] = cleaned
+            record["library"] = library
+            _image, manifest_path = self._paths(image_id)
+            self._write_atomic(manifest_path, json.dumps(record, indent=2, sort_keys=True).encode("utf-8"))
+        return record
+
+    def collections(self) -> list[dict[str, Any]]:
+        counts: dict[str, int] = {}
+        for record in self.list():
+            for name in (record.get("library") or {}).get("collections", []):
+                counts[name] = counts.get(name, 0) + 1
+        return [{"name": name, "count": counts[name]} for name in sorted(counts, key=str.lower)]
+
+    def query(self, *, q: str = "", since: str = "", until: str = "", model: str = "",
+              seed: Optional[int] = None, favorite: Optional[bool] = None, collection: str = "",
+              stage: str = "", mode: str = "") -> list[dict[str, Any]]:
+        """Filter the library. Dates are inclusive UTC ``YYYY-MM-DD``; ``q`` matches all words."""
+        words = [w for w in (q or "").lower().split() if w]
+        out = []
+        for record in self.list():
+            text = " ".join(str(record.get(k) or "") for k in ("original_prompt", "structured_prompt", "negative_prompt"))
+            day = (record.get("created_utc") or "")[:10]
+            library = record.get("library") or {}
+            if words and not all(w in text.lower() for w in words):
+                continue
+            if since and day < since:
+                continue
+            if until and day > until:
+                continue
+            if model and (record.get("model") or {}).get("checkpoint") != model:
+                continue
+            if seed is not None and record.get("seed") != seed:
+                continue
+            if favorite is not None and bool(library.get("favorite")) != favorite:
+                continue
+            if collection and collection not in library.get("collections", []):
+                continue
+            if stage and record.get("stage") != stage:
+                continue
+            if mode and (record.get("settings") or {}).get("mode", "txt2img") != mode:
+                continue
+            out.append(record)
+        return out
 
     def manifest(self, image_id: str) -> dict[str, Any]:
         _image, manifest_path = self._paths(image_id)
@@ -125,7 +209,12 @@ class ImageStore:
     def delete(self, image_id: str) -> bool:
         image_path, manifest_path = self._paths(image_id)
         removed = False
+        thumb = self._thumb_path(image_id)
         with self._lock:
+            try:
+                thumb.unlink()
+            except FileNotFoundError:
+                pass
             for path in (image_path, manifest_path):
                 try:
                     path.unlink()
@@ -142,7 +231,8 @@ class ImageStore:
         count = 0
         with self._lock:
             for path in list(self.root.glob("img-*")):
-                if path.suffix in {".png", ".json"} and IMAGE_ID_RE.match(path.stem):
+                stem = path.name.split(".", 1)[0]
+                if path.suffix in {".png", ".json"} and IMAGE_ID_RE.match(stem):
                     try:
                         path.unlink()
                         if path.suffix == ".json":
@@ -152,13 +242,15 @@ class ImageStore:
         return count
 
     def prune(self, *, now: Optional[datetime] = None) -> int:
-        """Delete images older than the retention window. Returns how many."""
+        """Delete images older than the retention window, except favorites. Returns how many."""
         if self.retention_days <= 0 or not self.root.is_dir():
             return 0
         cutoff = _iso((now or _utc_now()) - timedelta(days=self.retention_days))
         removed = 0
         for record in self.list():
             created = record.get("created_utc", "")
+            if (record.get("library") or {}).get("favorite"):
+                continue
             if created and created < cutoff:
                 try:
                     self.delete(record["id"])
@@ -168,4 +260,11 @@ class ImageStore:
         return removed
 
     def summary(self) -> dict[str, Any]:
-        return {"count": len(self.list()), "retention_days": self.retention_days, "location": "local-disk"}
+        records = self.list()
+        return {
+            "count": len(records),
+            "favorites": sum(1 for r in records if (r.get("library") or {}).get("favorite")),
+            "retention_days": self.retention_days,
+            "favorites_exempt_from_retention": True,
+            "location": "local-disk",
+        }

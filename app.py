@@ -3091,6 +3091,7 @@ class ChatRequest(BaseModel):
 # LOCAL IMAGE GENERATION (kept below the pinned tool handlers)
 # ============================================================
 from davellm_comfy import (
+    ComfyCancelled,
     ComfyError,
     ImageSpec,
     QualityPass,
@@ -3100,8 +3101,13 @@ from davellm_comfy import (
     generate as comfy_generate,
     new_seed as new_image_seed,
     status as comfy_status,
+    upload_image as comfy_upload_image,
 )  # noqa: E402
+import base64  # noqa: E402
+import davellm_image_export as image_export
 import davellm_image_policy as image_policy
+import davellm_image_presets as image_presets
+from davellm_image_jobs import JobNotFound, JobQueue, QueueFull
 from davellm_image_store import ImageNotFound, ImageStore, parse_retention_days
 COMFY_URL = os.getenv("DAVE_COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
 COMFY_CHECKPOINT = os.getenv("DAVE_COMFY_CHECKPOINT", "sd_xl_turbo_1.0_fp16.safetensors")
@@ -3114,6 +3120,10 @@ IMAGE_LIMITS = image_policy.load_limits()
 # Text model used by Enhance prompt. Unset picks the first installed model alphabetically,
 # which can be a model too large to share the GPU with ComfyUI, so set it on GPU hosts.
 IMAGE_ENHANCE_MODEL = (os.getenv("DAVE_IMAGE_ENHANCE_MODEL") or "").strip() or None
+# One worker thread: at most one image job on the GPU at a time.
+IMAGE_QUEUE = JobQueue(max_queued=16, cancelled_error=ComfyCancelled)
+IMAGE_PRESETS = image_presets.PresetStore(BASE_DIR / "image_presets.json")
+MAX_SOURCE_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 class ImageQualityOptions(BaseModel):
@@ -3142,6 +3152,16 @@ class ImageGenerateRequest(ImagePolicyFields):
     scheduler: str = "simple"
     seed: Optional[int] = Field(default=None, ge=0, lt=2**63)
     save: bool = True
+    # Image to image and inpainting. The source is a saved library image or an
+    # uploaded PNG/JPEG data URL; the mask is a PNG data URL (white = repaint).
+    mode: Literal["txt2img", "img2img", "inpaint"] = "txt2img"
+    strength: float = Field(default=0.6, gt=0.0, le=1.0)
+    source_image_id: Optional[str] = Field(default=None, max_length=40)
+    source_image: Optional[str] = Field(default=None, max_length=12_000_000)
+    mask: Optional[str] = Field(default=None, max_length=12_000_000)
+    style_preset: Optional[str] = Field(default=None, max_length=40)
+    # Variations (POST /image/jobs only): queue this many seeds, one after another.
+    count: int = Field(default=1, ge=1, le=4)
 
     @field_validator("sampler")
     @classmethod
@@ -3161,6 +3181,22 @@ class ImageGenerateRequest(ImagePolicyFields):
 class ImageQualityRequest(ImagePolicyFields):
     quality: ImageQualityOptions = Field(default_factory=ImageQualityOptions)
     save: bool = True
+    background: bool = False
+
+
+class ImageLibraryUpdate(BaseModel):
+    favorite: Optional[bool] = None
+    collections: Optional[List[str]] = Field(default=None, max_length=20)
+
+
+class ImageExportRequest(BaseModel):
+    ids: List[str] = Field(min_length=1, max_length=200)
+    metadata: Literal["embed", "strip"] = "embed"
+
+
+class ImagePresetsUpdate(BaseModel):
+    styles: Optional[List[dict]] = None
+    negatives: Optional[List[dict]] = None
 
 
 class ImageEnhanceRequest(BaseModel):
@@ -5203,8 +5239,14 @@ def _image_error(status_code: int, detail: dict) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"detail": detail})
 
 
-def _run_image(spec: ImageSpec, *, manifest: dict, save: bool) -> dict:
-    result = comfy_generate(COMFY_URL, COMFY_CHECKPOINT, spec)
+def _run_image(spec: ImageSpec, *, manifest: dict, save: bool, sources: Optional[dict] = None,
+               progress=None, cancel=None) -> dict:
+    sources = sources or {}
+    if sources.get("source"):
+        spec.source_image = comfy_upload_image(COMFY_URL, sources["source"], kind="source")
+    if sources.get("mask"):
+        spec.mask_image = comfy_upload_image(COMFY_URL, sources["mask"], kind="mask")
+    result = comfy_generate(COMFY_URL, COMFY_CHECKPOINT, spec, on_progress=progress, cancel=cancel)
     model_info = {
         "generator": "ComfyUI",
         "checkpoint": COMFY_CHECKPOINT,
@@ -5221,10 +5263,11 @@ def _run_image(spec: ImageSpec, *, manifest: dict, save: bool) -> dict:
     }
     saved = None
     if save:
-        saved = IMAGE_STORE.save(result["bytes"], record)
+        saved = IMAGE_STORE.save(result["bytes"], record, thumbnail=result.get("thumbnail"))
     return {
         "id": saved["id"] if saved else None,
         "saved": bool(saved),
+        # Saved images are fetched from /image/{id}/file; only unsaved ones travel inline.
         "image": image_data_url(result["content_type"], result["bytes"]),
         "seed": result["seed"],
         "width": result["width"],
@@ -5233,6 +5276,148 @@ def _run_image(spec: ImageSpec, *, manifest: dict, save: bool) -> dict:
         "stage": record["stage"],
         "manifest": saved or record,
     }
+
+
+def _decode_upload(data_url: str, *, png_only: bool = False) -> bytes:
+    match = re.match(r"^data:image/(png|jpeg|jpg);base64,(.+)$", data_url or "", re.S)
+    if not match:
+        raise HTTPException(422, "Images must be PNG or JPEG data URLs")
+    try:
+        payload = base64.b64decode(match.group(2), validate=False)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422, "Image data is not valid base64") from exc
+    if len(payload) > MAX_SOURCE_IMAGE_BYTES:
+        raise HTTPException(413, f"Source images must be under {MAX_SOURCE_IMAGE_BYTES // 1024 // 1024} MB")
+    is_png = payload.startswith(image_export.PNG_SIGNATURE)
+    if png_only and not is_png:
+        raise HTTPException(422, "Masks must be PNG")
+    if not is_png and not payload.startswith(b"\xff\xd8\xff"):
+        raise HTTPException(422, "Images must be PNG or JPEG")
+    return payload
+
+
+def _image_sources(req: "ImageGenerateRequest") -> tuple[dict, Optional[dict]]:
+    """Validate img2img / inpaint inputs. Returns (bytes to upload, provenance)."""
+    if req.mode == "txt2img":
+        return {}, None
+    if bool(req.source_image_id) == bool(req.source_image):
+        raise HTTPException(422, f"{req.mode} needs exactly one of source_image_id or source_image")
+    if req.source_image_id:
+        try:
+            source = IMAGE_STORE.image_path(req.source_image_id).read_bytes()
+        except ImageNotFound as exc:
+            raise HTTPException(404, "Source image not found in the library") from exc
+        provenance = {"kind": "library", "id": req.source_image_id}
+    else:
+        source = _decode_upload(req.source_image)
+        provenance = {"kind": "upload"}
+    provenance["sha256"] = hashlib.sha256(source).hexdigest()
+    sources = {"source": source}
+    if req.mode == "inpaint":
+        if not req.mask:
+            raise HTTPException(422, "Inpainting needs a mask")
+        sources["mask"] = _decode_upload(req.mask, png_only=True)
+        provenance["mask_sha256"] = hashlib.sha256(sources["mask"]).hexdigest()
+    elif req.mask:
+        raise HTTPException(422, "A mask is only used with mode 'inpaint'")
+    return sources, provenance
+
+
+def _job_runner(spec: ImageSpec, manifest: dict, save: bool, sources: dict):
+    def run(progress, cancel):
+        result = _run_image(spec, manifest=manifest, save=save, sources=sources, progress=progress, cancel=cancel)
+        if result["saved"]:
+            result.pop("image", None)
+        return result
+    return run
+
+
+def _plan_generation(req: "ImageGenerateRequest"):
+    """Policy, hardware and input checks. Returns (error response | None, specs, manifest, save, sources)."""
+    decision = image_policy.decide(
+        original=req.prompt, structured=req.structured_prompt,
+        prompt_behavior=req.prompt_behavior, approval_mode=req.approval_mode, approved=req.approved,
+    )
+    if not decision.allowed:
+        status_code = 422 if decision.code == "suggest_only" else 409
+        return _image_error(status_code, {**decision.as_detail(), "prompt_for_model": decision.prompt_for_model}), None, None, None, None
+    width, height, steps = req.width, req.height, req.steps
+    reduced_from = None
+    over = image_policy.hardware_check(width=width, height=height, steps=steps, limits=IMAGE_LIMITS)
+    if over:
+        if not req.accept_reduction:
+            return _image_error(409, over), None, None, None, None
+        reduced_from = {"width": width, "height": height, "steps": steps}
+        width, height, steps = over["proposed"]["width"], over["proposed"]["height"], over["proposed"]["steps"]
+    style = None
+    if req.style_preset:
+        style = IMAGE_PRESETS.style(req.style_preset)
+        if style is None:
+            raise HTTPException(422, f"Unknown style preset {req.style_preset!r}")
+    sources, source_record = _image_sources(req)
+    base_seed = req.seed if req.seed is not None else new_image_seed()
+    group = f"var-{uuid.uuid4().hex[:8]}" if req.count > 1 else None
+    specs = []
+    for index in range(req.count):
+        specs.append(ImageSpec(
+            prompt=image_presets.apply_style(decision.prompt_for_model, style), negative_prompt=req.negative_prompt,
+            width=width, height=height, steps=steps, cfg=req.cfg,
+            sampler=req.sampler, scheduler=req.scheduler,
+            seed=(base_seed + index) % (2**63), mode=req.mode,
+            strength=req.strength if req.mode != "txt2img" else 1.0,
+        ))
+    manifest = {
+        "stage": "draft",
+        "parent_id": None,
+        "original_prompt": req.prompt,
+        "structured_prompt": decision.prompt_for_model,
+        "negative_prompt": req.negative_prompt,
+        "enhanced": req.enhanced,
+        "material_change": decision.material_change,
+        "prompt_behavior": req.prompt_behavior,
+        "approval_mode": req.approval_mode,
+        "approved": req.approved,
+        "reduced_from": reduced_from,
+        "style_preset": style,
+        "source": source_record,
+        "variation": {"group": group, "count": req.count} if group else None,
+    }
+    return None, specs, manifest, req.save, sources
+
+
+def _submit(specs, manifest, save, sources, kind: str) -> list[dict]:
+    jobs = []
+    try:
+        for index, spec in enumerate(specs):
+            record = dict(manifest)
+            if record.get("variation"):
+                record["variation"] = {**record["variation"], "index": index}
+            label = f"{kind}: {record.get('original_prompt', '')[:80]}"
+            meta = {"seed": spec.seed, "width": spec.width, "height": spec.height, "mode": spec.mode,
+                    "stage": record.get("stage"), "variation": record.get("variation")}
+            job = IMAGE_QUEUE.submit(kind, label, _job_runner(spec, record, save, sources), meta)
+            jobs.append(IMAGE_QUEUE.get(job.id))
+    except QueueFull as exc:
+        for job in jobs:
+            IMAGE_QUEUE.cancel(job["id"])
+        raise HTTPException(429, str(exc)) from exc
+    return jobs
+
+
+async def _wait_for_job(job_id: str) -> dict:
+    job = await asyncio.to_thread(IMAGE_QUEUE.wait, job_id, 600)
+    if job["status"] == "done":
+        result = dict(job["result"])
+        if result.get("saved") and "image" not in result:
+            # Callers of the waiting routes get the image inline, as before the queue existed.
+            content_type = (result.get("manifest") or {}).get("output", {}).get("content_type", "image/png")
+            result["image"] = image_data_url(content_type, IMAGE_STORE.image_path(result["id"]).read_bytes())
+        return result
+    if job["status"] == "cancelled":
+        return _image_error(409, {"code": "cancelled", "message": "The image job was cancelled.", "job_id": job_id})
+    if job["status"] in ("queued", "running"):
+        raise HTTPException(504, "Image job is still waiting; follow it at /image/jobs")
+    raise HTTPException(503, job.get("error") or "Image generation failed")
 
 
 @app.get("/image/status")
@@ -5246,10 +5431,12 @@ def image_status(_auth=Depends(require_api_key)):
             "prompt_behavior": image_policy.DEFAULT_PROMPT_BEHAVIOR,
             "approval_mode": image_policy.DEFAULT_APPROVAL_MODE,
             "width": 768, "height": 768, "steps": 4, "cfg": 1.0,
-            "sampler": "euler", "scheduler": "simple",
+            "sampler": "euler", "scheduler": "simple", "strength": 0.6,
         },
-        "controls": {"samplers": list(SUPPORTED_SAMPLERS), "schedulers": list(SUPPORTED_SCHEDULERS)},
+        "controls": {"samplers": list(SUPPORTED_SAMPLERS), "schedulers": list(SUPPORTED_SCHEDULERS),
+                     "modes": ["txt2img", "img2img", "inpaint"], "max_variations": 4},
         "storage": IMAGE_STORE.summary(),
+        "queue": IMAGE_QUEUE.summary(),
     }
 
 
@@ -5299,50 +5486,82 @@ def image_enhance(req: ImageEnhanceRequest, _auth=Depends(require_api_key)):
 
 @app.post("/image/generate")
 async def image_generate(req: ImageGenerateRequest, _auth=Depends(require_api_key)):
-    decision = image_policy.decide(
-        original=req.prompt, structured=req.structured_prompt,
-        prompt_behavior=req.prompt_behavior, approval_mode=req.approval_mode, approved=req.approved,
-    )
-    if not decision.allowed:
-        status_code = 422 if decision.code == "suggest_only" else 409
-        return _image_error(status_code, {**decision.as_detail(), "prompt_for_model": decision.prompt_for_model})
-    width, height, steps = req.width, req.height, req.steps
-    reduced_from = None
-    over = image_policy.hardware_check(width=width, height=height, steps=steps, limits=IMAGE_LIMITS)
-    if over:
-        if not req.accept_reduction:
-            return _image_error(409, over)
-        reduced_from = {"width": width, "height": height, "steps": steps}
-        width, height, steps = over["proposed"]["width"], over["proposed"]["height"], over["proposed"]["steps"]
-    spec = ImageSpec(
-        prompt=decision.prompt_for_model, negative_prompt=req.negative_prompt,
-        width=width, height=height, steps=steps, cfg=req.cfg,
-        sampler=req.sampler, scheduler=req.scheduler,
-        seed=req.seed if req.seed is not None else new_image_seed(),
-    )
-    manifest = {
-        "stage": "draft",
-        "parent_id": None,
-        "original_prompt": req.prompt,
-        "structured_prompt": decision.prompt_for_model,
-        "negative_prompt": req.negative_prompt,
-        "enhanced": req.enhanced,
-        "material_change": decision.material_change,
-        "prompt_behavior": req.prompt_behavior,
-        "approval_mode": req.approval_mode,
-        "approved": req.approved,
-        "reduced_from": reduced_from,
-    }
+    """Generate one image and wait for it. Runs through the same one-at-a-time GPU queue."""
+    if req.count != 1:
+        raise HTTPException(422, "Use POST /image/jobs for variations")
+    blocked, specs, manifest, save, sources = _plan_generation(req)
+    if blocked is not None:
+        return blocked
+    jobs = _submit(specs, manifest, save, sources, "draft")
+    return await _wait_for_job(jobs[0]["id"])
+
+
+@app.post("/image/jobs", status_code=202)
+def image_jobs_submit(req: ImageGenerateRequest, _auth=Depends(require_api_key)):
+    """Queue a draft (or ``count`` variations with consecutive seeds) and return at once."""
+    blocked, specs, manifest, save, sources = _plan_generation(req)
+    if blocked is not None:
+        return blocked
+    jobs = _submit(specs, manifest, save, sources, "variation" if req.count > 1 else "draft")
+    return {"jobs": jobs, "queue": IMAGE_QUEUE.summary()}
+
+
+@app.get("/image/jobs")
+def image_jobs_list(_auth=Depends(require_api_key)):
+    return {"jobs": IMAGE_QUEUE.list(), "queue": IMAGE_QUEUE.summary()}
+
+
+@app.get("/image/jobs/{job_id}")
+def image_job_get(job_id: str, _auth=Depends(require_api_key)):
     try:
-        return await asyncio.to_thread(_run_image, spec, manifest=manifest, save=req.save)
-    except ComfyError as exc:
-        raise HTTPException(503, str(exc)) from exc
+        return IMAGE_QUEUE.get(job_id, full=True)
+    except JobNotFound as exc:
+        raise HTTPException(404, "Job not found") from exc
+
+
+@app.post("/image/jobs/{job_id}/cancel")
+def image_job_cancel(job_id: str, _auth=Depends(require_api_key)):
+    try:
+        return IMAGE_QUEUE.cancel(job_id)
+    except JobNotFound as exc:
+        raise HTTPException(404, "Job not found") from exc
+
+
+def _bool_param(value: Optional[str]) -> Optional[bool]:
+    if value is None or value == "":
+        return None
+    return value.lower() in ("1", "true", "yes")
 
 
 @app.get("/image/library")
-def image_library(_auth=Depends(require_api_key)):
+def image_library(
+    q: str = "", since: str = "", until: str = "", model: str = "", seed: Optional[int] = None,
+    favorite: Optional[str] = None, collection: str = "", stage: str = "", mode: str = "",
+    limit: int = 200, offset: int = 0, _auth=Depends(require_api_key),
+):
     IMAGE_STORE.prune()
-    return {"images": IMAGE_STORE.list(), "storage": IMAGE_STORE.summary()}
+    for name, value in (("since", since), ("until", until)):
+        if value and not re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+            raise HTTPException(422, f"{name} must be YYYY-MM-DD")
+    everything = IMAGE_STORE.list()
+    matches = IMAGE_STORE.query(q=q, since=since, until=until, model=model, seed=seed,
+                                favorite=_bool_param(favorite), collection=collection, stage=stage, mode=mode)
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+    return {
+        "images": matches[offset:offset + limit],
+        "total": len(matches),
+        "facets": {
+            "models": sorted({(r.get("model") or {}).get("checkpoint") for r in everything} - {None}),
+            "collections": IMAGE_STORE.collections(),
+        },
+        "storage": IMAGE_STORE.summary(),
+    }
+
+
+@app.get("/image/collections")
+def image_collections(_auth=Depends(require_api_key)):
+    return {"collections": IMAGE_STORE.collections()}
 
 
 @app.post("/image/purge")
@@ -5350,6 +5569,47 @@ def image_purge(req: ImagePurgeRequest, _auth=Depends(require_api_key)):
     if req.confirm != "DELETE ALL IMAGES":
         raise HTTPException(400, "Send confirm='DELETE ALL IMAGES' to purge the image library")
     return {"deleted": IMAGE_STORE.purge()}
+
+
+@app.get("/image/presets")
+def image_presets_get(_auth=Depends(require_api_key)):
+    return {"aspects": image_presets.aspect_presets(IMAGE_LIMITS.max_pixels), **IMAGE_PRESETS.load(),
+            "limits": IMAGE_LIMITS.as_dict(), "location": "local-disk"}
+
+
+@app.put("/image/presets")
+def image_presets_put(req: ImagePresetsUpdate, _auth=Depends(require_api_key)):
+    try:
+        saved = IMAGE_PRESETS.save(styles=req.styles, negatives=req.negatives)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"aspects": image_presets.aspect_presets(IMAGE_LIMITS.max_pixels), **saved}
+
+
+@app.post("/image/presets/reset")
+def image_presets_reset(_auth=Depends(require_api_key)):
+    return {"aspects": image_presets.aspect_presets(IMAGE_LIMITS.max_pixels), **IMAGE_PRESETS.reset()}
+
+
+def _export_name(image_id: str, metadata: str) -> str:
+    return f"{image_id}{'' if metadata == 'embed' else '-clean'}.png"
+
+
+@app.post("/image/export")
+def image_export_zip(req: ImageExportRequest, _auth=Depends(require_api_key)):
+    items = []
+    for image_id in dict.fromkeys(req.ids):
+        try:
+            items.append((image_id, IMAGE_STORE.image_path(image_id).read_bytes(), IMAGE_STORE.manifest(image_id)))
+        except ImageNotFound as exc:
+            raise HTTPException(404, f"Image not found: {image_id}") from exc
+    try:
+        payload = image_export.export_zip(items, req.metadata)
+    except image_export.PngError as exc:
+        raise HTTPException(422, f"Could not export: {exc}") from exc
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return Response(payload, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="davellm-images-{stamp}.zip"', "Cache-Control": "no-store"})
 
 
 @app.get("/image/{image_id}/manifest")
@@ -5370,6 +5630,39 @@ def image_file(image_id: str, _auth=Depends(require_api_key)):
     return Response(path.read_bytes(), media_type=content_type, headers={"Cache-Control": "no-store"})
 
 
+@app.get("/image/{image_id}/thumb")
+def image_thumb(image_id: str, _auth=Depends(require_api_key)):
+    try:
+        path = IMAGE_STORE.thumb_path(image_id)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    return Response(path.read_bytes(), media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/image/{image_id}/export")
+def image_export_one(image_id: str, metadata: Literal["embed", "strip"] = "embed", _auth=Depends(require_api_key)):
+    try:
+        png = IMAGE_STORE.image_path(image_id).read_bytes()
+        manifest = IMAGE_STORE.manifest(image_id)
+        payload = image_export.export_png(png, manifest, metadata)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    except image_export.PngError as exc:
+        raise HTTPException(422, f"Could not export: {exc}") from exc
+    return Response(payload, media_type="image/png", headers={
+        "Content-Disposition": f'attachment; filename="{_export_name(image_id, metadata)}"', "Cache-Control": "no-store"})
+
+
+@app.patch("/image/{image_id}")
+def image_update(image_id: str, req: ImageLibraryUpdate, _auth=Depends(require_api_key)):
+    try:
+        return IMAGE_STORE.update_library(image_id, favorite=req.favorite, collections=req.collections)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.delete("/image/{image_id}")
 def image_delete(image_id: str, _auth=Depends(require_api_key)):
     try:
@@ -5381,7 +5674,13 @@ def image_delete(image_id: str, _auth=Depends(require_api_key)):
 
 @app.post("/image/{image_id}/quality")
 async def image_quality(image_id: str, req: ImageQualityRequest, _auth=Depends(require_api_key)):
-    """Optional quality pass (design 4C): same prompt, seed and settings, refined at a larger size."""
+    """Optional quality pass (design 4C): same prompt, seed and settings, refined at a larger size.
+
+    Text-to-image drafts rerun their own graph plus an upscale pass, so the
+    result is deterministic. Image-to-image and inpaint drafts were made from a
+    source that is not kept, so their quality pass refines the saved draft
+    itself (image to image at the larger size, ``denoise = quality.denoise``).
+    """
     try:
         parent = IMAGE_STORE.manifest(image_id)
     except ImageNotFound as exc:
@@ -5399,6 +5698,9 @@ async def image_quality(image_id: str, req: ImageQualityRequest, _auth=Depends(r
         sampler=settings.get("sampler", "euler"), scheduler=settings.get("scheduler", "simple"),
         seed=int(parent["seed"]), quality=quality,
     )
+    style = parent.get("style_preset")
+    if style:
+        spec.prompt = image_presets.apply_style(spec.prompt, style)
     reduced_from = None
     over = image_policy.hardware_check(
         width=spec.width, height=spec.height, steps=spec.steps, limits=IMAGE_LIMITS,
@@ -5410,11 +5712,23 @@ async def image_quality(image_id: str, req: ImageQualityRequest, _auth=Depends(r
         reduced_from = {"quality_scale": quality.scale, "quality_steps": quality.steps}
         quality.scale = over["proposed"].get("quality_scale", quality.scale)
         quality.steps = over["proposed"].get("quality_steps", quality.steps)
+    sources: dict = {}
+    method = "same-seed-rerun"
+    if settings.get("mode", "txt2img") != "txt2img":
+        out_w, out_h = spec.output_size()
+        spec = ImageSpec(
+            prompt=spec.prompt, negative_prompt=spec.negative_prompt, width=out_w, height=out_h,
+            steps=quality.steps, cfg=spec.cfg, sampler=spec.sampler, scheduler=spec.scheduler,
+            seed=spec.seed, mode="img2img", strength=quality.denoise,
+        )
+        sources = {"source": IMAGE_STORE.image_path(image_id).read_bytes()}
+        method = "refine-saved-draft"
     manifest = {
         "stage": "quality",
         "parent_id": image_id,
+        "quality_method": method,
         "original_prompt": parent.get("original_prompt", ""),
-        "structured_prompt": spec.prompt,
+        "structured_prompt": parent.get("structured_prompt") or parent.get("original_prompt", ""),
         "negative_prompt": spec.negative_prompt,
         "enhanced": parent.get("enhanced", False),
         "material_change": parent.get("material_change", False),
@@ -5422,11 +5736,13 @@ async def image_quality(image_id: str, req: ImageQualityRequest, _auth=Depends(r
         "approval_mode": req.approval_mode,
         "approved": req.approved,
         "reduced_from": reduced_from,
+        "style_preset": style,
+        "source": {"kind": "library", "id": image_id} if sources else None,
     }
-    try:
-        return await asyncio.to_thread(_run_image, spec, manifest=manifest, save=req.save)
-    except ComfyError as exc:
-        raise HTTPException(503, str(exc)) from exc
+    jobs = _submit([spec], manifest, req.save, sources, "quality")
+    if req.background:
+        return JSONResponse(status_code=202, content={"jobs": jobs, "queue": IMAGE_QUEUE.summary()})
+    return await _wait_for_job(jobs[0]["id"])
 
 
 @app.post("/chat", response_model=ChatResponse)
