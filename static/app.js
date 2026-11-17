@@ -257,6 +257,7 @@ const modelSelect = document.getElementById("modelSelect");
 const loadModelsBtn = document.getElementById("loadModelsBtn");
 const imageInput = document.getElementById("imageInput");
 const imageStatus = document.getElementById("imageStatus");
+const generateImageBtn = document.getElementById("generateImageBtn");
 const themeToggle = document.getElementById("themeToggle");
 const routeCostInput = document.getElementById("routeCost");
 const routeQualityInput = document.getElementById("routeQuality");
@@ -4469,6 +4470,366 @@ sendBtn.onclick = () => {
         sendMessage();
     }
 };
+
+// Local image generation (PLAN | DaveLLM | Image Harness Design Questions).
+const imageUi = {
+    dialog: document.getElementById("imageDialog"),
+    prompt: document.getElementById("imagePrompt"),
+    negative: document.getElementById("imageNegative"),
+    size: document.getElementById("imageSize"),
+    seed: document.getElementById("imageSeed"),
+    steps: document.getElementById("imageSteps"),
+    cfg: document.getElementById("imageCfg"),
+    sampler: document.getElementById("imageSampler"),
+    scheduler: document.getElementById("imageScheduler"),
+    behavior: document.getElementById("imageBehavior"),
+    approval: document.getElementById("imageApproval"),
+    save: document.getElementById("imageSave"),
+    review: document.getElementById("imageReview"),
+    reviewTitle: document.getElementById("imageReviewTitle"),
+    reviewText: document.getElementById("imageReviewText"),
+    structured: document.getElementById("imageStructured"),
+    approve: document.getElementById("imageApprove"),
+    keepOriginal: document.getElementById("imageKeepOriginal"),
+    hardware: document.getElementById("imageHardware"),
+    hardwareText: document.getElementById("imageHardwareText"),
+    hardwareAccept: document.getElementById("imageHardwareAccept"),
+    hardwareCancel: document.getElementById("imageHardwareCancel"),
+    enhance: document.getElementById("imageEnhanceBtn"),
+    generate: document.getElementById("imageGenerateBtn"),
+    status: document.getElementById("imageDialogStatus"),
+    frame: document.getElementById("imageResultFrame"),
+    meta: document.getElementById("imageResultMeta"),
+    quality: document.getElementById("imageQualityBtn"),
+    toChat: document.getElementById("imageToChatBtn"),
+    remove: document.getElementById("imageDeleteBtn"),
+    library: document.getElementById("imageLibrary"),
+    libraryMeta: document.getElementById("imageLibraryMeta"),
+    purge: document.getElementById("imagePurgeBtn"),
+};
+const IMAGE_MODE_KEY = "dave_image_modes";
+const imageState = { structured: null, enhanced: false, current: null, pending: null, objectUrls: [] };
+
+function imageSetStatus(text) { if (imageUi.status) imageUi.status.textContent = text || ""; }
+
+function imageLoadModes() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(IMAGE_MODE_KEY) || "{}");
+        if (["suggest", "review", "auto"].includes(saved.behavior)) imageUi.behavior.value = saved.behavior;
+        if (["always", "material", "none"].includes(saved.approval)) imageUi.approval.value = saved.approval;
+    } catch (_error) { /* defaults stay */ }
+}
+
+function imageSaveModes() {
+    localStorage.setItem(IMAGE_MODE_KEY, JSON.stringify({ behavior: imageUi.behavior.value, approval: imageUi.approval.value }));
+}
+
+function imageRequestBody(extra = {}) {
+    const [width, height] = imageUi.size.value.split("x").map(Number);
+    const body = {
+        prompt: imageUi.prompt.value.trim(),
+        negative_prompt: imageUi.negative.value.trim(),
+        width, height,
+        steps: Number(imageUi.steps.value) || 4,
+        cfg: Number(imageUi.cfg.value),
+        sampler: imageUi.sampler.value,
+        scheduler: imageUi.scheduler.value,
+        prompt_behavior: imageUi.behavior.value,
+        approval_mode: imageUi.approval.value,
+        save: imageUi.save.checked,
+        enhanced: imageState.enhanced,
+    };
+    if (imageUi.seed.value !== "") body.seed = Number(imageUi.seed.value);
+    if (imageState.structured !== null) body.structured_prompt = imageState.structured;
+    return { ...body, ...extra };
+}
+
+function imageHidePanels() {
+    imageUi.review.hidden = true;
+    imageUi.hardware.hidden = true;
+}
+
+function imageShowReview(title, message, structured) {
+    imageUi.reviewTitle.textContent = title;
+    imageUi.reviewText.textContent = message;
+    imageUi.structured.value = structured;
+    imageUi.review.hidden = false;
+    imageUi.approve.hidden = imageUi.behavior.value === "suggest";
+}
+
+function imageDescribe(result) {
+    const m = result.manifest || {};
+    const parts = [`${result.stage === "quality" ? "Quality pass" : "Draft"} ${result.width}×${result.height}`, `seed ${result.seed}`,
+        `${(result.duration_ms / 1000).toFixed(1)} s`];
+    if (m.reduced_from) parts.push("reduced settings (approved)");
+    parts.push(result.saved ? "saved locally" : "not saved");
+    return parts.join(" · ");
+}
+
+function imageShowResult(result) {
+    imageState.current = result;
+    imageUi.frame.replaceChildren();
+    const img = document.createElement("img");
+    img.src = result.image;
+    img.alt = `Generated image: ${(result.manifest && result.manifest.original_prompt) || "local image"}`;
+    imageUi.frame.appendChild(img);
+    imageUi.meta.textContent = imageDescribe(result);
+    imageUi.quality.disabled = !result.saved || result.stage === "quality";
+    imageUi.toChat.disabled = false;
+    imageUi.remove.disabled = !result.saved;
+}
+
+async function imageCall(path, options = {}) {
+    const response = await fetch(routerEndpoint(path), {
+        ...options,
+        headers: authHeaders({ "Content-Type": "application/json", ...(options.headers || {}) }),
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch (_error) { payload = null; }
+    return { response, payload };
+}
+
+function imageHandleBlocked(detail, retry) {
+    if (detail && detail.code === "hardware_limit") {
+        const p = detail.proposed || {};
+        const reduced = [`${p.width}×${p.height}`, `${p.steps} steps`];
+        if (p.quality_scale) reduced.push(`quality scale ${p.quality_scale}×`);
+        imageUi.hardwareText.textContent = `${detail.message} Proposed: ${reduced.join(", ")}.`;
+        imageUi.hardware.hidden = false;
+        imageState.pending = retry;
+        imageSetStatus("Waiting for your approval. Nothing was generated.");
+        return true;
+    }
+    if (detail && (detail.code === "review_required" || detail.code === "suggest_only")) {
+        imageShowReview(
+            detail.code === "suggest_only" ? "Suggestion only" : "Review before generating",
+            detail.message,
+            detail.prompt_for_model || imageState.structured || imageUi.prompt.value,
+        );
+        imageState.pending = retry;
+        imageSetStatus("Waiting for your review. Nothing was generated.");
+        return true;
+    }
+    return false;
+}
+
+async function imageGenerate(extra = {}) {
+    const body = imageRequestBody(extra);
+    if (!body.prompt) { imageSetStatus("Enter an image prompt first"); imageUi.prompt.focus(); return; }
+    imageHidePanels();
+    imageUi.generate.disabled = true;
+    imageSetStatus("Generating draft locally…");
+    try {
+        const { response, payload } = await imageCall("/image/generate", { method: "POST", body: JSON.stringify(body) });
+        const detail = payload && payload.detail;
+        if (!response.ok) {
+            if (imageHandleBlocked(detail, (more) => imageGenerate({ ...extra, ...more }))) return;
+            throw new Error(typeof detail === "string" ? detail : (detail && detail.message) || "Image generation failed");
+        }
+        imageShowResult(payload);
+        imageSetStatus("");
+        imageRefreshLibrary();
+    } catch (error) {
+        imageSetStatus(error.message);
+    } finally {
+        imageUi.generate.disabled = false;
+    }
+}
+
+async function imageQualityPass(extra = {}) {
+    const current = imageState.current;
+    if (!current || !current.id) return;
+    imageHidePanels();
+    imageUi.quality.disabled = true;
+    imageSetStatus("Running the quality pass on the same seed…");
+    try {
+        const body = { prompt_behavior: imageUi.behavior.value, approval_mode: imageUi.approval.value, save: imageUi.save.checked, ...extra };
+        const { response, payload } = await imageCall(`/image/${encodeURIComponent(current.id)}/quality`, { method: "POST", body: JSON.stringify(body) });
+        const detail = payload && payload.detail;
+        if (!response.ok) {
+            if (imageHandleBlocked(detail, (more) => imageQualityPass({ ...extra, ...more }))) return;
+            throw new Error(typeof detail === "string" ? detail : (detail && detail.message) || "Quality pass failed");
+        }
+        imageShowResult(payload);
+        imageSetStatus("");
+        imageRefreshLibrary();
+    } catch (error) {
+        imageSetStatus(error.message);
+        imageUi.quality.disabled = false;
+    }
+}
+
+async function imageEnhance() {
+    const prompt = imageUi.prompt.value.trim();
+    if (!prompt) { imageSetStatus("Enter an image prompt first"); return; }
+    imageUi.enhance.disabled = true;
+    imageSetStatus("Asking a local model for a clearer prompt…");
+    try {
+        const { response, payload } = await imageCall("/image/enhance", {
+            method: "POST", body: JSON.stringify({ prompt, prompt_behavior: imageUi.behavior.value }),
+        });
+        if (!response.ok) throw new Error((payload && payload.detail) || "Prompt enhancement failed");
+        imageState.enhanced = true;
+        if (!payload.usable_for_generation) {
+            imageShowReview("Suggestion", "Prompt behavior is 'Suggest only'. Copy anything you like into your prompt; the model receives only your wording.", payload.proposed);
+            imageSetStatus("");
+            return;
+        }
+        imageState.structured = payload.proposed;
+        if (imageUi.behavior.value === "auto" && imageUi.approval.value === "none") {
+            imageSetStatus("Rewrite applied automatically. Generate when ready.");
+            return;
+        }
+        imageShowReview(payload.material_change ? "Review the rewrite" : "Formatting only",
+            payload.material_change ? "This rewrite changes the wording. Edit it if needed, then approve." : "Only formatting changed.",
+            payload.proposed);
+        imageSetStatus("");
+    } catch (error) {
+        imageSetStatus(error.message);
+    } finally {
+        imageUi.enhance.disabled = false;
+    }
+}
+
+async function imageFetchBlobUrl(id) {
+    const response = await fetch(routerEndpoint(`/image/${encodeURIComponent(id)}/file`), { headers: authHeaders() });
+    if (!response.ok) throw new Error("Image unavailable");
+    const url = URL.createObjectURL(await response.blob());
+    imageState.objectUrls.push(url);
+    return url;
+}
+
+async function imageRefreshLibrary() {
+    if (!imageUi.library) return;
+    imageState.objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    imageState.objectUrls = [];
+    try {
+        const { response, payload } = await imageCall("/image/library");
+        if (!response.ok) throw new Error("Library unavailable");
+        const images = payload.images || [];
+        const storage = payload.storage || {};
+        imageUi.libraryMeta.textContent = `${images.length} saved · kept ${storage.retention_days ? `${storage.retention_days} days` : "until deleted"} · local disk`;
+        imageUi.purge.disabled = images.length === 0;
+        imageUi.library.replaceChildren();
+        for (const item of images.slice(0, 48)) {
+            const li = document.createElement("li");
+            const img = document.createElement("img");
+            img.alt = item.original_prompt || "Saved image";
+            img.title = item.original_prompt || "";
+            img.addEventListener("click", async () => {
+                imageShowResult({
+                    id: item.id, saved: true, image: img.src, seed: item.seed, stage: item.stage,
+                    width: item.output?.width, height: item.output?.height, duration_ms: item.duration_ms || 0, manifest: item,
+                });
+            });
+            imageFetchBlobUrl(item.id).then((url) => { img.src = url; }).catch(() => { img.alt = "Unavailable"; });
+            const row = document.createElement("div");
+            row.className = "image-library-row";
+            const label = document.createElement("span");
+            label.textContent = `${item.stage === "quality" ? "Q" : "D"} · ${item.seed}`;
+            const del = document.createElement("button");
+            del.type = "button";
+            del.textContent = "Delete";
+            del.setAttribute("aria-label", `Delete image ${item.id}`);
+            del.addEventListener("click", () => imageDelete(item.id));
+            row.append(label, del);
+            li.append(img, row);
+            imageUi.library.appendChild(li);
+        }
+    } catch (error) {
+        imageUi.libraryMeta.textContent = error.message;
+    }
+}
+
+async function imageDelete(id) {
+    const { response } = await imageCall(`/image/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!response.ok) { imageSetStatus("Delete failed"); return; }
+    if (imageState.current && imageState.current.id === id) {
+        imageState.current = null;
+        imageUi.frame.replaceChildren(Object.assign(document.createElement("span"), { textContent: "Deleted" }));
+        imageUi.meta.textContent = "";
+        imageUi.quality.disabled = imageUi.remove.disabled = imageUi.toChat.disabled = true;
+    }
+    imageSetStatus("Image and its record deleted from disk.");
+    imageRefreshLibrary();
+}
+
+async function imagePurge() {
+    if (!window.confirm("Delete every saved image and its prompt record from this machine? This cannot be undone.")) return;
+    const { response, payload } = await imageCall("/image/purge", { method: "POST", body: JSON.stringify({ confirm: "DELETE ALL IMAGES" }) });
+    imageSetStatus(response.ok ? `Deleted ${payload.deleted} images.` : "Purge failed");
+    imageRefreshLibrary();
+}
+
+async function imageAddToChat() {
+    const current = imageState.current;
+    if (!current) return;
+    let convo = currentConversation();
+    if (!convo) {
+        await createNewConversation();
+        convo = currentConversation();
+    }
+    let content = current.image;
+    if (content.startsWith("blob:")) {
+        const blob = await (await fetch(content)).blob();
+        content = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+        });
+    }
+    convo.messages.push({ role: "assistant", type: "image", content, timestamp: Date.now() });
+    state.autoScroll = true;
+    renderMessages();
+    if (imageStatus) imageStatus.textContent = `Generated locally · seed ${current.seed}`;
+}
+
+function openImageDialog() {
+    if (!imageUi.dialog) return;
+    const composerText = promptInput.value.trim();
+    if (composerText && !imageUi.prompt.value.trim()) imageUi.prompt.value = composerText;
+    imageLoadModes();
+    imageHidePanels();
+    if (!imageUi.dialog.open) imageUi.dialog.showModal();
+    imageRefreshLibrary();
+    imageUi.prompt.focus();
+}
+
+generateImageBtn?.addEventListener("click", openImageDialog);
+imageUi.generate?.addEventListener("click", () => imageGenerate());
+imageUi.enhance?.addEventListener("click", imageEnhance);
+imageUi.quality?.addEventListener("click", () => imageQualityPass());
+imageUi.toChat?.addEventListener("click", imageAddToChat);
+imageUi.remove?.addEventListener("click", () => imageState.current && imageDelete(imageState.current.id));
+imageUi.purge?.addEventListener("click", imagePurge);
+imageUi.behavior?.addEventListener("change", imageSaveModes);
+imageUi.approval?.addEventListener("change", imageSaveModes);
+imageUi.prompt?.addEventListener("input", () => { imageState.structured = null; imageState.enhanced = false; });
+imageUi.approve?.addEventListener("click", () => {
+    imageState.structured = imageUi.structured.value.trim() || null;
+    const retry = imageState.pending;
+    imageState.pending = null;
+    imageUi.review.hidden = true;
+    if (retry) retry({ approved: true, structured_prompt: imageState.structured || undefined });
+    else imageGenerate({ approved: true });
+});
+imageUi.keepOriginal?.addEventListener("click", () => {
+    imageState.structured = null;
+    imageState.pending = null;
+    imageUi.review.hidden = true;
+    imageSetStatus("Using your original wording.");
+});
+imageUi.hardwareAccept?.addEventListener("click", () => {
+    const retry = imageState.pending;
+    imageState.pending = null;
+    imageUi.hardware.hidden = true;
+    if (retry) retry({ accept_reduction: true });
+});
+imageUi.hardwareCancel?.addEventListener("click", () => {
+    imageState.pending = null;
+    imageUi.hardware.hidden = true;
+    imageSetStatus("Cancelled. Nothing was generated.");
+});
 
 refreshNodesBtn.onclick = fetchNodes;
 newConvoBtn.onclick = createNewConversation;

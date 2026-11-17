@@ -11,6 +11,8 @@ DaveLLM is a FastAPI router with an Electron and browser UI for authenticated ch
 - `daveharness/`: headless in-process `1.0.0-rc.1` library for typed leaf contracts, versioned serialization, policy, budgets, registry, schema validation, timing, exact-call approval/resume, and bounded executor loop
 - DaveHarness `0.2.0` was the execution-semantics milestone; `0.3.0` added the internal module split and leaf-contract envelope; `0.4.0` added policy, fingerprints, and budgets; `0.5.0` adds snapshot and exact decision operations without changing DaveLLM endpoints. `0.6.0` adds opt-in cooperative cancellation and absolute deadlines; `0.7.0` adds metadata-only ordered events; `0.8.0` adds a bounded store and instance-owned facade; `0.9.0` integrates the DaveLLM lifecycle and frozen BRAIN run context.
 - `davellm_ollama.py`: native Ollama `POST /api/chat` transport for plain chat (payload, per-message images, NDJSON parsing, metrics) and, through `ollama_chat_bounded`, for the tool loop
+- `davellm_comfy.py`: bounded loopback ComfyUI client for authenticated SDXL Turbo image generation (draft and optional quality pass)
+- `davellm_image_store.py`: local-disk image store under `DAVE_IMAGE_DIR` (default `<DAVE_DATA_DIR>/images`) with provenance manifests, per-image delete, purge-all and retention; nothing leaves the serving host
 - `tool_executor.py`: compatibility re-export for legacy imports; do not add implementation here
 - `VERSION`: canonical DaveLLM Semantic Version mirrored into package metadata and runtime output
 - `static/`: runtime HTML, CSS, JavaScript, monitoring, favicon
@@ -103,7 +105,7 @@ GitHub Actions runs these checks on every push to `main` and every pull request 
 Required checks after relevant changes:
 
 ```bash
-python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_contained_io.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py davellm_ollama.py davellm_web.py davellm_public_http.py davellm_node_profiles.py davellm_run_context.py davellm_notion.py davellm_toolpack.py davellm_toolpack_catalog.py davellm_toolpack_cluster.py davellm_toolpack_http.py davellm_toolpack_jobs.py davellm_toolpack_local.py davellm_toolpack_notion.py davellm_toolpack_runner.py scripts/tool_job_runner.py scripts/project_context_cli.py tool_executor.py
+python -m py_compile app.py project_context.py davellm_shell.py davellm_files.py davellm_contained_io.py davellm_markdown.py davellm_git.py davellm_native_tools.py davellm_edit.py davellm_ollama.py davellm_comfy.py davellm_image_store.py davellm_image_policy.py davellm_web.py davellm_public_http.py davellm_node_profiles.py davellm_run_context.py davellm_notion.py davellm_toolpack.py davellm_toolpack_catalog.py davellm_toolpack_cluster.py davellm_toolpack_http.py davellm_toolpack_jobs.py davellm_toolpack_local.py davellm_toolpack_notion.py davellm_toolpack_runner.py scripts/tool_job_runner.py scripts/project_context_cli.py tool_executor.py
 python -m compileall -q daveharness
 python -m mypy daveharness
 python -m pytest -q

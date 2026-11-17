@@ -121,6 +121,37 @@ While a streamed reply is still silent, the chat shows what the model is doing: 
 
 The repository intentionally contains no real node addresses or verified model inventory. Cluster reachability and installed models remain runtime-dependent.
 
+## Local image generation
+
+DaveLLM generates images through a separately managed ComfyUI service (SDXL Turbo on Walter). The **Generate** button opens the image dialog, which follows the design record *PLAN | DaveLLM | Image Harness Design Questions*:
+
+- **Draft first, optional quality pass.** A draft runs at the requested size; **Quality pass** reruns the same seed and settings, upscales the latent 1.5x and refines it at 0.45 denoise.
+- **Standard controls** (prompt, negative prompt, size, seed) with **Advanced** (steps, CFG, sampler, scheduler, prompt behavior, approvals).
+- **Enhance prompt is opt-in.** It asks a local Ollama model for a rewrite that keeps subject, intent and constraints, and never generates by itself.
+- **Review rules.** Prompt behavior `suggest` | `review` (default) | `auto`; approvals `always` | `material` (default) | `none`. The stricter setting wins: a material rewrite skips review only with `auto` + `none`, and `suggest` never sends a rewrite to the model.
+- **Hardware limits.** Requests above the validated envelope return `409 hardware_limit` with a reduced preset and generate nothing until the user accepts it.
+
+Routes (all require `X-API-Key`): `GET /image/status`, `POST /image/enhance`, `POST /image/generate`, `POST /image/{id}/quality`, `GET /image/library`, `GET /image/{id}/file`, `GET /image/{id}/manifest`, `DELETE /image/{id}`, `POST /image/purge` (body `{"confirm": "DELETE ALL IMAGES"}`).
+
+Configuration:
+
+```bash
+export DAVE_COMFY_URL='http://127.0.0.1:8188'
+export DAVE_COMFY_CHECKPOINT='sd_xl_turbo_1.0_fp16.safetensors'
+export DAVE_IMAGE_DIR="$DAVE_DATA_DIR/images"   # default; local disk only
+export DAVE_IMAGE_RETENTION_DAYS=90             # 0 keeps images until deleted
+export DAVE_IMAGE_MAX_PIXELS=1048576            # validated draft envelope
+export DAVE_IMAGE_MAX_QUALITY_PIXELS=2359296    # validated quality-pass envelope
+```
+
+**Storage.** Each saved image is `<id>.png` plus a `<id>.json` manifest (original and structured prompt, negative prompt, seed, settings, checkpoint, workflow and ComfyUI version, UTC time, duration, hash). Nothing is uploaded. Untick **Save to the local image library** to keep nothing. The workflow ends in ComfyUI's `PreviewImage` node, so ComfyUI keeps only a temporary copy that it clears on restart, and DaveLLM's delete and purge are authoritative. Generated images are not written into conversation JSON.
+
+**Check.** `python scripts/check_image_generation.py --stub --out /tmp/imagecheck` runs the full contract (draft, determinism, quality pass, limits, review, delete, retention, purge) against `scripts/fake_comfyui.py`; on the GPU host run it with `--comfy-url http://127.0.0.1:8188 --out benchmarks/imagegen-<date>` instead. Both use a throwaway data directory.
+
+ComfyUI is not started or exposed by DaveLLM. Keep it bound to loopback unless a separately reviewed network boundary is required.
+
+Walter's local launcher is `scripts/windows/launch-davellm.ps1`. It starts the loopback-only portable ComfyUI service when needed, creates a fresh in-memory API key, points DaveLLM at its repo-local Python environment, stores runtime data under `%LOCALAPPDATA%\DaveLLM\data`, and starts Electron. It does not store the key or create a startup task.
+
 ### When no models load
 
 `GET /nodes/{node_id}/models` and `GET /nodes/status` both return an `error` field so an empty inventory explains itself instead of looking like an empty cluster:

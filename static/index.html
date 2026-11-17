@@ -201,6 +201,7 @@
                     <div id="attachmentTools" class="tool-row">
                         <label for="imageInput" class="image-upload-btn"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#image"></use></svg>Image</label>
                         <input id="imageInput" type="file" accept="image/*" hidden />
+                        <button id="generateImageBtn" class="composer-tool-btn" type="button" title="Generate an image on the local GPU host" aria-haspopup="dialog"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#image"></use></svg>Generate</button>
                         <label for="audioInput" class="image-upload-btn"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#file-audio"></use></svg>Audio</label>
                         <input id="audioInput" type="file" accept="audio/*" hidden />
                         <button id="transcribeBtn" class="composer-tool-btn" title="Transcribe audio file to text"><svg class="inline-icon" aria-hidden="true"><use href="vendor/lucide/lucide.svg#captions"></use></svg>Transcribe</button>
@@ -499,6 +500,71 @@
 <dialog id="runtimeDialog" class="sheet"><div class="section-heading"><h2>Send to</h2><button data-close-dialog="runtimeDialog">Done</button></div><div id="runtimeSelectors"></div><p>Applies to your next message. Earlier replies keep their original content.</p></dialog>
 <dialog id="projectPickerDialog" class="sheet"><div class="section-heading"><h2>Project for this chat</h2><button data-close-dialog="projectPickerDialog">Done</button></div><select id="chatProjectPicker" aria-label="Attach project to chat"></select><p>Changes the instructions and context for future messages only.</p><div id="chatProjectStatus" role="status"></div><button id="applyChatProject" class="primary">Apply project</button></dialog>
 <dialog id="templateDialog" class="sheet"><div class="section-heading"><h2>Starting mode</h2><button data-close-dialog="templateDialog">Done</button></div><div id="templateControls"></div></dialog>
+<dialog id="imageDialog" class="image-dialog" aria-labelledby="imageDialogHeading">
+    <div class="section-heading"><h2 id="imageDialogHeading">Generate image</h2><button type="button" data-close-dialog="imageDialog">Done</button></div>
+    <p class="image-note">Runs on the local image host. Saved images stay on that machine's disk; nothing is uploaded.</p>
+    <div class="image-layout">
+    <div class="image-controls">
+    <label for="imagePrompt">Prompt</label>
+    <textarea id="imagePrompt" rows="3" maxlength="4000"></textarea>
+    <div class="image-row">
+    <label>Size <select id="imageSize">
+        <option value="768x768" selected>768 × 768 (square)</option>
+        <option value="1024x1024">1024 × 1024 (square)</option>
+        <option value="1024x576">1024 × 576 (16:9)</option>
+        <option value="576x1024">576 × 1024 (9:16)</option>
+        <option value="896x640">896 × 640 (7:5)</option>
+        <option value="512x512">512 × 512 (fast)</option>
+    </select></label>
+    <label>Seed <input id="imageSeed" type="number" min="0" placeholder="random"></label>
+    </div>
+    <label for="imageNegative">Negative prompt (exclusions)</label>
+    <input id="imageNegative" type="text" maxlength="2000" placeholder="e.g. text, watermark">
+    <details id="imageAdvanced"><summary>Advanced</summary>
+    <div class="image-row">
+    <label>Steps <input id="imageSteps" type="number" min="1" max="50" value="4"></label>
+    <label>CFG <input id="imageCfg" type="number" min="0" max="10" step="0.5" value="1"></label>
+    </div>
+    <div class="image-row">
+    <label>Sampler <select id="imageSampler"><option>euler</option><option>euler_ancestral</option><option>dpmpp_2m</option><option>dpmpp_sde</option></select></label>
+    <label>Scheduler <select id="imageScheduler"><option>simple</option><option>normal</option><option>karras</option><option>sgm_uniform</option></select></label>
+    </div>
+    <div class="image-row">
+    <label>Prompt behavior <select id="imageBehavior"><option value="suggest">Suggest only</option><option value="review" selected>Rewrite, then review</option><option value="auto">Rewrite automatically</option></select></label>
+    <label>Approvals <select id="imageApproval"><option value="always">Always review</option><option value="material" selected>Review material changes</option><option value="none">No review</option></select></label>
+    </div>
+    </details>
+    <label class="image-check"><input id="imageSave" type="checkbox" checked> Save to the local image library</label>
+    <div id="imageReview" class="image-review" hidden>
+    <strong id="imageReviewTitle">Review the rewrite</strong>
+    <p id="imageReviewText"></p>
+    <textarea id="imageStructured" rows="3" maxlength="4000" aria-label="Prompt sent to the image model"></textarea>
+    <div class="dialog-actions"><button type="button" id="imageKeepOriginal">Keep my wording</button><button type="button" id="imageApprove" class="primary">Approve and generate</button></div>
+    </div>
+    <div id="imageHardware" class="image-review" hidden>
+    <strong>Above this machine's validated limits</strong>
+    <p id="imageHardwareText"></p>
+    <div class="dialog-actions"><button type="button" id="imageHardwareCancel">Cancel</button><button type="button" id="imageHardwareAccept" class="primary">Use reduced settings</button></div>
+    </div>
+    <div class="dialog-actions">
+    <button type="button" id="imageEnhanceBtn">Enhance prompt</button>
+    <button type="button" id="imageGenerateBtn" class="primary">Generate draft</button>
+    </div>
+    <div id="imageDialogStatus" class="dialog-status" role="status" aria-live="polite"></div>
+    </div>
+    <div class="image-result">
+    <div id="imageResultFrame" class="image-result-frame"><span>No image yet</span></div>
+    <div id="imageResultMeta" class="dialog-status"></div>
+    <div class="dialog-actions image-result-actions">
+    <button type="button" id="imageQualityBtn" disabled>Quality pass</button>
+    <button type="button" id="imageToChatBtn" disabled>Add to chat</button>
+    <button type="button" id="imageDeleteBtn" disabled>Delete</button>
+    </div>
+    </div>
+    </div>
+    <div class="section-heading image-library-heading"><h3>Library</h3><span id="imageLibraryMeta" class="dialog-status"></span><button type="button" id="imagePurgeBtn">Delete all</button></div>
+    <ul id="imageLibrary" class="image-library"></ul>
+</dialog>
 <dialog id="credentialDialog" class="sheet">
     <form method="dialog">
     <h2>Connect to DaveLLM</h2>
