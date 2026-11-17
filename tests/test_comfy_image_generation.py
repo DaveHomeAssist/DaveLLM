@@ -288,6 +288,26 @@ def test_enhance_uses_local_model_and_never_generates(image_router, monkeypatch)
     assert suggest.json()["usable_for_generation"] is False
 
 
+def test_enhance_model_setting_is_honored(router_factory, monkeypatch, fake_comfy):
+    monkeypatch.setenv("DAVE_COMFY_URL", fake_comfy.url)
+    monkeypatch.setenv("DAVE_IMAGE_ENHANCE_MODEL", "llama3:latest")
+    router, client, _data_dir = router_factory()
+    node_id = router.NODE_CONFIGS[0].id
+
+    class Result:
+        content = "a red bicycle, golden hour"
+
+    seen = []
+    monkeypatch.setattr(router, "ollama_chat", lambda url, model, messages, **_kw: seen.append(model) or Result())
+    router.MODEL_INVENTORY[node_id] = {"gpt-oss:20b", "llama3:latest"}
+    assert client.post("/image/enhance", headers=AUTH, json={"prompt": "a red bicycle"}).json()["model"] == "llama3:latest"
+    assert client.post("/image/enhance", headers=AUTH, json={"prompt": "x", "model": "gpt-oss:20b"}).json()["model"] == "gpt-oss:20b"
+    router.MODEL_INVENTORY[node_id] = {"gpt-oss:20b"}
+    missing = client.post("/image/enhance", headers=AUTH, json={"prompt": "x"})
+    assert missing.status_code == 503 and "llama3:latest" in missing.json()["detail"]
+    assert seen == ["llama3:latest", "gpt-oss:20b"]
+
+
 def test_enhance_without_a_model_is_explicit(image_router):
     router, client, _data_dir, _fake = image_router
     router.MODEL_INVENTORY.clear()

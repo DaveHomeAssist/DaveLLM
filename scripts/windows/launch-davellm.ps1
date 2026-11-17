@@ -44,6 +44,8 @@ $env:DAVE_API_KEY = [Convert]::ToHexString($secretBytes).ToLowerInvariant()
 $env:DAVE_DATA_DIR = $dataDir
 $env:DAVE_COMFY_URL = $comfyUrl
 $env:DAVE_COMFY_CHECKPOINT = 'sd_xl_turbo_1.0_fp16.safetensors'
+# Keep Enhance prompt on a model small enough to share the 8 GB GPU with ComfyUI.
+if (-not $env:DAVE_IMAGE_ENHANCE_MODEL) { $env:DAVE_IMAGE_ENHANCE_MODEL = 'llama3:latest' }
 $env:DAVE_PYTHON = $davePython
 $env:PYTHONIOENCODING = 'utf-8'
 
