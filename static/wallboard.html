@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'">
+  <title>DaveLLM Operations</title><link rel="stylesheet" href="wallboard.css">
+  <script src="on-call.js" defer></script><script src="wallboard.js" defer></script>
+</head>
+<body>
+<header><h1>DaveLLM <span>Operations</span></h1><nav aria-label="Display controls">
+  <button id="theme" type="button">Dark theme</button><button id="refresh" type="button">Refresh now</button>
+  <button id="endpoints" type="button" aria-pressed="false">Show endpoints</button>
+  <button id="historyToggle" type="button" aria-expanded="false">History</button>
+</nav></header>
+<main>
+  <section class="headline" aria-label="Overall status"><strong id="onCallState" class="oncall-state">Waiting</strong><p id="onCallFreshness">No check received</p></section>
+  <p id="source" role="status">Waiting for local status source.</p>
+  <section id="onCallTargets" aria-label="Monitored targets"></section>
+  <section class="summary" aria-live="polite"><p id="onCallSummary">No check received.</p><p id="onCallRecovery" hidden></p></section>
+  <section class="timeline" aria-label="Last 24 checks"><h2>Recent checks</h2><div id="onCallHistory"></div></section>
+  <section id="historyPanel" hidden aria-label="Seven day history"><h2>Recorded history</h2><ol id="historyRows"></ol></section>
+</main>
+<footer>Read only <span>Hourly checks, with freshness measured from the recorded check time</span></footer>
+</body></html>
