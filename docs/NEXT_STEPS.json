@@ -6,9 +6,9 @@
     "DaveHomeAssist/DaveLLM"
   ],
   "head": "Stateless command verified; merged Git FIFO fix integrated from main",
-  "lastActivity": "2026-10-28",
+  "lastActivity": "2026-10-30",
   "status": "amber",
-  "statusReason": "The macOS backend is now separated from Electron behind the per-user com.davellm.backend LaunchAgent. Installed checks on October 17 confirmed HTTP 200 status ok after UI close, automatic recovery after terminating the known service-owned Uvicorn process, and intentional stop followed by launcher recovery. Login-cycle persistence remains untested. Existing tool, model-quality, provider/helper, physical/operator and H9 gates remain separate; T10/T11 remain FAIL and their pilot budget remains spent. October 28: DL-CLI-01 adds a local stateless command client; the installed command passed twice through the existing router and selected GPU node. This does not close the separate tool, wallboard, persistence or H9 gates. The earlier PR #104 FIFO failure is historical. The narrow fix from merged PR #103 is integrated, with 37 targeted checks passing; exact-head protected checks and PR #104 own source-delivery confirmation. Installed command acceptance remains separate.",
+  "statusReason": "Wallboard source slices are implemented and verified on Dominic. Server staging passes 38 focused Python tests, actual staged-server browser smoke and systemd unit validation. Candidate CI, merge, installation, physical display and human acceptance are separate.",
   "evidence": {
     "toolsSourceReconciliation20261018": {
       "checkedOn": "2026-10-18",
@@ -503,6 +503,13 @@
       ],
       "deliveryRecord": "https://github.com/DaveHomeAssist/DaveLLM/pull/104",
       "limits": "Source repair and integration only. No service, network, configuration, dependency, model, installed-client or running-router change. Earlier failed runs remain historical evidence; no tests are weakened or disabled."
+    },
+    "wallboardSliceA20261030": {
+      "sourceBase": "c527059a2319393cdea1de784c0e42622fbab7a2",
+      "branch": "codex/wallboard-source-sprint-1030",
+      "host": "Dominic",
+      "verification": "Python3.12: 12 projection checks pass; Node24.17: 10 DOM/console checks pass; Playwright1.61.1: six viewports, light/dark reload, malformed/missing data, outage retention and 75/120-minute freshness pass. Compact screenshot inspected.",
+      "limits": "No runtime service, publisher, display activation, merge, deployment, inference or hardware output. Physical and human acceptance remain open."
     }
   },
   "shipped": [
@@ -517,12 +524,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Build the first Dominic wallboard slice",
-    "why": "Dominic has a confirmed attached 4K panel but no active desktop or kiosk runtime. The existing on-call snapshot is already the authoritative source and can drive a read-only display without placing the DaveLLM API key on Dominic.",
-    "doneWhen": "The shared renderer and safe display projection pass source tests, Dominic boots into the loopback-only wallboard, stale data cannot appear healthy, and one hourly-style record appears on both Cluster and the physical screen with matching values.",
+    "title": "Qualify kiosk installation prerequisites when activation is authorized",
+    "why": "Projection, publisher, server and staging source are implemented. The installation plan now identifies browser packaging, capacity, login/session ownership and rollback gates.",
+    "doneWhen": "An authorized installation session qualifies runtime and capacity, installs without disturbing existing services, and records separate physical and operator acceptance.",
     "effort": "M",
-    "owner": "codex",
-    "blockedBy": "Implementation and installed-service mutation have not started; physical EDID, effective scale, boot path and performance acceptance remain to be measured on Dominic."
+    "owner": "Dave and installation owner",
+    "blockedBy": "Deployment and hardware output excluded. Target has no Cage/browser runtime; Chromium uses Snap; installation capacity and dedicated-session compatibility are unverified."
   },
   "findings": [
     {
@@ -1390,5 +1397,21 @@
     "scope": "Electron 44.0.0 to 44.9.1 and optional transitive undici 7.30.0 to 7.30.1; no other packages changed.",
     "evidence": "Clean install and npm audit: zero vulnerabilities. 36 JavaScript tests and Chromium workspace fixture pass. Unmodified Electron navigation fixture passes 24 cases under Xvfb with software rendering and 256 MiB shared memory; default virtual GPU runs stalled. No inference or production service changes.",
     "nextAction": "Collect exact updated PR CI. No merge, deployment or installed application acceptance is authorized by this repair."
+  },
+  "wallboardPublisher1030": {
+    "branch": "codex/wallboard-publisher-1030",
+    "base": "63f4d1ee4d6ee4dfe34a0732d7ffbb8fe17a25fb",
+    "scope": "Publisher and atomic receiver source only; no real publication or installation.",
+    "verification": "Dominic: 24 focused projection and publisher tests pass, including real receiver subprocess, interrupted writes, symlink refusal, timeout/retry and lost acknowledgement. Full repository CI remains separate.",
+    "delivery": "Source candidate prepared for stacked PR; branch push and CI verified separately.",
+    "next": "Prepare service and installer source fixtures without activating services."
+  },
+  "wallboardService1030": {
+    "branch": "codex/wallboard-server-1030",
+    "base": "79b7bd3aa40a9de294019e848c109f3a445a387d",
+    "scope": "Loopback HTTP service and inert hash-verified bundle source. No service installation or activation.",
+    "verification": "Dominic: 38 projection/publisher/HTTP/staging tests; real staged Python service browser smoke; systemd user unit syntax pass. Full repository CI separate.",
+    "delivery": "Prepared stacked source candidate; push and PR evidence maintained separately.",
+    "next": "Installation plan recorded. Runtime, capacity, deployment and physical acceptance gates remain; continue other eligible source work."
   }
 }

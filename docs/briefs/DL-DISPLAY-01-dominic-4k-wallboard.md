@@ -258,3 +258,54 @@ Each later source must define its own timestamp, refresh interval, stale thresho
 ## Evidence boundaries
 
 This brief is a proposed build contract, not implementation approval or evidence that Dominic's display is configured. Source tests will not prove the physical panel, boot path, effective scale, operator readability, or inference coexistence. Those remain installed and human-acceptance gates.
+
+## Slice A source receipt, October 30, 2026
+
+Implemented the shared Cluster and display renderer, standalone wallboard shell, and a bounded projection exporter. Free-form summaries and recovery commands are replaced with fixed display text; endpoint credentials, query strings, invalid states, non-finite metrics and inconsistent healthy results are refused. Invalid input preserves the existing destination.
+
+Dominic passed 12 Python projection checks, ten DOM/console checks and browser fixtures at six viewports, including 4K, ultrawide and compact 320 by 256. Theme persistence, missing and malformed input, outage retention and delayed/stale boundaries passed. The compact screenshot was inspected. Required PR CI and source review remain separate.
+
+Export with `python scripts/export_wallboard_status.py SOURCE_JSON OUTPUT_JSON` using explicit local paths. This command writes a local projection only. Publisher, service installer, physical display activation, startup, resource coexistence and human acceptance remain open. No runtime or service was changed in this slice.
+
+
+## Slice B publisher source, October 30, 2026
+
+The bounded publisher accepts a recorder file, validates it through the existing projection exporter, and transfers only the sanitized projection. It invokes the existing SSH alias with BatchMode and strict host key checking, a five-second connection bound and a fifteen-second attempt bound. One retry sends identical bytes. Remote error text and payload bodies are never printed.
+
+The receiver requires an existing private directory owned by the remote user. It rejects symlink destinations, verifies the transferred digest, writes a unique sibling temporary file, flushes it, checks owner and exact readback, then atomically replaces the destination. It installs no server, service, account, timer or display runtime.
+
+After separately authorized installation and publication, the CLI is `python scripts/publish_wallboard_status.py SOURCE_JSON --host DOCUMENTED_ALIAS --destination ABSOLUTE_STATUS_PATH`. This sprint runs only synthetic transport and isolated temporary-directory fixtures. No actual wallboard publication is authorized or performed.
+
+Results are `success`, `invalid`, `refused` or `unavailable`. Success proves the receiver acknowledged an atomic file update, not that a screen changed. Invalid input and failures before replacement preserve the previous file. A timeout after remote replacement can lose the acknowledgement: `unavailable` therefore means activation is unconfirmed, rather than proving the old file remained. Retrying identical bytes is idempotent; the lost-acknowledgement regression covers this boundary explicitly. A later installed verifier must read the destination before resolving an ambiguous result.
+
+Service/kiosk templates, installer selection, activation and installed or human acceptance remain open. Source preparation can continue independently of the queued candidate CI.
+
+Dominic source verification: all 24 projection and publisher tests pass with Python 3.12 in an isolated container. The fixture invokes the real receiver as a subprocess against disposable files; it does not contact a publication host. Required repository CI remains separate.
+
+
+## Loopback service preparation scope
+
+Prepare an allowlisted read-only HTTP server and a staged user-service bundle. The server binds IPv4 loopback only, exposes exactly the four wallboard assets plus the sanitized status projection, disables caching and rejects directory, symlink and traversal requests. Missing or invalid status must fail without serving raw operational input. The stager writes only to a new explicit directory, records content hashes, and refuses existing destinations. It never installs, enables or starts a service. Test real loopback HTTP and staged bundle verification in an isolated runner container. Kiosk runtime/account selection and real installation remain separate from these source fixtures.
+
+## Loopback service source receipt, October 30, 2026
+
+The stdlib server serves only the four display assets and a revalidated projection on IPv4 loopback, port 8766 by default. It accepts only localhost or 127.0.0.1 Host headers for its bound port. Exact original request targets prevent HTTP parser normalization from widening the route allowlist. Reads are limited to regular, non-symlink files below 1 MiB; unknown routes, write methods, invalid status and unexpected Host headers are refused. Responses disable caching and carry a restrictive content security policy. Publication time is preserved, never refreshed by a read.
+
+`python3 scripts/stage_wallboard.py /tmp/davellm-wallboard-bundle` creates a new private staging directory and verifies SHA-256 hashes for the eight bundled files. The destination must not already exist. `python3 scripts/stage_wallboard.py /tmp/davellm-wallboard-bundle --verify` checks its contents again without modifying it. Staging is preparation only. The bundle includes a user service template, but the command neither copies that template into a service directory nor invokes systemctl.
+
+The template expects reviewed assets in the service owner's `.local/share/davellm-wallboard` directory and the publisher's private status file in `.local/state/davellm-wallboard/status.json`. The future display account reads HTTP only; it needs no direct access to the status file or publisher credentials. This refines the earlier proposed direct-file access and system-service design. Login persistence, account selection and the kiosk supervisor still require an installation plan. A future operator can stop an authorized installation with `systemctl --user stop davellm-wallboard.service`; this sprint does not run it or any enable/start/reload command.
+
+Dominic passed all 38 projection, publisher, HTTP and staging fixtures with Python 3.12, plus the real staged-server Chromium smoke check for rendering, CSP, theme switching, invalid-source warnings and zero external requests. `systemd-analyze --user verify` passed for the template without activation. The browser runs headlessly in an isolated container. No installed service, boot behavior, physical output, resource coexistence or human acceptance is claimed. Repository CI remains a separate delivery gate.
+
+## Kiosk installation plan, October 30, 2026
+
+Source preparation is ready for review. Actual installation is excluded from the current sprint. The next authorized installation session must resolve the following gates before changing accounts, packages, login configuration, units or display ownership.
+
+1. **Runtime:** prefer the distribution's Cage package with a supported Chromium browser using native Wayland. [Ubuntu Noble packages Cage](https://packages.ubuntu.com/noble/cage); its current target-host candidate is `0.1.5+20240127-2build1`. The target's `chromium-browser` package is a transitional package for Chromium Snap, not a standalone browser binary. Qualify Snap confinement, browser update policy and required interfaces against the dedicated session before selecting the final launcher. Do not substitute the test container's browser as an installed runtime.
+2. **Capacity:** refresh package metadata and obtain package plus browser/base-snap download and installed-size estimates only in the installation session. Reserve room for updates and rollback as well as the initial install. Current target capacity is insufficiently qualified for this operation; no files or packages have been removed to make room. A simulated Cage dependency resolution establishes availability only, not installation success or browser compatibility.
+3. **Accounts and boot:** keep the publisher-owned status private. Run its loopback user service under the same owner, then give the dedicated non-sudo kiosk account HTTP access only. Verify that the owner user manager starts at boot; existing linger state alone does not establish service startup. Preserve existing accounts, SSH access, services and credential boundaries.
+4. **Display session:** [Cage's systemd boot guide](https://github.com/cage-kiosk/cage/wiki/Starting-Cage-on-boot-with-systemd) requires a logind session and virtual-terminal ownership. Adapt it only after inspecting the target seat and console owner. Its example replaces a getty and changes display-manager ownership, so copying it blindly could disrupt access. Do not enable it, alter PAM, switch a terminal or change the default target during source preparation. Kiosk supervision remains a distinct system-level component from the loopback user service.
+5. **Installation and rollback:** capture exact package versions, selected unit names, account ownership, file hashes and prior enabled/active states. Stage and verify the bundle first. Refuse an existing unowned destination; preserve the previous verified bundle and status separately. After authorization, install the server first, verify loopback-only serving and refusal behavior, and activate the kiosk only after the server is accepted. Stop only the new named kiosk unit, then the named wallboard user unit if rollback is required; restore captured files and enabled states. Never stop unrelated graphical or monitoring services as a shortcut.
+6. **Acceptance:** separately verify fresh/missing/stale/outage display behavior, effective 4K scale, theme persistence, exit and restart controls, boot, browser crash, display sleep/wake, service resource budgets and operator readability. Retain the prior snapshot throughout failures. Do not attach hourly publication until these installed checks pass. Source fixtures do not close any physical or human gate.
+
+Read-only target inspection found no Cage or browser executable, no active display manager or graphical user session, and no installed acceptance evidence. The safe next action is installation preflight under explicit deployment and hardware-output authority, with browser distribution and capacity resolved first. Until then, continue other eligible project source work.
