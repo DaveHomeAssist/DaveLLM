@@ -524,12 +524,12 @@
     "PR #57 (opened 2026-10-05): chat UI fixes (rename persistence, markdown renderer, streaming scroll, one reply at a time, working indicator, hover-stable sidebar) plus unread dot, sort and compact view; browser-verified on a stubbed node, Electron acceptance pending"
   ],
   "nextStep": {
-    "title": "Review wallboard source, then prepare bounded publication",
-    "why": "Slice A source verification passed; review and required CI precede any merge. Publication and installer remain separate from display activation.",
-    "doneWhen": "Source review and required checks pass; publication is fixture-tested before separately authorized installation and physical acceptance.",
+    "title": "Prepare wallboard service and installer source fixtures",
+    "why": "Projection, wallboard and bounded publisher source are implemented. Publisher installation and display activation remain separate.",
+    "doneWhen": "Service and installer definitions validate in a disposable environment, with loopback binding, existing-service preservation and explicit activation gates.",
     "effort": "M",
-    "owner": "codex",
-    "blockedBy": "Merge, deployment and hardware activation excluded by current sprint instruction."
+    "owner": "Codex",
+    "blockedBy": "Actual deployment, service activation and physical display output excluded. Minimal kiosk runtime selection remains an installation decision."
   },
   "findings": [
     {
@@ -860,7 +860,7 @@
       "type": "docs",
       "sev": "P3",
       "title": "Docs and release drift: manifest, check lists, no tags",
-      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+      "detail": "Historical finding from 2026-10-02; not reverified by this package. Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
       "files": [
         "docs/design/DESIGN_OVERHAUL_MANIFEST.md",
         "CLAUDE.md:108",
@@ -872,7 +872,7 @@
         {
           "checkedOn": "2026-10-02",
           "title": "Docs and release drift: manifest, check lists, no tags",
-          "detail": "Design manifest predates #45 (§9 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
+          "detail": "Design manifest predates #45 (\u00a79 decisions unrecorded); CLAUDE.md checks omit test_console.mjs and the Notion gate; no tags/CHANGELOG; 38 old remote branches remain.",
           "evidence": "code-read"
         }
       ],
@@ -1106,7 +1106,7 @@
       "goal": "Make docs match HEAD; record the H9, manifest and version decisions",
       "items": [
         "DL-03: relabel edit_outside_root case, fix table row, note baselines not comparable",
-        "DL-14: mark design manifest as-built, record §9 outcomes, fix CLAUDE.md check list",
+        "DL-14: mark design manifest as-built, record \u00a79 outcomes, fix CLAUDE.md check list",
         "Decide VERSION bump/CHANGELOG/tags and prune old branches (Dave)"
       ],
       "gate": "pytest -q tests/test_documentation_contracts.py tests/test_capabilities_manifest.py; git diff --check"
@@ -1397,5 +1397,13 @@
     "scope": "Electron 44.0.0 to 44.9.1 and optional transitive undici 7.30.0 to 7.30.1; no other packages changed.",
     "evidence": "Clean install and npm audit: zero vulnerabilities. 36 JavaScript tests and Chromium workspace fixture pass. Unmodified Electron navigation fixture passes 24 cases under Xvfb with software rendering and 256 MiB shared memory; default virtual GPU runs stalled. No inference or production service changes.",
     "nextAction": "Collect exact updated PR CI. No merge, deployment or installed application acceptance is authorized by this repair."
+  },
+  "wallboardPublisher1030": {
+    "branch": "codex/wallboard-publisher-1030",
+    "base": "63f4d1ee4d6ee4dfe34a0732d7ffbb8fe17a25fb",
+    "scope": "Publisher and atomic receiver source only; no real publication or installation.",
+    "verification": "Dominic: 24 focused projection and publisher tests pass, including real receiver subprocess, interrupted writes, symlink refusal, timeout/retry and lost acknowledgement. Full repository CI remains separate.",
+    "delivery": "Source candidate prepared for stacked PR; branch push and CI verified separately.",
+    "next": "Prepare service and installer source fixtures without activating services."
   }
 }
