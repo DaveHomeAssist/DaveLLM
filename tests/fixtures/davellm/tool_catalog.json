@@ -1039,17 +1039,17 @@
     "file.append": {
       "first_line": 1191,
       "last_line": 1207,
-      "source_sha256": "38238914779eec17b01f48ed11e3304e8359cb831bdaeee04396c93c9b1960b4"
+      "source_sha256": "27db0765bbe0a9b0661dbc444aa54730ac8dd886a3a4264b92ef506ec489bf40"
     },
     "file.read": {
       "first_line": 1155,
       "last_line": 1169,
-      "source_sha256": "1420ec7a5ed9211eaef739587bdc7cebce30f4ba3c9a8fc77445b240dbf2a2df"
+      "source_sha256": "2f32d8dd57bc429599af29fd0962d3ea88864aad5072a80545ad3d08284b8b5e"
     },
     "file.write": {
       "first_line": 1171,
       "last_line": 1189,
-      "source_sha256": "0b41520b02651cb6aeadcfa060744dff4dc9db87fd2f570036b5240c44bf2ed4"
+      "source_sha256": "f9663b7da66f6b9028c127d7e87339e2a91ac07b48f38b75d001629d93dcc717"
     },
     "shell.exec": {
       "first_line": 1269,

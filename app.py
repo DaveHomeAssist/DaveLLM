@@ -371,14 +371,14 @@ def load_conversations() -> Dict[str, dict]:
     return migrated
 
 def save_conversations(conversations: Dict[str, dict]):
-    """Atomic write for safety — prevents corruption on crash."""
-    tmp = DATA_FILE.with_suffix(".tmp")
-    try:
-        with open(tmp, "w") as f:
-            json.dump(conversations, f, indent=2)
-        tmp.replace(DATA_FILE)  # Atomic rename
-    except IOError as e:
-        print(f"⚠️ Failed to save conversations: {e}")
+    """Atomic write for safety — prevents corruption on crash.
+
+    Raises PersistenceError when the write fails, so no caller reports the
+    change as saved. The helper lives under MEMORY STORAGE, below the tool
+    handlers whose source lines tests/test_tool_catalog_provenance.py pins,
+    so these savers keep their original line counts.
+    """
+    _write_json_atomically(DATA_FILE, conversations, "conversations")
 
 def load_projects() -> Dict[str, dict]:
     if not PROJECTS_FILE.exists():
@@ -391,13 +391,13 @@ def load_projects() -> Dict[str, dict]:
         return {}
 
 def save_projects(projects: Dict[str, dict]):
-    tmp = PROJECTS_FILE.with_suffix(".tmp")
-    try:
-        with open(tmp, "w") as f:
-            json.dump(projects, f, indent=2)
-        tmp.replace(PROJECTS_FILE)
-    except IOError as e:
-        print(f"⚠️ Failed to save projects: {e}")
+    """Atomic write of the projects store.
+
+    Raises PersistenceError when the write fails, so no caller reports the
+    change as saved (see save_conversations). The temporary file is removed
+    on failure.
+    """
+    _write_json_atomically(PROJECTS_FILE, projects, "projects")
 
 
 def load_settings() -> Dict[str, str]:
@@ -413,13 +413,13 @@ def load_settings() -> Dict[str, str]:
 
 
 def save_settings(settings: Dict[str, str]):
-    tmp = SETTINGS_FILE.with_suffix(".tmp")
-    try:
-        with open(tmp, "w") as f:
-            json.dump(settings, f, indent=2)
-        tmp.replace(SETTINGS_FILE)
-    except IOError as e:
-        print(f"⚠️ Failed to save settings: {e}")
+    """Atomic write of the settings store.
+
+    Raises PersistenceError when the write fails, so no caller reports the
+    change as saved (see save_conversations). The temporary file is removed
+    on failure.
+    """
+    _write_json_atomically(SETTINGS_FILE, settings, "settings")
 
 # Load existing conversations on startup
 CONVERSATIONS: Dict[str, dict] = load_conversations()
@@ -887,10 +887,10 @@ async def fetch_node_models(node: NodeConfig) -> dict:
                         }
                     )
 
-                print(
-                    f"✅ Fetched {len(normalized_models)} models from {node.name}: "
-                    f"{[m['id'] for m in normalized_models]}"
-                )
+                # Ollama's /api/show capabilities override the name guess (helper under MEMORY STORAGE).
+                await apply_show_capabilities(node, normalized_models)
+                print(f"✅ Fetched {len(normalized_models)} models from {node.name}: "
+                      f"{[m['id'] for m in normalized_models]}")
                 return {"models": normalized_models, "error": None}
 
             print(
@@ -1156,14 +1156,14 @@ def tool_file_read(params: Dict) -> ToolResult:
     """Read file contents with size limit."""
     try:
         safe_path = resolve_tool_path(params.get("path", ""))
-        
-        # Check file size
-        if safe_path.stat().st_size > MAX_FILE_SIZE:
+
+        # DLA-03: the open never leaves the admitted root (no symlinked component, no hard link,
+        # regular files only), and the size limit is checked on the opened file, not the path.
+        try:
+            content = contained_read_text(safe_path, TOOL_ROOTS, MAX_FILE_SIZE)
+        except ContainedFileTooLarge:
             return ToolResult(tool="file.read", status="error", result="", error=f"File too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)")
-        
-        with open(safe_path, "r") as f:
-            content = f.read()
-        
+
         return ToolResult(tool="file.read", status="success", result=content[:MAX_TOOL_OUTPUT])
     except Exception as e:
         return ToolResult(tool="file.read", status="error", result="", error=str(e))
@@ -1180,10 +1180,10 @@ def tool_file_write(params: Dict) -> ToolResult:
 
         safe_path = resolve_tool_path(path)
 
-        safe_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(safe_path, "w") as f:
-            f.write(content)
-        
+        # DLA-03: parents are created and the file opened through descriptors below the admitted
+        # root without following a symlink; a hard-linked or non-regular target is refused.
+        contained_write_text(safe_path, TOOL_ROOTS, content, append=False)
+
         return ToolResult(tool="file.write", status="success", result=f"Wrote {len(content)} bytes to {safe_path}")
     except Exception as e:
         return ToolResult(tool="file.write", status="error", result="", error=str(e))
@@ -1198,10 +1198,10 @@ def tool_file_append(params: Dict) -> ToolResult:
             return ToolResult(tool="file.append", status="error", result="", error=f"Content too large (max {MAX_FILE_SIZE // 1024 // 1024}MB)")
 
         safe_path = resolve_tool_path(path)
-        safe_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(safe_path, "a") as f:
-            f.write(content)
-        
+        # DLA-03: the same contained open as file.write, appending
+        # instead of replacing.
+        contained_write_text(safe_path, TOOL_ROOTS, content, append=True)
+
         return ToolResult(tool="file.append", status="success", result=f"Appended {len(content)} bytes to {safe_path}")
     except Exception as e:
         return ToolResult(tool="file.append", status="error", result="", error=str(e))
@@ -2445,6 +2445,121 @@ HARNESS = Harness(
 # MEMORY STORAGE
 # ============================================================
 
+class PersistenceError(RuntimeError):
+    """A change could not be written to disk, so it must not be reported as saved."""
+
+
+PERSISTENCE_FAILED = "Changes could not be saved to disk"
+
+# DLA-03: final I/O of the qualified file.read, file.write and file.append handlers.
+from davellm_contained_io import ContainedFileTooLarge, contained_read_text, contained_write_text  # noqa: E402
+
+
+def keep_incomplete_reply(conversation: dict, partial: str, error: str) -> str:
+    """Save a reply the model stopped mid-way, marked incomplete, and return the error to report.
+
+    Whitespace-only output saves nothing. Inline image data is redacted as in a normal reply.
+    If the save fails, the in-memory message is dropped and the persistence error is returned.
+    """
+    partial = re.sub(r"data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9\/+=]+", "[image]", partial)
+    if not partial.strip():
+        return error
+    messages = conversation.setdefault("messages", [])
+    messages.append({"role": "assistant", "content": partial, "incomplete": True, "error": error})
+    conversation["updated_at"] = datetime.now().isoformat()
+    try:
+        save_conversations(CONVERSATIONS)
+    except PersistenceError:
+        messages.pop()
+        record_error("stream_partial", PERSISTENCE_FAILED)
+        return PERSISTENCE_FAILED
+    return error
+
+
+def _write_json_atomically(path: Path, value: Any, label: str) -> None:
+    """Atomic write for safety — prevents corruption on crash.
+
+    A failure removes the partial temporary file and raises PersistenceError,
+    so callers never acknowledge a change that is not on disk.
+    """
+    tmp = path.with_suffix(".tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(value, f, indent=2)
+        tmp.replace(path)  # Atomic rename
+    except OSError as e:
+        print(f"⚠️ Failed to save {label}: {e}")
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise PersistenceError(f"Failed to save {label}") from e
+
+
+@app.exception_handler(PersistenceError)
+async def persistence_error_handler(_request: Request, _exc: PersistenceError) -> JSONResponse:
+    """A request whose change did not reach disk fails instead of acknowledging it."""
+    return JSONResponse({"detail": PERSISTENCE_FAILED}, status_code=503)
+
+
+# Ollama reports what a model can do in POST /api/show ("capabilities": ["completion",
+# "vision", ...]). /api/tags does not, so names alone mislabel models such as
+# qwen3.5 or gemma3. The lookup is bounded: a few models at a time, a short
+# timeout each, at most SHOW_LOOKUP_LIMIT per inventory, and results cached
+# per node and model. A failed lookup keeps the name guess and says so.
+SHOW_LOOKUP_LIMIT = 32
+SHOW_LOOKUP_CONCURRENCY = 4
+SHOW_LOOKUP_TIMEOUT = 3.0
+SHOW_CACHE_SECONDS = 600.0
+SHOW_CAPABILITIES_CACHE: Dict[tuple, tuple] = {}
+
+
+def show_capabilities(body: object) -> Optional[List[str]]:
+    """The capabilities list from an /api/show body, or None when it has none."""
+    capabilities = body.get("capabilities") if isinstance(body, dict) else None
+    if not isinstance(capabilities, list) or not all(isinstance(item, str) for item in capabilities):
+        return None
+    return [item.lower() for item in capabilities]
+
+
+async def apply_show_capabilities(node: "NodeConfig", models: List[dict]) -> None:
+    """Set each model's ``vision`` from /api/show and record where it came from.
+
+    ``capabilities_source`` is ``"ollama"`` when the node answered with a
+    capabilities list, and ``"name"`` when it did not (lookup failed, timed
+    out, was over the limit, or the node predates capabilities).
+    """
+    now = time.monotonic()
+    gate = asyncio.Semaphore(SHOW_LOOKUP_CONCURRENCY)
+
+    async def lookup(client: httpx.AsyncClient, model: dict) -> None:
+        key = (node.url, model["id"])
+        cached = SHOW_CAPABILITIES_CACHE.get(key)
+        if cached is not None and now - cached[0] < SHOW_CACHE_SECONDS:
+            capabilities = cached[1]
+        else:
+            capabilities = None
+            try:
+                async with gate:
+                    resp = await client.post(f"{node.url}/api/show", json={"model": model["id"]})
+                if resp.is_success:
+                    capabilities = show_capabilities(resp.json())
+            except Exception:
+                capabilities = None
+            if capabilities is not None:
+                SHOW_CAPABILITIES_CACHE[key] = (now, capabilities)
+        if capabilities is None:
+            model["capabilities_source"] = "name"
+        else:
+            model["vision"] = "vision" in capabilities
+            model["capabilities_source"] = "ollama"
+
+    for model in models[SHOW_LOOKUP_LIMIT:]:
+        model["capabilities_source"] = "name"
+    async with httpx.AsyncClient(timeout=SHOW_LOOKUP_TIMEOUT) as client:
+        await asyncio.gather(*(lookup(client, model) for model in models[:SHOW_LOOKUP_LIMIT]))
+
+
 def new_conversation_record(user_id: str, project_id: Optional[str]) -> dict:
     """The record a first message creates; the size check (DL-ROUTE-05) sizes against it unsaved."""
     return {
@@ -2971,6 +3086,128 @@ class ChatRequest(BaseModel):
     images: Optional[List[str]] = None
     node_id: Optional[str] = None
     project_id: Optional[str] = None
+
+# ============================================================
+# LOCAL IMAGE GENERATION (kept below the pinned tool handlers)
+# ============================================================
+from davellm_comfy import (
+    ComfyCancelled,
+    ComfyError,
+    ImageSpec,
+    QualityPass,
+    SUPPORTED_SAMPLERS,
+    SUPPORTED_SCHEDULERS,
+    data_url as image_data_url,
+    generate as comfy_generate,
+    new_seed as new_image_seed,
+    status as comfy_status,
+    upload_image as comfy_upload_image,
+)  # noqa: E402
+import base64  # noqa: E402
+import davellm_image_export as image_export
+import davellm_image_policy as image_policy
+import davellm_image_presets as image_presets
+from davellm_image_jobs import JobNotFound, JobQueue, QueueFull
+from davellm_image_store import ImageNotFound, ImageStore, parse_retention_days
+COMFY_URL = os.getenv("DAVE_COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
+COMFY_CHECKPOINT = os.getenv("DAVE_COMFY_CHECKPOINT", "sd_xl_turbo_1.0_fp16.safetensors")
+# Generated images stay on this host: <DAVE_DATA_DIR>/images unless DAVE_IMAGE_DIR moves them.
+IMAGE_STORE = ImageStore(
+    Path(os.getenv("DAVE_IMAGE_DIR") or (BASE_DIR / "images")),
+    parse_retention_days(os.getenv("DAVE_IMAGE_RETENTION_DAYS")),
+)
+IMAGE_LIMITS = image_policy.load_limits()
+# Text model used by Enhance prompt. Unset picks the first installed model alphabetically,
+# which can be a model too large to share the GPU with ComfyUI, so set it on GPU hosts.
+IMAGE_ENHANCE_MODEL = (os.getenv("DAVE_IMAGE_ENHANCE_MODEL") or "").strip() or None
+# One worker thread: at most one image job on the GPU at a time.
+IMAGE_QUEUE = JobQueue(max_queued=16, cancelled_error=ComfyCancelled)
+IMAGE_PRESETS = image_presets.PresetStore(BASE_DIR / "image_presets.json")
+MAX_SOURCE_IMAGE_BYTES = 8 * 1024 * 1024
+
+
+class ImageQualityOptions(BaseModel):
+    scale: float = Field(default=1.5, ge=1.0, le=2.0)
+    steps: int = Field(default=4, ge=1, le=50)
+    denoise: float = Field(default=0.45, ge=0.1, le=0.9)
+
+
+class ImagePolicyFields(BaseModel):
+    prompt_behavior: Literal["suggest", "review", "auto"] = image_policy.DEFAULT_PROMPT_BEHAVIOR
+    approval_mode: Literal["always", "material", "none"] = image_policy.DEFAULT_APPROVAL_MODE
+    approved: bool = False
+    accept_reduction: bool = False
+
+
+class ImageGenerateRequest(ImagePolicyFields):
+    prompt: str = Field(min_length=1, max_length=4000)
+    structured_prompt: Optional[str] = Field(default=None, min_length=1, max_length=4000)
+    negative_prompt: str = Field(default="", max_length=2000)
+    enhanced: bool = False
+    width: int = Field(default=768, ge=256, le=2048, multiple_of=64)
+    height: int = Field(default=768, ge=256, le=2048, multiple_of=64)
+    steps: int = Field(default=4, ge=1, le=50)
+    cfg: float = Field(default=1.0, ge=0.0, le=10.0)
+    sampler: str = "euler"
+    scheduler: str = "simple"
+    seed: Optional[int] = Field(default=None, ge=0, lt=2**63)
+    save: bool = True
+    # Image to image and inpainting. The source is a saved library image or an
+    # uploaded PNG/JPEG data URL; the mask is a PNG data URL (white = repaint).
+    mode: Literal["txt2img", "img2img", "inpaint"] = "txt2img"
+    strength: float = Field(default=0.6, gt=0.0, le=1.0)
+    source_image_id: Optional[str] = Field(default=None, max_length=40)
+    source_image: Optional[str] = Field(default=None, max_length=12_000_000)
+    mask: Optional[str] = Field(default=None, max_length=12_000_000)
+    style_preset: Optional[str] = Field(default=None, max_length=40)
+    # Variations (POST /image/jobs only): queue this many seeds, one after another.
+    count: int = Field(default=1, ge=1, le=4)
+
+    @field_validator("sampler")
+    @classmethod
+    def _sampler_supported(cls, value: str) -> str:
+        if value not in SUPPORTED_SAMPLERS:
+            raise ValueError(f"sampler must be one of {', '.join(SUPPORTED_SAMPLERS)}")
+        return value
+
+    @field_validator("scheduler")
+    @classmethod
+    def _scheduler_supported(cls, value: str) -> str:
+        if value not in SUPPORTED_SCHEDULERS:
+            raise ValueError(f"scheduler must be one of {', '.join(SUPPORTED_SCHEDULERS)}")
+        return value
+
+
+class ImageQualityRequest(ImagePolicyFields):
+    quality: ImageQualityOptions = Field(default_factory=ImageQualityOptions)
+    save: bool = True
+    background: bool = False
+
+
+class ImageLibraryUpdate(BaseModel):
+    favorite: Optional[bool] = None
+    collections: Optional[List[str]] = Field(default=None, max_length=20)
+
+
+class ImageExportRequest(BaseModel):
+    ids: List[str] = Field(min_length=1, max_length=200)
+    metadata: Literal["embed", "strip"] = "embed"
+
+
+class ImagePresetsUpdate(BaseModel):
+    styles: Optional[List[dict]] = None
+    negatives: Optional[List[dict]] = None
+
+
+class ImageEnhanceRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    prompt_behavior: Literal["suggest", "review", "auto"] = image_policy.DEFAULT_PROMPT_BEHAVIOR
+    node_id: Optional[str] = None
+    model: Optional[str] = None
+
+
+class ImagePurgeRequest(BaseModel):
+    confirm: str
 
 class RoutePreferences(BaseModel):
     max_cost: Optional[float] = None
@@ -4991,6 +5228,523 @@ def resync_conversation_project(conversation_id: str, req: ResyncRequest, user_i
         "system_prompt": result["system_prompt"],
     }
 
+IMAGE_ENHANCE_SYSTEM_PROMPT = (
+    "You rewrite image-generation prompts. Preserve the subject, the intent and every explicit "
+    "constraint (counts, exact text, exclusions, sizes, style). Improve phrasing and structure only. "
+    "Do not add new subjects, styles or exclusions. Reply with the rewritten prompt only."
+)
+
+
+def _image_error(status_code: int, detail: dict) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"detail": detail})
+
+
+def _run_image(spec: ImageSpec, *, manifest: dict, save: bool, sources: Optional[dict] = None,
+               progress=None, cancel=None) -> dict:
+    sources = sources or {}
+    if sources.get("source"):
+        spec.source_image = comfy_upload_image(COMFY_URL, sources["source"], kind="source")
+    if sources.get("mask"):
+        spec.mask_image = comfy_upload_image(COMFY_URL, sources["mask"], kind="mask")
+    result = comfy_generate(COMFY_URL, COMFY_CHECKPOINT, spec, on_progress=progress, cancel=cancel)
+    model_info = {
+        "generator": "ComfyUI",
+        "checkpoint": COMFY_CHECKPOINT,
+        "workflow_version": spec.workflow_version,
+        "comfyui_version": comfy_status(COMFY_URL).get("comfyui_version"),
+    }
+    record = {
+        **manifest,
+        "seed": result["seed"],
+        "settings": spec.settings(),
+        "output": {"width": result["width"], "height": result["height"], "content_type": result["content_type"]},
+        "model": model_info,
+        "duration_ms": result["duration_ms"],
+    }
+    saved = None
+    if save:
+        saved = IMAGE_STORE.save(result["bytes"], record, thumbnail=result.get("thumbnail"))
+    return {
+        "id": saved["id"] if saved else None,
+        "saved": bool(saved),
+        # Saved images are fetched from /image/{id}/file; only unsaved ones travel inline.
+        "image": image_data_url(result["content_type"], result["bytes"]),
+        "seed": result["seed"],
+        "width": result["width"],
+        "height": result["height"],
+        "duration_ms": result["duration_ms"],
+        "stage": record["stage"],
+        "manifest": saved or record,
+    }
+
+
+def _decode_upload(data_url: str, *, png_only: bool = False) -> bytes:
+    match = re.match(r"^data:image/(png|jpeg|jpg);base64,(.+)$", data_url or "", re.S)
+    if not match:
+        raise HTTPException(422, "Images must be PNG or JPEG data URLs")
+    try:
+        payload = base64.b64decode(match.group(2), validate=False)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422, "Image data is not valid base64") from exc
+    if len(payload) > MAX_SOURCE_IMAGE_BYTES:
+        raise HTTPException(413, f"Source images must be under {MAX_SOURCE_IMAGE_BYTES // 1024 // 1024} MB")
+    is_png = payload.startswith(image_export.PNG_SIGNATURE)
+    if png_only and not is_png:
+        raise HTTPException(422, "Masks must be PNG")
+    if not is_png and not payload.startswith(b"\xff\xd8\xff"):
+        raise HTTPException(422, "Images must be PNG or JPEG")
+    return payload
+
+
+def _image_sources(req: "ImageGenerateRequest") -> tuple[dict, Optional[dict]]:
+    """Validate img2img / inpaint inputs. Returns (bytes to upload, provenance)."""
+    if req.mode == "txt2img":
+        return {}, None
+    if bool(req.source_image_id) == bool(req.source_image):
+        raise HTTPException(422, f"{req.mode} needs exactly one of source_image_id or source_image")
+    if req.source_image_id:
+        try:
+            source = IMAGE_STORE.image_path(req.source_image_id).read_bytes()
+        except ImageNotFound as exc:
+            raise HTTPException(404, "Source image not found in the library") from exc
+        provenance = {"kind": "library", "id": req.source_image_id}
+    else:
+        source = _decode_upload(req.source_image)
+        provenance = {"kind": "upload"}
+    provenance["sha256"] = hashlib.sha256(source).hexdigest()
+    sources = {"source": source}
+    if req.mode == "inpaint":
+        if not req.mask:
+            raise HTTPException(422, "Inpainting needs a mask")
+        sources["mask"] = _decode_upload(req.mask, png_only=True)
+        provenance["mask_sha256"] = hashlib.sha256(sources["mask"]).hexdigest()
+    elif req.mask:
+        raise HTTPException(422, "A mask is only used with mode 'inpaint'")
+    return sources, provenance
+
+
+def _job_runner(spec: ImageSpec, manifest: dict, save: bool, sources: dict):
+    def run(progress, cancel):
+        result = _run_image(spec, manifest=manifest, save=save, sources=sources, progress=progress, cancel=cancel)
+        if result["saved"]:
+            result.pop("image", None)
+        return result
+    return run
+
+
+def _plan_generation(req: "ImageGenerateRequest"):
+    """Policy, hardware and input checks. Returns (error response | None, specs, manifest, save, sources)."""
+    decision = image_policy.decide(
+        original=req.prompt, structured=req.structured_prompt,
+        prompt_behavior=req.prompt_behavior, approval_mode=req.approval_mode, approved=req.approved,
+    )
+    if not decision.allowed:
+        status_code = 422 if decision.code == "suggest_only" else 409
+        return _image_error(status_code, {**decision.as_detail(), "prompt_for_model": decision.prompt_for_model}), None, None, None, None
+    width, height, steps = req.width, req.height, req.steps
+    reduced_from = None
+    over = image_policy.hardware_check(width=width, height=height, steps=steps, limits=IMAGE_LIMITS)
+    if over:
+        if not req.accept_reduction:
+            return _image_error(409, over), None, None, None, None
+        reduced_from = {"width": width, "height": height, "steps": steps}
+        width, height, steps = over["proposed"]["width"], over["proposed"]["height"], over["proposed"]["steps"]
+    style = None
+    if req.style_preset:
+        style = IMAGE_PRESETS.style(req.style_preset)
+        if style is None:
+            raise HTTPException(422, f"Unknown style preset {req.style_preset!r}")
+    sources, source_record = _image_sources(req)
+    base_seed = req.seed if req.seed is not None else new_image_seed()
+    group = f"var-{uuid.uuid4().hex[:8]}" if req.count > 1 else None
+    specs = []
+    for index in range(req.count):
+        specs.append(ImageSpec(
+            prompt=image_presets.apply_style(decision.prompt_for_model, style), negative_prompt=req.negative_prompt,
+            width=width, height=height, steps=steps, cfg=req.cfg,
+            sampler=req.sampler, scheduler=req.scheduler,
+            seed=(base_seed + index) % (2**63), mode=req.mode,
+            strength=req.strength if req.mode != "txt2img" else 1.0,
+        ))
+    manifest = {
+        "stage": "draft",
+        "parent_id": None,
+        "original_prompt": req.prompt,
+        "structured_prompt": decision.prompt_for_model,
+        "negative_prompt": req.negative_prompt,
+        "enhanced": req.enhanced,
+        "material_change": decision.material_change,
+        "prompt_behavior": req.prompt_behavior,
+        "approval_mode": req.approval_mode,
+        "approved": req.approved,
+        "reduced_from": reduced_from,
+        "style_preset": style,
+        "source": source_record,
+        "variation": {"group": group, "count": req.count} if group else None,
+    }
+    return None, specs, manifest, req.save, sources
+
+
+def _submit(specs, manifest, save, sources, kind: str) -> list[dict]:
+    jobs = []
+    try:
+        for index, spec in enumerate(specs):
+            record = dict(manifest)
+            if record.get("variation"):
+                record["variation"] = {**record["variation"], "index": index}
+            label = f"{kind}: {record.get('original_prompt', '')[:80]}"
+            meta = {"seed": spec.seed, "width": spec.width, "height": spec.height, "mode": spec.mode,
+                    "stage": record.get("stage"), "variation": record.get("variation")}
+            job = IMAGE_QUEUE.submit(kind, label, _job_runner(spec, record, save, sources), meta)
+            jobs.append(IMAGE_QUEUE.get(job.id))
+    except QueueFull as exc:
+        for job in jobs:
+            IMAGE_QUEUE.cancel(job["id"])
+        raise HTTPException(429, str(exc)) from exc
+    return jobs
+
+
+async def _wait_for_job(job_id: str) -> dict:
+    job = await asyncio.to_thread(IMAGE_QUEUE.wait, job_id, 600)
+    if job["status"] == "done":
+        result = dict(job["result"])
+        if result.get("saved") and "image" not in result:
+            # Callers of the waiting routes get the image inline, as before the queue existed.
+            content_type = (result.get("manifest") or {}).get("output", {}).get("content_type", "image/png")
+            result["image"] = image_data_url(content_type, IMAGE_STORE.image_path(result["id"]).read_bytes())
+        return result
+    if job["status"] == "cancelled":
+        return _image_error(409, {"code": "cancelled", "message": "The image job was cancelled.", "job_id": job_id})
+    if job["status"] in ("queued", "running"):
+        raise HTTPException(504, "Image job is still waiting; follow it at /image/jobs")
+    raise HTTPException(503, job.get("error") or "Image generation failed")
+
+
+@app.get("/image/status")
+def image_status(_auth=Depends(require_api_key)):
+    IMAGE_STORE.prune()
+    return {
+        **comfy_status(COMFY_URL),
+        "checkpoint": COMFY_CHECKPOINT,
+        "limits": IMAGE_LIMITS.as_dict(),
+        "defaults": {
+            "prompt_behavior": image_policy.DEFAULT_PROMPT_BEHAVIOR,
+            "approval_mode": image_policy.DEFAULT_APPROVAL_MODE,
+            "width": 768, "height": 768, "steps": 4, "cfg": 1.0,
+            "sampler": "euler", "scheduler": "simple", "strength": 0.6,
+        },
+        "controls": {"samplers": list(SUPPORTED_SAMPLERS), "schedulers": list(SUPPORTED_SCHEDULERS),
+                     "modes": ["txt2img", "img2img", "inpaint"], "max_variations": 4},
+        "storage": IMAGE_STORE.summary(),
+        "queue": IMAGE_QUEUE.summary(),
+    }
+
+
+@app.post("/image/enhance")
+def image_enhance(req: ImageEnhanceRequest, _auth=Depends(require_api_key)):
+    """Opt-in LLM rewrite (design 5B). Never generates an image by itself."""
+    try:
+        node = get_node_by_id(req.node_id) if req.node_id else None
+    except HTTPException:
+        raise
+    wanted = req.model or IMAGE_ENHANCE_MODEL
+    candidates = [
+        (n, m) for n in ([node] if node else NODE_CONFIGS)
+        for m in sorted(MODEL_INVENTORY.get(n.id, set()))
+        if not wanted or m == wanted
+    ]
+    if wanted and not candidates:
+        raise HTTPException(503, f"Enhancement model {wanted!r} is not installed on any connected node")
+    if not candidates:
+        raise HTTPException(503, "No local text model is available to enhance the prompt")
+    target, model_id = candidates[0]
+    try:
+        with NODE_ACTIVITY.track(target.url):
+            result = ollama_chat(
+                target.url, model_id,
+                [
+                    {"role": "system", "content": IMAGE_ENHANCE_SYSTEM_PROMPT},
+                    {"role": "user", "content": req.prompt},
+                ],
+                stream=False, timeout=60, num_predict=300, temperature=0.4,
+                options=chat_node_options(target, model_id), keep_alive=chat_keep_alive(None),
+            )
+    except Exception as exc:  # transport errors are reported, never retried silently
+        raise HTTPException(503, f"Prompt enhancement failed: {describe_node_error(target, exc)}") from exc
+    proposed = (result.content or "").strip().strip('"').strip()
+    if not proposed:
+        raise HTTPException(503, "The enhancement model returned an empty prompt")
+    return {
+        "original": req.prompt,
+        "proposed": proposed[:4000],
+        "material_change": image_policy.is_material_change(req.prompt, proposed),
+        "usable_for_generation": req.prompt_behavior != "suggest",
+        "node_id": target.id,
+        "model": model_id,
+    }
+
+
+@app.post("/image/generate")
+async def image_generate(req: ImageGenerateRequest, _auth=Depends(require_api_key)):
+    """Generate one image and wait for it. Runs through the same one-at-a-time GPU queue."""
+    if req.count != 1:
+        raise HTTPException(422, "Use POST /image/jobs for variations")
+    blocked, specs, manifest, save, sources = _plan_generation(req)
+    if blocked is not None:
+        return blocked
+    jobs = _submit(specs, manifest, save, sources, "draft")
+    return await _wait_for_job(jobs[0]["id"])
+
+
+@app.post("/image/jobs", status_code=202)
+def image_jobs_submit(req: ImageGenerateRequest, _auth=Depends(require_api_key)):
+    """Queue a draft (or ``count`` variations with consecutive seeds) and return at once."""
+    blocked, specs, manifest, save, sources = _plan_generation(req)
+    if blocked is not None:
+        return blocked
+    jobs = _submit(specs, manifest, save, sources, "variation" if req.count > 1 else "draft")
+    return {"jobs": jobs, "queue": IMAGE_QUEUE.summary()}
+
+
+@app.get("/image/jobs")
+def image_jobs_list(_auth=Depends(require_api_key)):
+    return {"jobs": IMAGE_QUEUE.list(), "queue": IMAGE_QUEUE.summary()}
+
+
+@app.get("/image/jobs/{job_id}")
+def image_job_get(job_id: str, _auth=Depends(require_api_key)):
+    try:
+        return IMAGE_QUEUE.get(job_id, full=True)
+    except JobNotFound as exc:
+        raise HTTPException(404, "Job not found") from exc
+
+
+@app.post("/image/jobs/{job_id}/cancel")
+def image_job_cancel(job_id: str, _auth=Depends(require_api_key)):
+    try:
+        return IMAGE_QUEUE.cancel(job_id)
+    except JobNotFound as exc:
+        raise HTTPException(404, "Job not found") from exc
+
+
+def _bool_param(value: Optional[str]) -> Optional[bool]:
+    if value is None or value == "":
+        return None
+    return value.lower() in ("1", "true", "yes")
+
+
+@app.get("/image/library")
+def image_library(
+    q: str = "", since: str = "", until: str = "", model: str = "", seed: Optional[int] = None,
+    favorite: Optional[str] = None, collection: str = "", stage: str = "", mode: str = "",
+    limit: int = 200, offset: int = 0, _auth=Depends(require_api_key),
+):
+    IMAGE_STORE.prune()
+    for name, value in (("since", since), ("until", until)):
+        if value and not re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+            raise HTTPException(422, f"{name} must be YYYY-MM-DD")
+    everything = IMAGE_STORE.list()
+    matches = IMAGE_STORE.query(q=q, since=since, until=until, model=model, seed=seed,
+                                favorite=_bool_param(favorite), collection=collection, stage=stage, mode=mode)
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+    return {
+        "images": matches[offset:offset + limit],
+        "total": len(matches),
+        "facets": {
+            "models": sorted({(r.get("model") or {}).get("checkpoint") for r in everything} - {None}),
+            "collections": IMAGE_STORE.collections(),
+        },
+        "storage": IMAGE_STORE.summary(),
+    }
+
+
+@app.get("/image/collections")
+def image_collections(_auth=Depends(require_api_key)):
+    return {"collections": IMAGE_STORE.collections()}
+
+
+@app.post("/image/purge")
+def image_purge(req: ImagePurgeRequest, _auth=Depends(require_api_key)):
+    if req.confirm != "DELETE ALL IMAGES":
+        raise HTTPException(400, "Send confirm='DELETE ALL IMAGES' to purge the image library")
+    return {"deleted": IMAGE_STORE.purge()}
+
+
+@app.get("/image/presets")
+def image_presets_get(_auth=Depends(require_api_key)):
+    return {"aspects": image_presets.aspect_presets(IMAGE_LIMITS.max_pixels), **IMAGE_PRESETS.load(),
+            "limits": IMAGE_LIMITS.as_dict(), "location": "local-disk"}
+
+
+@app.put("/image/presets")
+def image_presets_put(req: ImagePresetsUpdate, _auth=Depends(require_api_key)):
+    try:
+        saved = IMAGE_PRESETS.save(styles=req.styles, negatives=req.negatives)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"aspects": image_presets.aspect_presets(IMAGE_LIMITS.max_pixels), **saved}
+
+
+@app.post("/image/presets/reset")
+def image_presets_reset(_auth=Depends(require_api_key)):
+    return {"aspects": image_presets.aspect_presets(IMAGE_LIMITS.max_pixels), **IMAGE_PRESETS.reset()}
+
+
+def _export_name(image_id: str, metadata: str) -> str:
+    return f"{image_id}{'' if metadata == 'embed' else '-clean'}.png"
+
+
+@app.post("/image/export")
+def image_export_zip(req: ImageExportRequest, _auth=Depends(require_api_key)):
+    items = []
+    for image_id in dict.fromkeys(req.ids):
+        try:
+            items.append((image_id, IMAGE_STORE.image_path(image_id).read_bytes(), IMAGE_STORE.manifest(image_id)))
+        except ImageNotFound as exc:
+            raise HTTPException(404, f"Image not found: {image_id}") from exc
+    try:
+        payload = image_export.export_zip(items, req.metadata)
+    except image_export.PngError as exc:
+        raise HTTPException(422, f"Could not export: {exc}") from exc
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return Response(payload, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="davellm-images-{stamp}.zip"', "Cache-Control": "no-store"})
+
+
+@app.get("/image/{image_id}/manifest")
+def image_manifest(image_id: str, _auth=Depends(require_api_key)):
+    try:
+        return IMAGE_STORE.manifest(image_id)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+
+
+@app.get("/image/{image_id}/file")
+def image_file(image_id: str, _auth=Depends(require_api_key)):
+    try:
+        path = IMAGE_STORE.image_path(image_id)
+        content_type = IMAGE_STORE.manifest(image_id).get("output", {}).get("content_type", "image/png")
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    return Response(path.read_bytes(), media_type=content_type, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/image/{image_id}/thumb")
+def image_thumb(image_id: str, _auth=Depends(require_api_key)):
+    try:
+        path = IMAGE_STORE.thumb_path(image_id)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    return Response(path.read_bytes(), media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/image/{image_id}/export")
+def image_export_one(image_id: str, metadata: Literal["embed", "strip"] = "embed", _auth=Depends(require_api_key)):
+    try:
+        png = IMAGE_STORE.image_path(image_id).read_bytes()
+        manifest = IMAGE_STORE.manifest(image_id)
+        payload = image_export.export_png(png, manifest, metadata)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    except image_export.PngError as exc:
+        raise HTTPException(422, f"Could not export: {exc}") from exc
+    return Response(payload, media_type="image/png", headers={
+        "Content-Disposition": f'attachment; filename="{_export_name(image_id, metadata)}"', "Cache-Control": "no-store"})
+
+
+@app.patch("/image/{image_id}")
+def image_update(image_id: str, req: ImageLibraryUpdate, _auth=Depends(require_api_key)):
+    try:
+        return IMAGE_STORE.update_library(image_id, favorite=req.favorite, collections=req.collections)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.delete("/image/{image_id}")
+def image_delete(image_id: str, _auth=Depends(require_api_key)):
+    try:
+        IMAGE_STORE.delete(image_id)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Image not found") from exc
+    return {"deleted": image_id}
+
+
+@app.post("/image/{image_id}/quality")
+async def image_quality(image_id: str, req: ImageQualityRequest, _auth=Depends(require_api_key)):
+    """Optional quality pass (design 4C): same prompt, seed and settings, refined at a larger size.
+
+    Text-to-image drafts rerun their own graph plus an upscale pass, so the
+    result is deterministic. Image-to-image and inpaint drafts were made from a
+    source that is not kept, so their quality pass refines the saved draft
+    itself (image to image at the larger size, ``denoise = quality.denoise``).
+    """
+    try:
+        parent = IMAGE_STORE.manifest(image_id)
+    except ImageNotFound as exc:
+        raise HTTPException(404, "Draft not found; quality passes need a saved draft") from exc
+    if req.approval_mode == "always" and not req.approved:
+        return _image_error(409, {"code": "review_required", "material_change": False,
+                                  "message": "Approval mode is 'always': confirm the quality pass first."})
+    settings = dict(parent.get("settings") or {})
+    quality = QualityPass(scale=req.quality.scale, steps=req.quality.steps, denoise=req.quality.denoise)
+    spec = ImageSpec(
+        prompt=parent.get("structured_prompt") or parent.get("original_prompt", ""),
+        negative_prompt=parent.get("negative_prompt", ""),
+        width=int(settings.get("width", 768)), height=int(settings.get("height", 768)),
+        steps=int(settings.get("steps", 4)), cfg=float(settings.get("cfg", 1.0)),
+        sampler=settings.get("sampler", "euler"), scheduler=settings.get("scheduler", "simple"),
+        seed=int(parent["seed"]), quality=quality,
+    )
+    style = parent.get("style_preset")
+    if style:
+        spec.prompt = image_presets.apply_style(spec.prompt, style)
+    reduced_from = None
+    over = image_policy.hardware_check(
+        width=spec.width, height=spec.height, steps=spec.steps, limits=IMAGE_LIMITS,
+        quality_size=spec.output_size(), quality_steps=quality.steps,
+    )
+    if over:
+        if not req.accept_reduction:
+            return _image_error(409, over)
+        reduced_from = {"quality_scale": quality.scale, "quality_steps": quality.steps}
+        quality.scale = over["proposed"].get("quality_scale", quality.scale)
+        quality.steps = over["proposed"].get("quality_steps", quality.steps)
+    sources: dict = {}
+    method = "same-seed-rerun"
+    if settings.get("mode", "txt2img") != "txt2img":
+        out_w, out_h = spec.output_size()
+        spec = ImageSpec(
+            prompt=spec.prompt, negative_prompt=spec.negative_prompt, width=out_w, height=out_h,
+            steps=quality.steps, cfg=spec.cfg, sampler=spec.sampler, scheduler=spec.scheduler,
+            seed=spec.seed, mode="img2img", strength=quality.denoise,
+        )
+        sources = {"source": IMAGE_STORE.image_path(image_id).read_bytes()}
+        method = "refine-saved-draft"
+    manifest = {
+        "stage": "quality",
+        "parent_id": image_id,
+        "quality_method": method,
+        "original_prompt": parent.get("original_prompt", ""),
+        "structured_prompt": parent.get("structured_prompt") or parent.get("original_prompt", ""),
+        "negative_prompt": spec.negative_prompt,
+        "enhanced": parent.get("enhanced", False),
+        "material_change": parent.get("material_change", False),
+        "prompt_behavior": req.prompt_behavior,
+        "approval_mode": req.approval_mode,
+        "approved": req.approved,
+        "reduced_from": reduced_from,
+        "style_preset": style,
+        "source": {"kind": "library", "id": image_id} if sources else None,
+    }
+    jobs = _submit([spec], manifest, req.save, sources, "quality")
+    if req.background:
+        return JSONResponse(status_code=202, content={"jobs": jobs, "queue": IMAGE_QUEUE.summary()})
+    return await _wait_for_job(jobs[0]["id"])
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, request: Request = None, user_id: str = Depends(get_current_user)):
     """
@@ -5419,6 +6173,7 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         tool_calls: List[dict] = []
         start_time = time.time()
         had_error = False
+        interrupted = None  # the model's in-band error, reported after any partial reply is kept
         first_token_at = None
         thinking_sent = False
         stats = None
@@ -5449,11 +6204,13 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                         yield f"data: {json.dumps({'token': chunk.content, 'done': False})}\n\n"
                 stats = stream_stats(stream.metrics, first_token_at - start_time if first_token_at else None)
         except OllamaStreamError as e:
-            # /v1 parity: Ollama's openai.go ChatWriter.writeResponse unmarshals an in-band {"error"}
-            # NDJSON line into an empty api.ChatResponse, so /v1 emitted delta.content == "" and then
-            # EOF; the partial reply is kept. Recorded for /monitoring/health; DL-UX-01 owns making it visible.
+            # An in-band {"error"} NDJSON line (for example a runner crash) ends the reply. /v1 hid it
+            # as an empty delta and the partial text was saved as a normal reply; now the partial text
+            # is kept but marked incomplete, and the client gets an error event after it is saved.
             record_error("stream_node_error", str(e))
             print(f"⚠️ Node stream error after {len(full_response)} chars: {e}")
+            interrupted = f"Model stopped with an error: {str(e)[:200]}"
+            had_error = True
         except httpx.TimeoutException:
             yield f"data: {json.dumps({'error': 'Node timed out', 'done': True})}\n\n"
             had_error = True
@@ -5475,8 +6232,13 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
         notice = None if had_error else tool_call_only_notice(full_response, tool_calls)
         if notice is not None:
             conversation["updated_at"] = datetime.now().isoformat()
-            save_conversations(CONVERSATIONS)
-            yield f"data: {json.dumps({**notice, 'done': False})}\n\n"
+            try:
+                save_conversations(CONVERSATIONS)
+            except PersistenceError:
+                yield f"data: {json.dumps({'error': PERSISTENCE_FAILED, 'done': True})}\n\n"
+                had_error = True
+            else:
+                yield f"data: {json.dumps({**notice, 'done': False})}\n\n"
 
         # Post-process and persist only if we actually got a response (and no fatal stream error)
         if not had_error and notice is None:
@@ -5539,8 +6301,16 @@ async def chat_stream(req: ChatRequest, request: Request = None, user_id: str = 
                     log_performance(user_id, req.conversation_id, preferred_model, actual_tokens, cost, latency_ms, comp_score)
                 except Exception as e:
                     record_error("perf_log", str(e))
+            except PersistenceError:
+                record_error("stream_finalize", PERSISTENCE_FAILED)
+                yield f"data: {json.dumps({'error': PERSISTENCE_FAILED, 'done': True})}\n\n"
+                had_error = True
             except Exception as e:
                 record_error("stream_finalize", str(e))
+
+        if interrupted is not None:
+            interrupted = keep_incomplete_reply(conversation, full_response, interrupted)
+            yield f"data: {json.dumps({'error': interrupted, 'done': True})}\n\n"
 
         if stats and not had_error and notice is None:
             yield f"data: {json.dumps({'stats': stats, 'done': False})}\n\n"
@@ -5624,7 +6394,6 @@ app.mount("/", RevalidatedStaticFiles(directory=STATIC_DIR, html=True), name="st
 # STARTUP/SHUTDOWN HOOKS
 # ============================================================
 
-@app.on_event("startup")
 async def startup_event():
     """Load conversations on startup."""
     print(f"✅ DaveLLM Router v{PRODUCT_VERSION} started")
@@ -5637,7 +6406,6 @@ async def startup_event():
         ]
     )
 
-@app.on_event("shutdown")
 async def shutdown_event():
     """Save conversations on shutdown."""
     for run_id in tuple(HOST_RUN_BINDINGS):
@@ -5652,8 +6420,33 @@ async def shutdown_event():
     if BACKGROUND_TASKS:
         await asyncio.gather(*BACKGROUND_TASKS, return_exceptions=True)
         BACKGROUND_TASKS.clear()
-    save_conversations(CONVERSATIONS)
-    print("💾 Conversations saved to disk")
+    try:
+        save_conversations(CONVERSATIONS)
+        print("💾 Conversations saved to disk")
+    except PersistenceError:
+        record_error("shutdown_save", PERSISTENCE_FAILED)
+
+
+from contextlib import asynccontextmanager as _asynccontextmanager  # noqa: E402
+
+
+@_asynccontextmanager
+async def _router_lifespan(_app):
+    """Startup and shutdown work (TA-05: replaces the deprecated on_event hooks).
+
+    Wired through the router here, below the pinned tool handlers, so their
+    provenance fingerprints in tests/test_tool_catalog_provenance.py hold.
+    """
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
+app.router.lifespan_context = _router_lifespan
+
+
 async def background_summarizer():
     """Periodically summarize older conversations to reduce on-demand latency."""
     while True:

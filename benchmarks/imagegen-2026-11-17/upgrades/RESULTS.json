@@ -1,0 +1,364 @@
+{
+  "started_utc": "2026-11-17T08:23:57Z",
+  "mode": "live",
+  "host": "Walter",
+  "generator": {
+    "available": true,
+    "comfyui_version": "0.43.0",
+    "device": "cuda:0 NVIDIA GeForce RTX 3070 Laptop GPU : cudaMallocAsync",
+    "checkpoint": "sd_xl_turbo_1.0_fp16.safetensors"
+  },
+  "limits": {
+    "max_pixels": 1048576,
+    "max_steps": 8,
+    "max_quality_pixels": 2359296,
+    "max_quality_steps": 8
+  },
+  "timings": [
+    {
+      "case": "C1",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 6469,
+      "round_trip_ms": 6532
+    },
+    {
+      "case": "C2",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 3077,
+      "round_trip_ms": 3141
+    },
+    {
+      "case": "C3",
+      "stage": "draft",
+      "size": "1024x576",
+      "generator_ms": 3061,
+      "round_trip_ms": 3108
+    },
+    {
+      "case": "C1",
+      "stage": "quality",
+      "size": "1152x1152",
+      "generator_ms": 3610,
+      "round_trip_ms": 3704
+    },
+    {
+      "case": "U6-16:9",
+      "stage": "draft",
+      "size": "1344x768",
+      "generator_ms": 3108,
+      "round_trip_ms": 3203
+    },
+    {
+      "case": "U7-style",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 3608,
+      "round_trip_ms": 3672
+    },
+    {
+      "case": "U3-seed300",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 3125,
+      "round_trip_ms": null
+    },
+    {
+      "case": "U3-seed301",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 2078,
+      "round_trip_ms": null
+    },
+    {
+      "case": "U3-seed302",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 2047,
+      "round_trip_ms": null
+    },
+    {
+      "case": "U3-seed303",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 2280,
+      "round_trip_ms": null
+    },
+    {
+      "case": "U4-img2img",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 3625,
+      "round_trip_ms": 3734
+    },
+    {
+      "case": "U4-upload",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 3625,
+      "round_trip_ms": 3766
+    },
+    {
+      "case": "U5-inpaint",
+      "stage": "draft",
+      "size": "768x768",
+      "generator_ms": 3750,
+      "round_trip_ms": 3922
+    }
+  ],
+  "checks": [
+    {
+      "check": "generator reachable",
+      "pass": true,
+      "detail": "comfyui 0.43.0 on cuda:0 NVIDIA GeForce RTX 3070 Laptop GPU : cudaMallocAsync"
+    },
+    {
+      "check": "C1 draft generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "C1 PNG is 768x768",
+      "pass": true,
+      "detail": "got (768, 768)"
+    },
+    {
+      "check": "C1 manifest has provenance",
+      "pass": true,
+      "detail": "id img-20261117T082404Z-60e1eb09"
+    },
+    {
+      "check": "C1 saved file matches",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "C2 draft generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "C2 PNG is 768x768",
+      "pass": true,
+      "detail": "got (768, 768)"
+    },
+    {
+      "check": "C2 manifest has provenance",
+      "pass": true,
+      "detail": "id img-20261117T082407Z-4e20a108"
+    },
+    {
+      "check": "C2 saved file matches",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "C3 draft generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "C3 PNG is 1024x576",
+      "pass": true,
+      "detail": "got (1024, 576)"
+    },
+    {
+      "check": "C3 manifest has provenance",
+      "pass": true,
+      "detail": "id img-20261117T082410Z-ad292c29"
+    },
+    {
+      "check": "C3 saved file matches",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "same seed and settings reproduce the draft byte-for-byte",
+      "pass": true,
+      "detail": "identical"
+    },
+    {
+      "check": "save=false leaves no library entry",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "quality pass generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "quality pass keeps seed and links its draft",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "quality pass is 1.5x the draft",
+      "pass": true,
+      "detail": "got (1152, 1152)"
+    },
+    {
+      "check": "over-limit request pauses for approval and generates nothing",
+      "pass": true,
+      "detail": "proposed {'width': 1024, 'height': 1024, 'steps': 4}"
+    },
+    {
+      "check": "material rewrite needs review by default",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "formatting-only change generates without review",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "suggest mode never sends a rewrite",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "U6 aspect presets snap to 64 and stay within the draft limit",
+      "pass": true,
+      "detail": "20 presets"
+    },
+    {
+      "check": "U6 16:9 max preset 1344x768 generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "U6 output size matches the preset",
+      "pass": true,
+      "detail": "got (1344, 768)"
+    },
+    {
+      "check": "U7 style preset is appended to the model prompt and recorded",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "U7 presets reset to defaults",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "U1 gallery thumbnail rendered by ComfyUI (long side 256)",
+      "pass": true,
+      "detail": "(256, 256)"
+    },
+    {
+      "check": "U1 gallery search and seed filter",
+      "pass": true,
+      "detail": "search 1, seed 1"
+    },
+    {
+      "check": "U2 remix recipe from the manifest reproduces the image",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "U3 four variations finished",
+      "pass": true,
+      "detail": "4/4 in 9889 ms"
+    },
+    {
+      "check": "U3 variations use consecutive seeds and differ",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "U8 never more than one GPU job running",
+      "pass": true,
+      "detail": "max running 1"
+    },
+    {
+      "check": "U4 image to image from a library image",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "U4 records source and strength",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "U4 image to image from an upload",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "U5 inpaint generated",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "U5 inpaint manifest records the mask",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "U8 queue reports positions 0/1/2",
+      "pass": true,
+      "detail": "[0, 1, 2]"
+    },
+    {
+      "check": "U8 cancel stops a running job and drops a queued one",
+      "pass": true,
+      "detail": "['cancelled', 'done', 'cancelled']"
+    },
+    {
+      "check": "U8 progress reported in steps",
+      "pass": true,
+      "detail": "{'value': 4, 'max': 4}"
+    },
+    {
+      "check": "U9 export embeds DaveLLM tEXt and drops ComfyUI's workflow chunks",
+      "pass": true,
+      "detail": "stored file had ['prompt']"
+    },
+    {
+      "check": "U9 strip-metadata export has no text chunks",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "U9 zip export of selected images",
+      "pass": true,
+      "detail": "6 entries"
+    },
+    {
+      "check": "U10 favorite kept past retention, non-favorite pruned",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "U10 favorite and collection filters",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "per-image delete removes file and manifest",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "retention prunes images past 90 days",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "purge-all needs the exact confirmation and empties the library",
+      "pass": true,
+      "detail": "deleted 12"
+    },
+    {
+      "check": "nothing left on disk after purge",
+      "pass": true,
+      "detail": ""
+    }
+  ],
+  "passed": 50,
+  "total": 50
+}

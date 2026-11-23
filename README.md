@@ -121,6 +121,50 @@ While a streamed reply is still silent, the chat shows what the model is doing: 
 
 The repository intentionally contains no real node addresses or verified model inventory. Cluster reachability and installed models remain runtime-dependent.
 
+## Local image generation
+
+DaveLLM generates images through a separately managed ComfyUI service (SDXL Turbo on Walter). The **Generate** button opens the image dialog, which follows the design record *PLAN | DaveLLM | Image Harness Design Questions*:
+
+- **Draft first, optional quality pass.** A draft runs at the requested size; **Quality pass** reruns the same seed and settings, upscales the latent 1.5x and refines it at 0.45 denoise. Image-to-image and inpaint drafts were made from a source that is not kept, so their quality pass refines the saved draft itself at the larger size.
+- **Standard controls** (prompt, negative prompt, size, seed) with **Advanced** (steps, CFG, sampler, scheduler, prompt behavior, approvals).
+- **Enhance prompt is opt-in.** It asks a local Ollama model for a rewrite that keeps subject, intent and constraints, and never generates by itself.
+- **Review rules.** Prompt behavior `suggest` | `review` (default) | `auto`; approvals `always` | `material` (default) | `none`. The stricter setting wins: a material rewrite skips review only with `auto` + `none`, and `suggest` never sends a rewrite to the model.
+- **Hardware limits.** Requests above the validated envelope return `409 hardware_limit` with a reduced preset and generate nothing until the user accepts it.
+
+Routes (all require `X-API-Key`): `GET /image/status`, `POST /image/enhance`, `POST /image/generate` (waits for the image), `POST /image/jobs` (queues it, or `count` 2-4 variations), `GET /image/jobs`, `GET /image/jobs/{id}`, `POST /image/jobs/{id}/cancel`, `POST /image/{id}/quality`, `GET /image/library` (filters below), `GET /image/collections`, `GET /image/{id}/file`, `GET /image/{id}/thumb`, `GET /image/{id}/manifest`, `GET /image/{id}/export?metadata=embed|strip`, `POST /image/export` (zip), `PATCH /image/{id}` (favorite, collections), `DELETE /image/{id}`, `GET|PUT /image/presets`, `POST /image/presets/reset`, `POST /image/purge` (body `{"confirm": "DELETE ALL IMAGES"}`).
+
+**Image tools.**
+- **Gallery.** Thumbnails (256 px, rendered by ComfyUI in the same workflow), search by prompt words, filter by UTC date range, model, seed, favorites and collection; click a thumbnail for the detail view. `GET /image/library?q=&since=YYYY-MM-DD&until=&model=&seed=&favorite=true&collection=&stage=&mode=&limit=&offset=`.
+- **Remix.** Loads a saved image's prompt, negative prompt, seed, size, steps, CFG, sampler, scheduler, style, mode and strength back into the form. Uploaded sources and masks are not kept, so remixing those asks for them again.
+- **Variations ×4.** Four images from one prompt with consecutive seeds (seed, seed+1, ...), queued one after another.
+- **Image to image.** From an upload (re-encoded to PNG in the browser) or a gallery image, with a strength slider (`denoise`). Sources go to ComfyUI's temp folder, which ComfyUI clears on restart; only their SHA-256 is recorded.
+- **Inpaint.** Paint a mask on the source; the mask is scaled and cropped exactly like the image and applied with `SetLatentNoiseMask`. SDXL Turbo is not an inpainting checkpoint, so expect blending to be rougher than with a dedicated inpaint model.
+- **Aspect presets.** 1:1, 4:3, 3:4, 3:2, 2:3, 16:9, 9:16, 21:9, 5:4 and 4:5 at a fast 768²-class budget and at the validated maximum, snapped to multiples of 64 and capped by `DAVE_IMAGE_MAX_PIXELS`.
+- **Style and negative presets.** Editable, saved on the serving host in `<DAVE_DATA_DIR>/image_presets.json`. A style preset appends its text to the prompt the model receives; it is your own choice, not a rewrite, so it does not trigger rewrite review, and the manifest records it.
+- **Queue.** One worker runs every image job, so only one job is ever on the GPU (the 8 GB envelope assumes this). The queue shows each job's position, step progress (from ComfyUI's websocket) and a Cancel button; cancelling a running job interrupts ComfyUI. At most 16 jobs wait; jobs are kept in memory only.
+- **Export.** PNG with DaveLLM's record embedded as `tEXt` chunks (`parameters`, a readable summary, and `davellm`, the manifest as JSON), or with **Strip metadata** for a file with no text chunks at all. ComfyUI writes its own workflow (including the prompt) into the PNGs it returns; both export modes remove it. Select images in the gallery to export them as a zip.
+- **Favorites and collections.** Favorites are exempt from the retention purge and stay until you unfavorite or delete them. **Delete all** still removes favorites.
+
+Configuration:
+
+```bash
+export DAVE_COMFY_URL='http://127.0.0.1:8188'
+export DAVE_COMFY_CHECKPOINT='sd_xl_turbo_1.0_fp16.safetensors'
+export DAVE_IMAGE_DIR="$DAVE_DATA_DIR/images"   # default; local disk only
+export DAVE_IMAGE_RETENTION_DAYS=90             # 0 keeps images until deleted
+export DAVE_IMAGE_MAX_PIXELS=1048576            # validated draft envelope
+export DAVE_IMAGE_MAX_QUALITY_PIXELS=2359296    # validated quality-pass envelope
+export DAVE_IMAGE_ENHANCE_MODEL='llama3:latest' # text model for Enhance prompt; unset = first installed model alphabetically
+```
+
+**Storage.** Each saved image is `<id>.png` plus a `<id>.json` manifest (original and structured prompt, negative prompt, seed, settings, checkpoint, workflow and ComfyUI version, UTC time, duration, hash). Nothing is uploaded. Untick **Save to the local image library** to keep nothing. The workflow ends in ComfyUI's `PreviewImage` node, so ComfyUI keeps only a temporary copy that it clears on restart, and DaveLLM's delete and purge are authoritative. Generated images are not written into conversation JSON.
+
+**Check.** `python scripts/check_image_generation.py --stub --out /tmp/imagecheck` runs the full contract (draft, determinism, quality pass, limits, review, the ten image tools, delete, retention, purge) against `scripts/fake_comfyui.py`; on the GPU host run it with `--comfy-url http://127.0.0.1:8188 --out benchmarks/imagegen-<date>` instead. Both use a throwaway data directory.
+
+ComfyUI is not started or exposed by DaveLLM. Keep it bound to loopback unless a separately reviewed network boundary is required.
+
+Walter's local launcher is `scripts/windows/launch-davellm.ps1`. It starts the loopback-only portable ComfyUI service when needed, creates a fresh in-memory API key, points DaveLLM at its repo-local Python environment, stores runtime data under `%LOCALAPPDATA%\DaveLLM\data`, and starts Electron. It does not store the key or create a startup task.
+
 ### When no models load
 
 `GET /nodes/{node_id}/models` and `GET /nodes/status` both return an `error` field so an empty inventory explains itself instead of looking like an empty cluster:

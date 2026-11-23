@@ -226,3 +226,26 @@ def test_h6_support_table_and_deprecation_policy_are_locked():
         "no root-shim removal before a separately approved DaveLLM major version",
     ):
         assert required in guide
+
+
+def test_maintainer_notes_describe_the_native_tool_loop_transport():
+    """DLA-04: CLAUDE.md once said the tool loop used /v1 without num_ctx and that
+    thinking and metrics reached no client; the native adapter (DL-TRANSPORT-01b)
+    and DL-UX-01 superseded all three statements."""
+    notes = (REPO / "CLAUDE.md").read_text()
+    integration = (REPO / "INTEGRATION.md").read_text()
+    app = (REPO / "app.py").read_text()
+
+    for superseded in (
+        "the tool loop does not use it",
+        "because their `/v1` requests send no `num_ctx`",
+        "nothing forwards them to the UI yet",
+    ):
+        assert superseded not in notes, superseded
+    assert "parsed but not yet surfaced" not in integration
+
+    # What the notes say now is what the code does.
+    assert "ollama_chat_bounded" in notes and "await ollama_chat_bounded(" in app
+    assert "Agent runs pass the same `window`" in notes
+    assert "capture_brain=True, window=chat_num_ctx(req.model)" in app
+    assert '"/v1/chat/completions"' not in app and "/v1/chat/completions\"" not in app

@@ -74,6 +74,8 @@ let anticipationRecord = window.DaveAnticipation.createRecord();
 let notepadSaveTimer = null;
 let notepadLoadedProjectId = null;
 let notepadLoading = false;
+let notepadLoadSequence = 0;
+let modelLoadSequence = 0;
 let instructionPreviewMode = "layered";
 let projectHomeData = null;
 let projectHomeProjectId = null;
@@ -255,6 +257,7 @@ const modelSelect = document.getElementById("modelSelect");
 const loadModelsBtn = document.getElementById("loadModelsBtn");
 const imageInput = document.getElementById("imageInput");
 const imageStatus = document.getElementById("imageStatus");
+const generateImageBtn = document.getElementById("generateImageBtn");
 const themeToggle = document.getElementById("themeToggle");
 const routeCostInput = document.getElementById("routeCost");
 const routeQualityInput = document.getElementById("routeQuality");
@@ -768,6 +771,13 @@ function normalizeModelMeta(model) {
     const id = typeof model === "string" ? model : (model.id || model.model || model.name);
     if (!id) return null;
 
+    // The router read the node's own capabilities list (Ollama /api/show), so it
+    // decides both ways: a vision model with a plain name is vision-capable, and a
+    // text-only model whose alias looks like vision stays text-only.
+    if (typeof model === "object" && model.capabilities_source === "ollama") {
+        return { id, vision: Boolean(model.vision), capabilitiesSource: "ollama" };
+    }
+
     let vision = modelIdLooksVisionCapable(id);
 
     if (typeof model === "object") {
@@ -788,7 +798,7 @@ function normalizeModelMeta(model) {
         if (model.vision || model.supports_vision) vision = true;
     }
 
-    return { id, vision };
+    return { id, vision, capabilitiesSource: "name" };
 }
 
 function getSelectedModelMeta() {
@@ -2538,6 +2548,11 @@ function activeNotepadProjectId() {
 }
 
 async function loadProjectNotepad(projectId) {
+    // Fast project switches can return answers out of order. Only the newest
+    // load for the project that is still active may fill the notepad, or a late
+    // answer for A would replace B's notes and make autosave write them to A.
+    const sequence = ++notepadLoadSequence;
+    const stale = () => sequence !== notepadLoadSequence || activeNotepadProjectId() !== projectId;
     notepadLoading = true;
     notepadStatus.textContent = "Loading...";
     try {
@@ -2547,16 +2562,18 @@ async function loadProjectNotepad(projectId) {
         );
         if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
         const data = await response.json();
+        if (stale()) return;
         notepadInput.value = data.content || "";
         notepadLoadedProjectId = projectId;
         const project = projects.find((item) => item.project_id === projectId);
         notepadProjectName.textContent = project?.name || "Current project";
         notepadStatus.textContent = data.updated_at ? "Saved" : "Ready. Autosaves as you type.";
     } catch (error) {
+        if (stale()) return;
         console.error("Failed to load notepad:", error);
         notepadStatus.textContent = `Load failed: ${error.message}`;
     } finally {
-        notepadLoading = false;
+        if (sequence === notepadLoadSequence) notepadLoading = false;
     }
 }
 
@@ -2943,16 +2960,23 @@ async function loadModelsFromNode(preferredModelId = null) {
     }
 
     const previousModel = preferredModelId || modelSelect.value;
+    // Node changes can return inventories out of order. Only the newest request
+    // for the node that is still selected may fill the model list, so node B
+    // never shows node A's models and metadata.
+    const nodeId = state.selectedNode;
+    const sequence = ++modelLoadSequence;
+    const stale = () => sequence !== modelLoadSequence || state.selectedNode !== nodeId;
     replaceSelectOptions(modelSelect, "Loading models...");
     modelSelect.disabled = true;
 
     try {
-        const res = await fetch(routerEndpoint(`/nodes/${state.selectedNode}/models`), {
+        const res = await fetch(routerEndpoint(`/nodes/${nodeId}/models`), {
             headers: authHeaders()
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
+        if (stale()) return null;
         const models = data.models || [];
         const nodeError = data.error || null;
         const normalizedModels = models
@@ -2970,7 +2994,7 @@ async function loadModelsFromNode(preferredModelId = null) {
             opt.textContent = nodeError ? "Node unreachable" : "No models pulled on node";
             opt.title = nodeError || "";
             modelSelect.appendChild(opt);
-            if (nodeError) console.error(`Node ${state.selectedNode}: ${nodeError}`);
+            if (nodeError) console.error(`Node ${nodeId}: ${nodeError}`);
         } else {
             normalizedModels.forEach((meta) => {
                 state.modelMeta[meta.id] = meta;
@@ -2990,13 +3014,14 @@ async function loadModelsFromNode(preferredModelId = null) {
             }
         }
 
-        console.log(`✅ Loaded ${normalizedModels.length} models from ${state.selectedNode}`);
+        console.log(`✅ Loaded ${normalizedModels.length} models from ${nodeId}`);
         modelSelect.disabled = false;
         updateImageSupportNotice();
         updateContextStrip();
         renderPredictions();
         return modelSelect.value;
     } catch (err) {
+        if (stale()) return null;
         console.error("Failed to load models:", err);
         state.modelMeta = {};
         replaceSelectOptions(modelSelect, "Error loading models");
@@ -3351,8 +3376,7 @@ async function sendPreparedMessage() {
             // Leave content as-is and exit loop
         } else {
             console.error("Chat error:", err);
-            streamingMsg.content = `❌ Error: ${err.message}`;
-            streamingMsg.role = "error";
+            endReplyWithError(streamingMsg, err.message);
         }
         streamingMsg.isStreaming = false;
         renderMessages();
@@ -3366,6 +3390,26 @@ async function sendPreparedMessage() {
         renderPredictions();
         schedulePromptSizeCheck();  // a draft typed meanwhile now follows a longer history
     }
+}
+
+// A reply the model stopped mid-way keeps its text, marked incomplete, as the router saves it;
+// a failure before any text replaces the bubble with the error.
+function endReplyWithError(msg, errorText) {
+    if (String(msg.content || "").trim()) {
+        msg.incomplete = true;
+        msg.error = errorText;
+    } else {
+        msg.content = `❌ Error: ${errorText}`;
+        msg.role = "error";
+    }
+}
+
+function incompleteNotice(m) {
+    const notice = document.createElement("div");
+    notice.className = "message-incomplete";
+    notice.setAttribute("role", "note");
+    notice.textContent = `Incomplete reply: ${m.error || "the model stopped before finishing."}`;
+    return notice;
 }
 
 // The composer's Send button stops the reply while one streams; say so.
@@ -3651,6 +3695,11 @@ function renderMessages() {
             const working = workingLine(m);
             msgDiv.appendChild(working);
             liveMessageViews.set(m, { content: contentSpan, label: working.querySelector(".working-label") });
+        }
+
+        if (!m.isStreaming && m.incomplete) {
+            msgDiv.classList.add("message-is-incomplete");
+            msgDiv.appendChild(incompleteNotice(m));
         }
 
         if (!m.isStreaming && m.stats) {
@@ -4421,6 +4470,1021 @@ sendBtn.onclick = () => {
         sendMessage();
     }
 };
+
+// Local image generation (PLAN | DaveLLM | Image Harness Design Questions).
+const imageTools = globalThis.DaveImageTools;
+const imageEl = (id) => document.getElementById(id);
+const imageUi = {
+    dialog: imageEl("imageDialog"),
+    prompt: imageEl("imagePrompt"),
+    negative: imageEl("imageNegative"),
+    negativeChips: imageEl("imageNegativeChips"),
+    size: imageEl("imageSize"),
+    seed: imageEl("imageSeed"),
+    steps: imageEl("imageSteps"),
+    cfg: imageEl("imageCfg"),
+    sampler: imageEl("imageSampler"),
+    scheduler: imageEl("imageScheduler"),
+    behavior: imageEl("imageBehavior"),
+    approval: imageEl("imageApproval"),
+    save: imageEl("imageSave"),
+    mode: imageEl("imageMode"),
+    style: imageEl("imageStyle"),
+    sourceBlock: imageEl("imageSourceBlock"),
+    sourceFile: imageEl("imageSourceFile"),
+    sourceMeta: imageEl("imageSourceMeta"),
+    useCurrent: imageEl("imageUseCurrent"),
+    strength: imageEl("imageStrength"),
+    strengthValue: imageEl("imageStrengthValue"),
+    maskWrap: imageEl("imageMaskWrap"),
+    maskTools: imageEl("imageMaskTools"),
+    sourcePreview: imageEl("imageSourcePreview"),
+    maskCanvas: imageEl("imageMaskCanvas"),
+    brush: imageEl("imageBrush"),
+    maskClear: imageEl("imageMaskClear"),
+    presetKind: imageEl("imagePresetKind"),
+    presetPick: imageEl("imagePresetPick"),
+    presetName: imageEl("imagePresetName"),
+    presetText: imageEl("imagePresetText"),
+    presetSave: imageEl("imagePresetSave"),
+    presetDelete: imageEl("imagePresetDelete"),
+    presetReset: imageEl("imagePresetReset"),
+    review: imageEl("imageReview"),
+    reviewTitle: imageEl("imageReviewTitle"),
+    reviewText: imageEl("imageReviewText"),
+    structured: imageEl("imageStructured"),
+    approve: imageEl("imageApprove"),
+    keepOriginal: imageEl("imageKeepOriginal"),
+    hardware: imageEl("imageHardware"),
+    hardwareText: imageEl("imageHardwareText"),
+    hardwareAccept: imageEl("imageHardwareAccept"),
+    hardwareCancel: imageEl("imageHardwareCancel"),
+    enhance: imageEl("imageEnhanceBtn"),
+    variations: imageEl("imageVariationsBtn"),
+    generate: imageEl("imageGenerateBtn"),
+    status: imageEl("imageDialogStatus"),
+    queue: imageEl("imageQueue"),
+    queueMeta: imageEl("imageQueueMeta"),
+    frame: imageEl("imageResultFrame"),
+    variationGrid: imageEl("imageVariationGrid"),
+    meta: imageEl("imageResultMeta"),
+    quality: imageEl("imageQualityBtn"),
+    remix: imageEl("imageRemixBtn"),
+    favorite: imageEl("imageFavoriteBtn"),
+    toChat: imageEl("imageToChatBtn"),
+    remove: imageEl("imageDeleteBtn"),
+    exportBtn: imageEl("imageExportBtn"),
+    exportStrip: imageEl("imageExportStrip"),
+    collections: imageEl("imageCollections"),
+    collectionsSave: imageEl("imageCollectionsSave"),
+    library: imageEl("imageLibrary"),
+    libraryMeta: imageEl("imageLibraryMeta"),
+    exportZip: imageEl("imageExportZip"),
+    purge: imageEl("imagePurgeBtn"),
+    search: imageEl("imageSearch"),
+    since: imageEl("imageSince"),
+    until: imageEl("imageUntil"),
+    modelFilter: imageEl("imageModelFilter"),
+    seedFilter: imageEl("imageSeedFilter"),
+    collectionFilter: imageEl("imageCollectionFilter"),
+    favFilter: imageEl("imageFavFilter"),
+    detail: imageEl("imageDetail"),
+    detailImg: imageEl("imageDetailImg"),
+    detailMeta: imageEl("imageDetailMeta"),
+    detailClose: imageEl("imageDetailClose"),
+    detailOpen: imageEl("imageDetailOpen"),
+    detailRemix: imageEl("imageDetailRemix"),
+    detailSource: imageEl("imageDetailSource"),
+    detailFavorite: imageEl("imageDetailFavorite"),
+    detailExport: imageEl("imageDetailExport"),
+    detailDelete: imageEl("imageDetailDelete"),
+};
+const IMAGE_MODE_KEY = "dave_image_modes";
+const imageState = {
+    structured: null, enhanced: false, current: null, pending: null, objectUrls: [],
+    presets: { aspects: [], styles: [], negatives: [] },
+    source: null, // { id } for a library image or { dataUrl } for an upload
+    maskDirty: false,
+    watched: new Map(), // job id -> { onDone }
+    pollTimer: null,
+    jobs: [],
+    selected: new Set(),
+    detail: null,
+    variationSlots: [],
+};
+
+function imageSetStatus(text) { if (imageUi.status) imageUi.status.textContent = text || ""; }
+
+function imageLoadModes() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(IMAGE_MODE_KEY) || "{}");
+        if (["suggest", "review", "auto"].includes(saved.behavior)) imageUi.behavior.value = saved.behavior;
+        if (["always", "material", "none"].includes(saved.approval)) imageUi.approval.value = saved.approval;
+    } catch (_error) { /* defaults stay */ }
+}
+
+function imageSaveModes() {
+    localStorage.setItem(IMAGE_MODE_KEY, JSON.stringify({ behavior: imageUi.behavior.value, approval: imageUi.approval.value }));
+}
+
+function imageRequestBody(extra = {}) {
+    const [width, height] = imageUi.size.value.split("x").map(Number);
+    const body = {
+        prompt: imageUi.prompt.value.trim(),
+        negative_prompt: imageUi.negative.value.trim(),
+        width, height,
+        steps: Number(imageUi.steps.value) || 4,
+        cfg: Number(imageUi.cfg.value),
+        sampler: imageUi.sampler.value,
+        scheduler: imageUi.scheduler.value,
+        prompt_behavior: imageUi.behavior.value,
+        approval_mode: imageUi.approval.value,
+        save: imageUi.save.checked,
+        enhanced: imageState.enhanced,
+        mode: imageUi.mode.value,
+    };
+    if (imageUi.style.value) body.style_preset = imageUi.style.value;
+    if (imageUi.seed.value !== "") body.seed = Number(imageUi.seed.value);
+    if (imageState.structured !== null) body.structured_prompt = imageState.structured;
+    if (body.mode !== "txt2img") {
+        body.strength = Number(imageUi.strength.value);
+        if (imageState.source && imageState.source.id) body.source_image_id = imageState.source.id;
+        else if (imageState.source && imageState.source.dataUrl) body.source_image = imageState.source.dataUrl;
+        if (body.mode === "inpaint") body.mask = imageMaskDataUrl();
+    }
+    return { ...body, ...extra };
+}
+
+function imageHidePanels() {
+    imageUi.review.hidden = true;
+    imageUi.hardware.hidden = true;
+}
+
+function imageShowReview(title, message, structured) {
+    imageUi.reviewTitle.textContent = title;
+    imageUi.reviewText.textContent = message;
+    imageUi.structured.value = structured;
+    imageUi.review.hidden = false;
+    imageUi.approve.hidden = imageUi.behavior.value === "suggest";
+}
+
+function imageDescribe(result) {
+    const m = result.manifest || {};
+    const mode = (m.settings && m.settings.mode) || "txt2img";
+    const kind = result.stage === "quality" ? "Quality pass" : ({ img2img: "Image to image", inpaint: "Inpaint" }[mode] || "Draft");
+    const parts = [`${kind} ${result.width}×${result.height}`, `seed ${result.seed}`];
+    if (result.duration_ms) parts.push(`${(result.duration_ms / 1000).toFixed(1)} s`);
+    if (m.style_preset) parts.push(`style ${m.style_preset.name}`);
+    if (m.reduced_from) parts.push("reduced settings (approved)");
+    parts.push(result.saved ? "saved locally" : "not saved");
+    return parts.join(" · ");
+}
+
+function imageLibraryState(result) {
+    return (result && result.manifest && result.manifest.library) || { favorite: false, collections: [] };
+}
+
+function imageShowResult(result) {
+    imageState.current = result;
+    imageUi.frame.replaceChildren();
+    const img = document.createElement("img");
+    img.src = result.image;
+    img.alt = `Generated image: ${(result.manifest && result.manifest.original_prompt) || "local image"}`;
+    imageUi.frame.appendChild(img);
+    imageUi.meta.textContent = imageDescribe(result);
+    const saved = Boolean(result.saved && result.id);
+    imageUi.quality.disabled = !saved || result.stage === "quality";
+    imageUi.toChat.disabled = false;
+    imageUi.remove.disabled = !saved;
+    imageUi.remix.disabled = !result.manifest;
+    imageUi.favorite.disabled = !saved;
+    imageUi.exportBtn.disabled = !saved;
+    imageUi.collections.disabled = imageUi.collectionsSave.disabled = !saved;
+    imageUi.useCurrent.disabled = !saved;
+    const lib = imageLibraryState(result);
+    imageSetFavoriteButton(imageUi.favorite, lib.favorite);
+    imageUi.collections.value = (lib.collections || []).join(", ");
+    for (const slot of imageState.variationSlots) slot.figure.classList.toggle("is-current", slot.id && slot.id === result.id);
+}
+
+function imageSetFavoriteButton(button, on) {
+    if (!button) return;
+    button.textContent = on ? "★ Favorited" : "☆ Favorite";
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
+async function imageCall(path, options = {}) {
+    const response = await fetch(routerEndpoint(path), {
+        ...options,
+        headers: authHeaders({ "Content-Type": "application/json", ...(options.headers || {}) }),
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch (_error) { payload = null; }
+    return { response, payload };
+}
+
+function imageErrorText(detail, fallback) {
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((d) => d.msg || "").filter(Boolean).join("; ") || fallback;
+    return (detail && detail.message) || fallback;
+}
+
+function imageHandleBlocked(detail, retry) {
+    if (detail && detail.code === "hardware_limit") {
+        const p = detail.proposed || {};
+        const reduced = [`${p.width}×${p.height}`, `${p.steps} steps`];
+        if (p.quality_scale) reduced.push(`quality scale ${p.quality_scale}×`);
+        imageUi.hardwareText.textContent = `${detail.message} Proposed: ${reduced.join(", ")}.`;
+        imageUi.hardware.hidden = false;
+        imageState.pending = retry;
+        imageSetStatus("Waiting for your approval. Nothing was generated.");
+        return true;
+    }
+    if (detail && (detail.code === "review_required" || detail.code === "suggest_only")) {
+        imageShowReview(
+            detail.code === "suggest_only" ? "Suggestion only" : "Review before generating",
+            detail.message,
+            detail.prompt_for_model || imageState.structured || imageUi.prompt.value,
+        );
+        imageState.pending = retry;
+        imageSetStatus("Waiting for your review. Nothing was generated.");
+        return true;
+    }
+    return false;
+}
+
+// -- queue ---------------------------------------------------------------------------
+
+function imageRenderQueue() {
+    if (!imageUi.queue) return;
+    const jobs = imageState.jobs.slice(0, 12);
+    imageUi.queue.replaceChildren();
+    const active = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
+    imageUi.queueMeta.textContent = active ? `${active} active · one GPU job at a time` : "One GPU job at a time";
+    for (const job of jobs) {
+        const li = document.createElement("li");
+        li.dataset.jobId = job.id;
+        li.dataset.status = job.status;
+        const label = document.createElement("span");
+        label.className = "image-queue-label";
+        label.textContent = job.label;
+        label.title = job.label;
+        const right = document.createElement("span");
+        const status = document.createElement("span");
+        status.className = "image-queue-status";
+        status.textContent = imageTools.jobStatusText(job);
+        right.appendChild(status);
+        if (job.status === "queued" || job.status === "running") {
+            const cancel = document.createElement("button");
+            cancel.type = "button";
+            cancel.textContent = "Cancel";
+            cancel.setAttribute("aria-label", `Cancel ${job.label}`);
+            cancel.addEventListener("click", () => imageCancelJob(job.id));
+            right.append(" ", cancel);
+        }
+        const bar = document.createElement("progress");
+        bar.max = 1;
+        bar.value = imageTools.jobFraction(job);
+        li.append(label, right, bar);
+        imageUi.queue.appendChild(li);
+    }
+}
+
+async function imagePollJobs() {
+    imageState.pollTimer = null;
+    try {
+        const { response, payload } = await imageCall("/image/jobs");
+        if (!response.ok) throw new Error("Queue unavailable");
+        imageState.jobs = payload.jobs || [];
+        imageRenderQueue();
+        for (const job of imageState.jobs) {
+            const watch = imageState.watched.get(job.id);
+            if (watch && !["queued", "running"].includes(job.status)) {
+                imageState.watched.delete(job.id);
+                await watch.onDone(job);
+            }
+        }
+        const active = imageState.jobs.some((j) => j.status === "queued" || j.status === "running");
+        if (active || imageState.watched.size) imageSchedulePoll();
+    } catch (error) {
+        imageSetStatus(error.message);
+        if (imageState.watched.size) imageSchedulePoll(1500);
+    }
+}
+
+function imageSchedulePoll(delay = 400) {
+    if (!imageState.pollTimer) imageState.pollTimer = setTimeout(imagePollJobs, delay);
+}
+
+async function imageCancelJob(id) {
+    await imageCall(`/image/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+    imageSchedulePoll(50);
+}
+
+async function imageJobResult(job) {
+    const { response, payload } = await imageCall(`/image/jobs/${encodeURIComponent(job.id)}`);
+    if (!response.ok) throw new Error("Job result unavailable");
+    const result = payload.result;
+    if (!result.image && result.id) result.image = await imageFetchBlobUrl(result.id, "file");
+    return result;
+}
+
+function imageWatch(job, onDone) {
+    imageState.watched.set(job.id, { onDone });
+    imageSchedulePoll(100);
+}
+
+async function imageSubmit(path, body, retry) {
+    const { response, payload } = await imageCall(path, { method: "POST", body: JSON.stringify(body) });
+    const detail = payload && payload.detail;
+    if (!response.ok) {
+        if (imageHandleBlocked(detail, retry)) return null;
+        throw new Error(imageErrorText(detail, "Image generation failed"));
+    }
+    return payload.jobs || [];
+}
+
+function imageFinishSingle(job) {
+    return async () => {
+        const latest = imageState.jobs.find((j) => j.id === job.id) || job;
+        if (latest.status === "done") {
+            const result = await imageJobResult(latest);
+            imageShowResult(result);
+            imageSetStatus("");
+            imageRefreshLibrary();
+        } else {
+            imageSetStatus(latest.status === "cancelled" ? "Cancelled. Nothing was saved." : (latest.error || "Image generation failed"));
+        }
+    };
+}
+
+async function imageGenerate(extra = {}) {
+    const body = imageRequestBody(extra);
+    if (!body.prompt) { imageSetStatus("Enter an image prompt first"); imageUi.prompt.focus(); return; }
+    if (body.mode !== "txt2img" && !body.source_image_id && !body.source_image) { imageSetStatus("Choose a source image first"); return; }
+    if (body.mode === "inpaint" && !body.mask) { imageSetStatus("Paint the area to repaint on the source image first"); return; }
+    imageHidePanels();
+    imageUi.variationGrid.hidden = true;
+    imageState.variationSlots = [];
+    imageUi.generate.disabled = true;
+    try {
+        const jobs = await imageSubmit("/image/jobs", body, (more) => imageGenerate({ ...extra, ...more }));
+        if (!jobs) return;
+        imageSetStatus(jobs[0].position > 1 ? `Queued · #${jobs[0].position} in line` : "Generating locally…");
+        imageWatch(jobs[0], imageFinishSingle(jobs[0]));
+    } catch (error) {
+        imageSetStatus(error.message);
+    } finally {
+        imageUi.generate.disabled = false;
+    }
+}
+
+async function imageVariations(extra = {}) {
+    const body = imageRequestBody({ count: 4, ...extra });
+    if (!body.prompt) { imageSetStatus("Enter an image prompt first"); imageUi.prompt.focus(); return; }
+    if (body.mode !== "txt2img" && !body.source_image_id && !body.source_image) { imageSetStatus("Choose a source image first"); return; }
+    if (body.mode === "inpaint" && !body.mask) { imageSetStatus("Paint the area to repaint on the source image first"); return; }
+    imageHidePanels();
+    imageUi.variations.disabled = true;
+    try {
+        const jobs = await imageSubmit("/image/jobs", body, (more) => imageVariations({ ...extra, ...more }));
+        if (!jobs) return;
+        imageUi.variationGrid.replaceChildren();
+        imageUi.variationGrid.hidden = false;
+        imageState.variationSlots = jobs.map((job) => {
+            const figure = document.createElement("figure");
+            figure.textContent = `Seed ${job.meta.seed} · waiting`;
+            imageUi.variationGrid.appendChild(figure);
+            const slot = { job, figure, id: null, result: null };
+            figure.addEventListener("click", () => { if (slot.result) imageShowResult(slot.result); });
+            return slot;
+        });
+        imageSetStatus(`Queued 4 variations (seeds ${jobs[0].meta.seed}–${jobs[3].meta.seed}), one after another.`);
+        for (const slot of imageState.variationSlots) {
+            imageWatch(slot.job, async () => {
+                const latest = imageState.jobs.find((j) => j.id === slot.job.id) || slot.job;
+                if (latest.status !== "done") { slot.figure.textContent = `Seed ${slot.job.meta.seed} · ${latest.status}`; return; }
+                slot.result = await imageJobResult(latest);
+                slot.id = slot.result.id;
+                const img = document.createElement("img");
+                img.src = slot.result.image;
+                img.alt = `Variation, seed ${slot.result.seed}`;
+                slot.figure.replaceChildren(img);
+                if (!imageState.current || imageState.variationSlots.every((s) => s.id !== imageState.current.id)) imageShowResult(slot.result);
+                if (imageState.variationSlots.every((s) => s.result || s.figure.textContent.includes("cancelled") || s.figure.textContent.includes("failed"))) {
+                    imageSetStatus("Variations finished.");
+                    imageRefreshLibrary();
+                }
+            });
+        }
+    } catch (error) {
+        imageSetStatus(error.message);
+    } finally {
+        imageUi.variations.disabled = false;
+    }
+}
+
+async function imageQualityPass(extra = {}) {
+    const current = imageState.current;
+    if (!current || !current.id) return;
+    imageHidePanels();
+    imageUi.quality.disabled = true;
+    try {
+        const body = { prompt_behavior: imageUi.behavior.value, approval_mode: imageUi.approval.value, save: imageUi.save.checked, background: true, ...extra };
+        const jobs = await imageSubmit(`/image/${encodeURIComponent(current.id)}/quality`, body, (more) => imageQualityPass({ ...extra, ...more }));
+        if (!jobs) return;
+        imageSetStatus("Quality pass queued on the same seed…");
+        imageWatch(jobs[0], imageFinishSingle(jobs[0]));
+    } catch (error) {
+        imageSetStatus(error.message);
+        imageUi.quality.disabled = false;
+    }
+}
+
+async function imageEnhance() {
+    const prompt = imageUi.prompt.value.trim();
+    if (!prompt) { imageSetStatus("Enter an image prompt first"); return; }
+    imageUi.enhance.disabled = true;
+    imageSetStatus("Asking a local model for a clearer prompt…");
+    try {
+        const { response, payload } = await imageCall("/image/enhance", {
+            method: "POST", body: JSON.stringify({ prompt, prompt_behavior: imageUi.behavior.value }),
+        });
+        if (!response.ok) throw new Error((payload && payload.detail) || "Prompt enhancement failed");
+        imageState.enhanced = true;
+        if (!payload.usable_for_generation) {
+            imageShowReview("Suggestion", "Prompt behavior is 'Suggest only'. Copy anything you like into your prompt; the model receives only your wording.", payload.proposed);
+            imageSetStatus("");
+            return;
+        }
+        imageState.structured = payload.proposed;
+        if (imageUi.behavior.value === "auto" && imageUi.approval.value === "none") {
+            imageSetStatus("Rewrite applied automatically. Generate when ready.");
+            return;
+        }
+        imageShowReview(payload.material_change ? "Review the rewrite" : "Formatting only",
+            payload.material_change ? "This rewrite changes the wording. Edit it if needed, then approve." : "Only formatting changed.",
+            payload.proposed);
+        imageSetStatus("");
+    } catch (error) {
+        imageSetStatus(error.message);
+    } finally {
+        imageUi.enhance.disabled = false;
+    }
+}
+
+// -- sources and the mask editor -----------------------------------------------------
+
+function imageUpdateModeUi() {
+    const mode = imageUi.mode.value;
+    imageUi.sourceBlock.hidden = mode === "txt2img";
+    const showMask = mode === "inpaint" && Boolean(imageState.source);
+    imageUi.maskTools.hidden = mode !== "inpaint";
+    imageUi.maskWrap.hidden = !imageState.source;
+    imageUi.maskCanvas.hidden = !showMask;
+    if (mode === "inpaint" && Number(imageUi.strength.value) < 0.8) imageUi.strength.value = "0.9";
+    imageUi.strengthValue.textContent = Number(imageUi.strength.value).toFixed(2);
+}
+
+function imageLoadImage(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Could not read that image"));
+        img.src = src;
+    });
+}
+
+async function imageSetSource(source, previewUrl, label) {
+    imageState.source = source;
+    const img = await imageLoadImage(previewUrl);
+    imageUi.sourcePreview.src = previewUrl;
+    imageUi.maskCanvas.width = img.naturalWidth;
+    imageUi.maskCanvas.height = img.naturalHeight;
+    imageMaskClear();
+    imageUi.sourceMeta.textContent = `${label} · ${img.naturalWidth}×${img.naturalHeight}`;
+    // Match the output size to the source's shape when a preset fits it.
+    const ratio = img.naturalWidth / img.naturalHeight;
+    let best = null;
+    for (const option of imageUi.size.options) {
+        const [w, h] = option.value.split("x").map(Number);
+        const score = Math.abs(w / h - ratio);
+        if (!best || score < best.score - 1e-6 || (Math.abs(score - best.score) < 1e-6 && w * h > best.area && w * h <= 768 * 768 * 1.2)) best = { option, score, area: w * h };
+    }
+    if (best) imageUi.size.value = best.option.value;
+    imageUpdateModeUi();
+}
+
+async function imageSourceFromFile(file) {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { imageSetStatus("Source images must be under 8 MB"); return; }
+    const raw = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Could not read that file"));
+        reader.readAsDataURL(file);
+    });
+    // Re-encode through a canvas: every upload becomes a plain PNG with no embedded metadata.
+    const img = await imageLoadImage(raw);
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext("2d").drawImage(img, 0, 0);
+    const dataUrl = canvas.toDataURL("image/png");
+    await imageSetSource({ dataUrl }, dataUrl, `Upload: ${file.name}`);
+}
+
+async function imageSourceFromLibrary(id, url) {
+    await imageSetSource({ id }, url || await imageFetchBlobUrl(id, "file"), `Library image ${id.slice(-8)}`);
+}
+
+function imageMaskClear() {
+    const ctx = imageUi.maskCanvas.getContext("2d");
+    ctx.clearRect(0, 0, imageUi.maskCanvas.width, imageUi.maskCanvas.height);
+    imageState.maskDirty = false;
+}
+
+function imageMaskDataUrl() {
+    const canvas = imageUi.maskCanvas;
+    if (!canvas.width || !canvas.height) return undefined;
+    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+    if (!imageTools.hasMaskPixels(data.data)) return undefined;
+    const out = document.createElement("canvas");
+    out.width = canvas.width;
+    out.height = canvas.height;
+    out.getContext("2d").putImageData(new ImageData(imageTools.maskFromAlpha(data.data), canvas.width, canvas.height), 0, 0);
+    return out.toDataURL("image/png");
+}
+
+function imageMaskPaint(event) {
+    const canvas = imageUi.maskCanvas;
+    const rect = canvas.getBoundingClientRect();
+    const scale = canvas.width / rect.width;
+    const x = (event.clientX - rect.left) * scale;
+    const y = (event.clientY - rect.top) * scale;
+    const ctx = canvas.getContext("2d");
+    const radius = (Number(imageUi.brush.value) / 2) * scale;
+    ctx.fillStyle = "rgba(255, 40, 40, 1)";
+    ctx.beginPath();
+    if (imageState.lastPaint) {
+        ctx.lineWidth = radius * 2;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.moveTo(imageState.lastPaint.x, imageState.lastPaint.y);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.beginPath();
+    }
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    imageState.lastPaint = { x, y };
+    imageState.maskDirty = true;
+}
+
+// -- presets -------------------------------------------------------------------------
+
+async function imageLoadPresets() {
+    try {
+        const { response, payload } = await imageCall("/image/presets");
+        if (!response.ok) return;
+        imageApplyPresets(payload);
+    } catch (_error) { /* the built-in sizes stay */ }
+}
+
+function imageApplyPresets(payload) {
+    imageState.presets = { aspects: payload.aspects || imageState.presets.aspects, styles: payload.styles || [], negatives: payload.negatives || [] };
+    const current = imageUi.size.value;
+    imageUi.size.replaceChildren();
+    for (const option of imageTools.sizeOptions(imageState.presets.aspects, current)) {
+        imageUi.size.appendChild(new Option(option.label, option.value, false, option.value === current));
+    }
+    const style = imageUi.style.value;
+    imageUi.style.replaceChildren(new Option("No style", ""));
+    for (const preset of imageState.presets.styles) imageUi.style.appendChild(new Option(preset.name, preset.id, false, preset.id === style));
+    imageUi.negativeChips.replaceChildren();
+    for (const preset of imageState.presets.negatives) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.textContent = `+ ${preset.name}`;
+        chip.title = preset.text;
+        chip.addEventListener("click", () => { imageUi.negative.value = imageTools.appendNegative(imageUi.negative.value, preset.text); });
+        imageUi.negativeChips.appendChild(chip);
+    }
+    imageRenderPresetEditor();
+}
+
+function imageRenderPresetEditor() {
+    const list = imageState.presets[imageUi.presetKind.value] || [];
+    const keep = imageUi.presetPick.value;
+    imageUi.presetPick.replaceChildren(new Option("New preset…", ""));
+    for (const preset of list) imageUi.presetPick.appendChild(new Option(preset.name, preset.id, false, preset.id === keep));
+    const chosen = list.find((p) => p.id === imageUi.presetPick.value);
+    imageUi.presetName.value = chosen ? chosen.name : "";
+    imageUi.presetText.value = chosen ? chosen.text : "";
+    imageUi.presetDelete.disabled = !chosen;
+}
+
+async function imageSavePresets(kind, list) {
+    const { response, payload } = await imageCall("/image/presets", { method: "PUT", body: JSON.stringify({ [kind]: list }) });
+    if (!response.ok) throw new Error(imageErrorText(payload && payload.detail, "Could not save presets"));
+    imageApplyPresets(payload);
+}
+
+async function imagePresetSave() {
+    const kind = imageUi.presetKind.value;
+    const name = imageUi.presetName.value.trim();
+    const text = imageUi.presetText.value.trim();
+    if (!name || !text) { imageSetStatus("A preset needs a name and text"); return; }
+    const list = (imageState.presets[kind] || []).map((p) => ({ ...p }));
+    const id = imageUi.presetPick.value;
+    const existing = list.find((p) => p.id === id);
+    if (existing) Object.assign(existing, { name, text });
+    else list.push({ name, text });
+    try {
+        await imageSavePresets(kind, list);
+        imageSetStatus(`Saved preset "${name}" on this machine.`);
+    } catch (error) { imageSetStatus(error.message); }
+}
+
+async function imagePresetDelete() {
+    const kind = imageUi.presetKind.value;
+    const id = imageUi.presetPick.value;
+    if (!id) return;
+    try {
+        await imageSavePresets(kind, (imageState.presets[kind] || []).filter((p) => p.id !== id));
+        imageUi.presetPick.value = "";
+        imageRenderPresetEditor();
+        imageSetStatus("Preset deleted.");
+    } catch (error) { imageSetStatus(error.message); }
+}
+
+async function imagePresetReset() {
+    if (!window.confirm("Replace your style and negative presets with the defaults?")) return;
+    const { response, payload } = await imageCall("/image/presets/reset", { method: "POST" });
+    if (response.ok) { imageApplyPresets(payload); imageSetStatus("Presets restored to the defaults."); }
+}
+
+// -- remix, favorites, collections, export -------------------------------------------
+
+async function imageRemix(manifest) {
+    const f = imageTools.remixFields(manifest);
+    imageUi.prompt.value = f.prompt;
+    imageUi.negative.value = f.negative;
+    imageUi.seed.value = f.seed === null ? "" : String(f.seed);
+    const size = `${f.width}x${f.height}`;
+    if (![...imageUi.size.options].some((o) => o.value === size)) imageUi.size.prepend(new Option(`Custom · ${f.width} × ${f.height}`, size));
+    imageUi.size.value = size;
+    imageUi.steps.value = String(f.steps);
+    imageUi.cfg.value = String(f.cfg);
+    imageUi.sampler.value = f.sampler;
+    imageUi.scheduler.value = f.scheduler;
+    imageUi.style.value = [...imageUi.style.options].some((o) => o.value === f.stylePreset) ? f.stylePreset : "";
+    imageUi.mode.value = f.mode;
+    imageUi.strength.value = String(f.strength);
+    imageState.structured = null;
+    imageState.enhanced = false;
+    imageState.source = null;
+    let note = "Remix loaded: prompt, seed, size and settings.";
+    if (f.sourceImageId) {
+        try { await imageSourceFromLibrary(f.sourceImageId); } catch (_error) { note += " Its source image is no longer in the library; choose one."; }
+    } else if (f.needsNewSource) {
+        note += " The original upload is not kept; choose the source again.";
+    }
+    if (f.needsNewMask) note += " Paint the mask again.";
+    imageUpdateModeUi();
+    imageSetStatus(note);
+    imageUi.prompt.focus();
+}
+
+async function imageToggleFavorite(id, on) {
+    const { response, payload } = await imageCall(`/image/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ favorite: on }) });
+    if (!response.ok) { imageSetStatus("Could not update favorite"); return null; }
+    if (imageState.current && imageState.current.id === id) {
+        imageState.current.manifest = payload;
+        imageSetFavoriteButton(imageUi.favorite, payload.library.favorite);
+    }
+    if (imageState.detail && imageState.detail.id === id) {
+        imageState.detail = payload;
+        imageSetFavoriteButton(imageUi.detailFavorite, payload.library.favorite);
+    }
+    imageSetStatus(on ? "Favorited: kept past the retention window." : "Removed from favorites.");
+    imageRefreshLibrary();
+    return payload;
+}
+
+async function imageSaveCollections() {
+    const current = imageState.current;
+    if (!current || !current.id) return;
+    const collections = imageTools.parseCollections(imageUi.collections.value);
+    const { response, payload } = await imageCall(`/image/${encodeURIComponent(current.id)}`, { method: "PATCH", body: JSON.stringify({ collections }) });
+    if (!response.ok) { imageSetStatus(imageErrorText(payload && payload.detail, "Could not save collections")); return; }
+    current.manifest = payload;
+    imageUi.collections.value = payload.library.collections.join(", ");
+    imageSetStatus(collections.length ? `In ${collections.length} collection${collections.length === 1 ? "" : "s"}.` : "Removed from all collections.");
+    imageRefreshLibrary();
+}
+
+async function imageDownload(path, options, fallbackName) {
+    const response = await fetch(routerEndpoint(path), { ...options, headers: authHeaders({ "Content-Type": "application/json", ...((options && options.headers) || {}) }) });
+    if (!response.ok) throw new Error("Export failed");
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const url = URL.createObjectURL(await response.blob());
+    const link = Object.assign(document.createElement("a"), { href: url, download: match ? match[1] : fallbackName });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return match ? match[1] : fallbackName;
+}
+
+async function imageExportOne(id) {
+    const metadata = imageUi.exportStrip.checked ? "strip" : "embed";
+    try {
+        const name = await imageDownload(`/image/${encodeURIComponent(id)}/export?metadata=${metadata}`, {}, `${id}.png`);
+        imageSetStatus(metadata === "strip" ? `Exported ${name} with no metadata.` : `Exported ${name} with its generation record embedded.`);
+    } catch (error) { imageSetStatus(error.message); }
+}
+
+async function imageExportZip() {
+    const ids = [...imageState.selected];
+    if (!ids.length) return;
+    const metadata = imageUi.exportStrip.checked ? "strip" : "embed";
+    try {
+        const name = await imageDownload("/image/export", { method: "POST", body: JSON.stringify({ ids, metadata }) }, "davellm-images.zip");
+        imageSetStatus(`Exported ${ids.length} image${ids.length === 1 ? "" : "s"} as ${name}.`);
+    } catch (error) { imageSetStatus(error.message); }
+}
+
+// -- gallery and detail view ---------------------------------------------------------
+
+async function imageFetchBlobUrl(id, kind = "file") {
+    const response = await fetch(routerEndpoint(`/image/${encodeURIComponent(id)}/${kind}`), { headers: authHeaders() });
+    if (!response.ok) throw new Error("Image unavailable");
+    const url = URL.createObjectURL(await response.blob());
+    imageState.objectUrls.push(url);
+    return url;
+}
+
+function imageGalleryFilters() {
+    return {
+        q: imageUi.search.value, since: imageUi.since.value, until: imageUi.until.value,
+        model: imageUi.modelFilter.value, seed: imageUi.seedFilter.value,
+        favorite: imageUi.favFilter.checked, collection: imageUi.collectionFilter.value,
+    };
+}
+
+function imageFillSelect(select, values, allLabel) {
+    const keep = select.value;
+    select.replaceChildren(new Option(allLabel, ""));
+    for (const value of values) select.appendChild(new Option(value.label || value, value.value || value, false, (value.value || value) === keep));
+}
+
+async function imageRefreshLibrary() {
+    if (!imageUi.library) return;
+    const keepUrls = new Set([imageState.current && imageState.current.image, imageUi.sourcePreview && imageUi.sourcePreview.src,
+        ...imageState.variationSlots.map((s) => s.result && s.result.image)]);
+    imageState.objectUrls = imageState.objectUrls.filter((url) => { if (keepUrls.has(url)) return true; URL.revokeObjectURL(url); return false; });
+    try {
+        const { response, payload } = await imageCall(`/image/library${imageTools.libraryQuery(imageGalleryFilters())}`);
+        if (!response.ok) throw new Error(imageErrorText(payload && payload.detail, "Library unavailable"));
+        const images = payload.images || [];
+        const storage = payload.storage || {};
+        const facets = payload.facets || {};
+        imageFillSelect(imageUi.modelFilter, facets.models || [], "All models");
+        imageFillSelect(imageUi.collectionFilter, (facets.collections || []).map((c) => ({ value: c.name, label: `${c.name} (${c.count})` })), "All collections");
+        const shown = payload.total === storage.count ? `${storage.count} saved` : `${payload.total} of ${storage.count} shown`;
+        imageUi.libraryMeta.textContent = `${shown} · ${storage.favorites || 0} favorites · kept ${storage.retention_days ? `${storage.retention_days} days` : "until deleted"} · local disk`;
+        imageUi.purge.disabled = !storage.count;
+        const ids = new Set(images.map((i) => i.id));
+        for (const id of [...imageState.selected]) if (!ids.has(id)) imageState.selected.delete(id);
+        imageUi.exportZip.disabled = imageState.selected.size === 0;
+        imageUi.exportZip.textContent = imageState.selected.size ? `Export ${imageState.selected.size} selected (.zip)` : "Export selected (.zip)";
+        imageUi.library.replaceChildren();
+        for (const item of images) {
+            const li = document.createElement("li");
+            li.dataset.imageId = item.id;
+            li.classList.toggle("is-selected", imageState.selected.has(item.id));
+            const pick = document.createElement("input");
+            pick.type = "checkbox";
+            pick.className = "image-pick";
+            pick.checked = imageState.selected.has(item.id);
+            pick.setAttribute("aria-label", `Select image ${item.id}`);
+            pick.addEventListener("change", () => {
+                if (pick.checked) imageState.selected.add(item.id); else imageState.selected.delete(item.id);
+                li.classList.toggle("is-selected", pick.checked);
+                imageUi.exportZip.disabled = imageState.selected.size === 0;
+                imageUi.exportZip.textContent = imageState.selected.size ? `Export ${imageState.selected.size} selected (.zip)` : "Export selected (.zip)";
+            });
+            const img = document.createElement("img");
+            img.alt = item.original_prompt || "Saved image";
+            img.title = item.original_prompt || "";
+            img.loading = "lazy";
+            img.addEventListener("click", () => imageOpenDetail(item));
+            imageFetchBlobUrl(item.id, "thumb").then((url) => { img.src = url; }).catch(() => { img.alt = "Unavailable"; });
+            const row = document.createElement("div");
+            row.className = "image-library-row";
+            const label = document.createElement("span");
+            const mode = (item.settings && item.settings.mode) || "txt2img";
+            label.textContent = `${item.stage === "quality" ? "Q" : ({ img2img: "I2I", inpaint: "Inp" }[mode] || "D")} · ${item.seed}`;
+            const del = document.createElement("button");
+            del.type = "button";
+            del.textContent = "Delete";
+            del.setAttribute("aria-label", `Delete image ${item.id}`);
+            del.addEventListener("click", () => imageDelete(item.id));
+            row.append(label, del);
+            li.append(pick, img, row);
+            if (item.library && item.library.favorite) li.appendChild(Object.assign(document.createElement("span"), { className: "image-fav", textContent: "★", title: "Favorite" }));
+            imageUi.library.appendChild(li);
+        }
+        if (!images.length) imageUi.library.appendChild(Object.assign(document.createElement("li"), { className: "image-empty", textContent: storage.count ? "No images match these filters." : "No saved images yet." }));
+    } catch (error) {
+        imageUi.libraryMeta.textContent = error.message;
+    }
+}
+
+async function imageOpenDetail(item) {
+    imageState.detail = item;
+    imageUi.detail.hidden = false;
+    imageUi.detailImg.alt = item.original_prompt || "Saved image";
+    imageUi.detailImg.src = await imageFetchBlobUrl(item.id, "file");
+    const s = item.settings || {};
+    const rows = [
+        ["Prompt", item.original_prompt],
+        ["Sent to model", item.structured_prompt !== item.original_prompt ? item.structured_prompt : "(same as prompt)"],
+        ["Negative", item.negative_prompt || "none"],
+        ["Seed", item.seed],
+        ["Size", `${item.output && item.output.width} × ${item.output && item.output.height}`],
+        ["Mode", `${s.mode || "txt2img"}${s.strength !== undefined ? ` · strength ${s.strength}` : ""}`],
+        ["Steps · CFG", `${s.steps} · ${s.cfg}`],
+        ["Sampler", `${s.sampler} / ${s.scheduler}`],
+        ["Style", item.style_preset ? item.style_preset.name : "none"],
+        ["Model", `${(item.model || {}).checkpoint} · ${(item.model || {}).workflow_version}`],
+        ["Source", item.source ? (item.source.kind === "library" ? `library ${item.source.id}` : "upload (not kept)") : "none"],
+        ["Created (UTC)", item.created_utc],
+        ["Collections", ((item.library || {}).collections || []).join(", ") || "none"],
+        ["Time", item.duration_ms ? `${(item.duration_ms / 1000).toFixed(1)} s` : ""],
+    ];
+    imageUi.detailMeta.replaceChildren();
+    for (const [key, value] of rows) {
+        imageUi.detailMeta.append(Object.assign(document.createElement("dt"), { textContent: key }),
+            Object.assign(document.createElement("dd"), { textContent: value === undefined || value === null ? "" : String(value) }));
+    }
+    imageSetFavoriteButton(imageUi.detailFavorite, (item.library || {}).favorite);
+    imageUi.detail.scrollIntoView({ block: "nearest" });
+}
+
+function imageDetailAsResult(item) {
+    return {
+        id: item.id, saved: true, image: imageUi.detailImg.src, seed: item.seed, stage: item.stage,
+        width: item.output && item.output.width, height: item.output && item.output.height,
+        duration_ms: item.duration_ms || 0, manifest: item,
+    };
+}
+
+async function imageDelete(id) {
+    const { response } = await imageCall(`/image/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!response.ok) { imageSetStatus("Delete failed"); return; }
+    if (imageState.current && imageState.current.id === id) {
+        imageState.current = null;
+        imageUi.frame.replaceChildren(Object.assign(document.createElement("span"), { textContent: "Deleted" }));
+        imageUi.meta.textContent = "";
+        for (const button of [imageUi.quality, imageUi.remove, imageUi.toChat, imageUi.remix, imageUi.favorite, imageUi.exportBtn, imageUi.collectionsSave, imageUi.collections]) button.disabled = true;
+    }
+    if (imageState.detail && imageState.detail.id === id) { imageState.detail = null; imageUi.detail.hidden = true; }
+    imageState.selected.delete(id);
+    imageSetStatus("Image and its record deleted from disk.");
+    imageRefreshLibrary();
+}
+
+async function imagePurge() {
+    if (!window.confirm("Delete every saved image and its prompt record from this machine, favorites included? This cannot be undone.")) return;
+    const { response, payload } = await imageCall("/image/purge", { method: "POST", body: JSON.stringify({ confirm: "DELETE ALL IMAGES" }) });
+    imageSetStatus(response.ok ? `Deleted ${payload.deleted} images.` : "Purge failed");
+    imageState.selected.clear();
+    imageUi.detail.hidden = true;
+    imageRefreshLibrary();
+}
+
+async function imageAddToChat() {
+    const current = imageState.current;
+    if (!current) return;
+    let convo = currentConversation();
+    if (!convo) {
+        await createNewConversation();
+        convo = currentConversation();
+    }
+    let content = current.image;
+    if (content.startsWith("blob:")) {
+        const blob = await (await fetch(content)).blob();
+        content = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+        });
+    }
+    convo.messages.push({ role: "assistant", type: "image", content, timestamp: Date.now() });
+    state.autoScroll = true;
+    renderMessages();
+    if (imageStatus) imageStatus.textContent = `Generated locally · seed ${current.seed}`;
+}
+
+function openImageDialog() {
+    if (!imageUi.dialog) return;
+    const composerText = promptInput.value.trim();
+    if (composerText && !imageUi.prompt.value.trim()) imageUi.prompt.value = composerText;
+    imageLoadModes();
+    imageHidePanels();
+    imageUpdateModeUi();
+    if (!imageUi.dialog.open) imageUi.dialog.showModal();
+    imageLoadPresets();
+    imageRefreshLibrary();
+    imageSchedulePoll(50);
+    imageUi.prompt.focus();
+}
+
+let imageSearchTimer = null;
+function imageRefreshSoon() {
+    clearTimeout(imageSearchTimer);
+    imageSearchTimer = setTimeout(imageRefreshLibrary, 250);
+}
+
+generateImageBtn?.addEventListener("click", openImageDialog);
+imageUi.generate?.addEventListener("click", () => imageGenerate());
+imageUi.variations?.addEventListener("click", () => imageVariations());
+imageUi.enhance?.addEventListener("click", imageEnhance);
+imageUi.quality?.addEventListener("click", () => imageQualityPass());
+imageUi.toChat?.addEventListener("click", imageAddToChat);
+imageUi.remove?.addEventListener("click", () => imageState.current && imageDelete(imageState.current.id));
+imageUi.remix?.addEventListener("click", () => imageState.current && imageRemix(imageState.current.manifest));
+imageUi.favorite?.addEventListener("click", () => imageState.current && imageState.current.id
+    && imageToggleFavorite(imageState.current.id, !imageLibraryState(imageState.current).favorite));
+imageUi.exportBtn?.addEventListener("click", () => imageState.current && imageState.current.id && imageExportOne(imageState.current.id));
+imageUi.collectionsSave?.addEventListener("click", imageSaveCollections);
+imageUi.exportZip?.addEventListener("click", imageExportZip);
+imageUi.purge?.addEventListener("click", imagePurge);
+imageUi.behavior?.addEventListener("change", imageSaveModes);
+imageUi.approval?.addEventListener("change", imageSaveModes);
+imageUi.mode?.addEventListener("change", imageUpdateModeUi);
+imageUi.strength?.addEventListener("input", () => { imageUi.strengthValue.textContent = Number(imageUi.strength.value).toFixed(2); });
+imageUi.sourceFile?.addEventListener("change", () => imageSourceFromFile(imageUi.sourceFile.files[0]).catch((error) => imageSetStatus(error.message)));
+imageUi.useCurrent?.addEventListener("click", () => imageState.current && imageState.current.id
+    && imageSourceFromLibrary(imageState.current.id, imageState.current.image).catch((error) => imageSetStatus(error.message)));
+imageUi.maskClear?.addEventListener("click", imageMaskClear);
+imageUi.maskCanvas?.addEventListener("pointerdown", (event) => {
+    imageUi.maskCanvas.setPointerCapture(event.pointerId);
+    imageState.painting = true;
+    imageState.lastPaint = null;
+    imageMaskPaint(event);
+});
+imageUi.maskCanvas?.addEventListener("pointermove", (event) => { if (imageState.painting) imageMaskPaint(event); });
+for (const type of ["pointerup", "pointercancel", "pointerleave"]) {
+    imageUi.maskCanvas?.addEventListener(type, () => { imageState.painting = false; imageState.lastPaint = null; });
+}
+imageUi.presetKind?.addEventListener("change", () => { imageUi.presetPick.value = ""; imageRenderPresetEditor(); });
+imageUi.presetPick?.addEventListener("change", imageRenderPresetEditor);
+imageUi.presetSave?.addEventListener("click", imagePresetSave);
+imageUi.presetDelete?.addEventListener("click", imagePresetDelete);
+imageUi.presetReset?.addEventListener("click", imagePresetReset);
+for (const input of [imageUi.search, imageUi.seedFilter]) input?.addEventListener("input", imageRefreshSoon);
+for (const input of [imageUi.since, imageUi.until, imageUi.modelFilter, imageUi.collectionFilter, imageUi.favFilter]) input?.addEventListener("change", imageRefreshLibrary);
+imageUi.detailClose?.addEventListener("click", () => { imageUi.detail.hidden = true; imageState.detail = null; });
+imageUi.detailOpen?.addEventListener("click", () => imageState.detail && imageShowResult(imageDetailAsResult(imageState.detail)));
+imageUi.detailRemix?.addEventListener("click", () => imageState.detail && imageRemix(imageState.detail));
+imageUi.detailSource?.addEventListener("click", () => {
+    if (!imageState.detail) return;
+    if (imageUi.mode.value === "txt2img") imageUi.mode.value = "img2img";
+    imageSourceFromLibrary(imageState.detail.id, imageUi.detailImg.src).then(() => imageSetStatus("Source set from the gallery.")).catch((error) => imageSetStatus(error.message));
+});
+imageUi.detailFavorite?.addEventListener("click", () => imageState.detail && imageToggleFavorite(imageState.detail.id, !(imageState.detail.library || {}).favorite));
+imageUi.detailExport?.addEventListener("click", () => imageState.detail && imageExportOne(imageState.detail.id));
+imageUi.detailDelete?.addEventListener("click", () => imageState.detail && imageDelete(imageState.detail.id));
+imageUi.prompt?.addEventListener("input", () => { imageState.structured = null; imageState.enhanced = false; });
+imageUi.approve?.addEventListener("click", () => {
+    imageState.structured = imageUi.structured.value.trim() || null;
+    const retry = imageState.pending;
+    imageState.pending = null;
+    imageUi.review.hidden = true;
+    if (retry) retry({ approved: true, structured_prompt: imageState.structured || undefined });
+    else imageGenerate({ approved: true });
+});
+imageUi.keepOriginal?.addEventListener("click", () => {
+    imageState.structured = null;
+    imageState.pending = null;
+    imageUi.review.hidden = true;
+    imageSetStatus("Using your original wording.");
+});
+imageUi.hardwareAccept?.addEventListener("click", () => {
+    const retry = imageState.pending;
+    imageState.pending = null;
+    imageUi.hardware.hidden = true;
+    if (retry) retry({ accept_reduction: true });
+});
+imageUi.hardwareCancel?.addEventListener("click", () => {
+    imageState.pending = null;
+    imageUi.hardware.hidden = true;
+    imageSetStatus("Cancelled. Nothing was generated.");
+});
 
 refreshNodesBtn.onclick = fetchNodes;
 newConvoBtn.onclick = createNewConversation;

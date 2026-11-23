@@ -138,7 +138,8 @@ def test_inventory_backed_node_and_model_selection(router_factory):
         mock_inventory(mock)
         inventory = client.get("/nodes/node-test/models", headers=AUTH)
         assert inventory.status_code == 200
-        assert inventory.json()["models"] == [{"id": MODEL_ID, "vision": False}]
+        # No /api/show answer here, so vision falls back to the name guess and says so.
+        assert inventory.json()["models"] == [{"id": MODEL_ID, "vision": False, "capabilities_source": "name"}]
 
         node_chat = mock.post(f"{TEST_NODE_URL}/api/chat").mock(return_value=ollama_chat_json("selected correctly"))
         wrong_node = client.post(
@@ -997,13 +998,14 @@ def test_stream_keeps_thinking_private_and_done_line_content(router_factory):
     assert router.CONVERSATIONS["think"]["messages"][1] == {"role": "assistant", "content": "Hello"}
 
 
-# Mechanism behind the parity claim: Ollama's openai.go ChatWriter.writeResponse unmarshals the
-# in-band {"error": ...} NDJSON line into an empty api.ChatResponse, so /v1 emitted a chunk with
-# delta.content == "" and then EOF; the old parser read an empty delta and ended the stream normally.
-def test_stream_mid_stream_error_line_keeps_partial_reply_like_v1(router_factory, capsys):
-    """DL-TRANSPORT-01a parity: /v1 turned an in-band error line into an empty delta, so the
-    stream ended normally and the partial text was kept. No new SSE error event until DL-UX-01;
-    the only new trace is a `stream_node_error` entry for /monitoring/health."""
+def test_stream_mid_stream_error_keeps_the_partial_reply_marked_incomplete(router_factory, capsys):
+    """Backlog "Surface model stream failures instead of normal completion".
+
+    /v1 turned an in-band {"error"} line into an empty delta, so a runner crash
+    looked like a normal, complete reply. The client now gets an error event, and
+    the partial text is saved marked incomplete (with the error) so a reload still
+    shows it and says why it stopped. It is saved before the error is reported.
+    """
     router, client, _ = router_factory()
     with respx.mock(assert_all_called=True) as mock:
         mock_inventory(mock)
@@ -1015,17 +1017,45 @@ def test_stream_mid_stream_error_line_keeps_partial_reply_like_v1(router_factory
             )
         )
         response = client.post("/chat/stream", headers=AUTH, json=chat_body("crash"))
+        reloaded = client.get("/conversations/crash", headers=AUTH).json()["messages"]
 
     assert response.status_code == 200
-    assert 'data: {"token": "partial", "done": false}\n\n' in response.text
-    assert '"error"' not in response.text
-    assert "runner crashed" not in response.text
-    assert response.text.rstrip().endswith('data: {"token": "", "done": true, "message_count": 2}')
-    assert router.CONVERSATIONS["crash"]["messages"][1] == {"role": "assistant", "content": "partial"}
-    assert router.COST_LOG.exists()
-    assert router.MODEL_HEALTH == {}
+    assert contract_events(response.text) == (
+        'data: {"token": "partial", "done": false}\n\n'
+        'data: {"error": "Model stopped with an error: runner crashed", "done": true}\n\n'
+        'data: {"token": "", "done": true, "message_count": 2}\n\n'
+    )
+    assert '"stats"' not in response.text
+    incomplete = {"role": "assistant", "content": "partial", "incomplete": True,
+                  "error": "Model stopped with an error: runner crashed"}
+    assert router.CONVERSATIONS["crash"]["messages"][-1] == incomplete
+    assert reloaded[-1] == incomplete
+    assert json.loads(router.DATA_FILE.read_text())["crash"]["messages"][-1] == incomplete
+    assert not router.COST_LOG.exists()
     assert [(e["event"], e["detail"]) for e in router.RECENT_ERRORS] == [("stream_node_error", "runner crashed")]
     assert "Node stream error after 7 chars: runner crashed" in capsys.readouterr().out
+
+
+def test_stream_mid_stream_error_reports_a_failed_save_of_the_partial_reply(router_factory, monkeypatch):
+    router, client, _ = router_factory()
+
+    def fail(_data):
+        raise router.PersistenceError("disk full")
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock_inventory(mock)
+        client.get("/nodes/node-test/models", headers=AUTH)
+        mock.post(f"{TEST_NODE_URL}/api/chat").mock(
+            return_value=ollama_chat_ndjson(
+                {"message": {"role": "assistant", "content": "partial"}, "done": False},
+                {"error": "runner crashed"},
+            )
+        )
+        monkeypatch.setattr(router, "save_conversations", fail)
+        response = client.post("/chat/stream", headers=AUTH, json=chat_body("crash-save"))
+
+    assert 'data: {"error": "Changes could not be saved to disk", "done": true}' in response.text
+    assert [m["role"] for m in router.CONVERSATIONS["crash-save"]["messages"]] == ["user"]
 
 
 def test_stream_eof_without_done_line_keeps_partial_reply(router_factory):
@@ -1235,9 +1265,10 @@ def test_chat_stream_tool_call_after_blank_tokens_or_error_line_still_keeps_noth
         )
         response = client.post("/chat/stream", headers=AUTH, json=chat_body("tool-blank"))
 
+    # The error line ends the reply as a failure: no tool-call notice, nothing saved.
     assert contract_events(response.text) == (
         'data: {"token": "\\n\\n", "done": false}\n\n'
-        'data: {"notice": "' + TOOL_NOTICE + '", "reason": "tool_call_only", "tools": ["browser.run"], "done": false}\n\n'
+        'data: {"error": "Model stopped with an error: runner crashed", "done": true}\n\n'
         'data: {"token": "", "done": true, "message_count": 1}\n\n'
     )
     assert router.CONVERSATIONS["tool-blank"]["messages"] == [{"role": "user", "content": "hello"}]

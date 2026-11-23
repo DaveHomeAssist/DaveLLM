@@ -8,7 +8,7 @@
 4. The UI loads `GET /nodes`.
 5. The UI loads `GET /nodes/{node_id}/models`; the router queries that Ollama node at `GET /api/tags` and records the returned inventory.
 6. The UI submits `/chat` or `/chat/stream` only with the selected configured node and a model in that node's loaded inventory.
-7. For `/chat`, `/chat/stream`, and summary generation the router sends a native Ollama request to the selected node at `POST /api/chat` (NDJSON when streaming; `message.content` is forwarded, `message.thinking` is parsed but not yet surfaced). The tool-loop routes under `/tools/agent/*` use the same native endpoint (DL-TRANSPORT-01b) with the tool schemas in `tools`; the router converts DaveHarness's string tool-call arguments to objects and its tool-result `name` to `tool_name` before sending, and returns Ollama's native reply to DaveHarness unchanged.
+7. For `/chat`, `/chat/stream`, and summary generation the router sends a native Ollama request to the selected node at `POST /api/chat` (NDJSON when streaming; `message.content` is forwarded, `message.thinking` is parsed; its text is never forwarded, and its arrival becomes one `thinking` status). The tool-loop routes under `/tools/agent/*` use the same native endpoint (DL-TRANSPORT-01b) with the tool schemas in `tools`; the router converts DaveHarness's string tool-call arguments to objects and its tool-result `name` to `tool_name` before sending, and returns Ollama's native reply to DaveHarness unchanged.
 
 There is no `/api` prefix.
 
@@ -54,12 +54,12 @@ Returns configured node objects with `id`, `name`, and `url`.
   "node_id": "<configured-node-id>",
   "node_name": "<configured-display-name>",
   "models": [
-    {"id": "<ollama-model-id>", "vision": false}
+    {"id": "<ollama-model-id>", "vision": false, "capabilities_source": "ollama"}
   ]
 }
 ```
 
-The model IDs are taken from Ollama `/api/tags`; they are not synthesized by the router.
+The model IDs are taken from Ollama `/api/tags`; they are not synthesized by the router. `vision` comes from the `capabilities` list in Ollama `POST /api/show` (`capabilities_source: "ollama"`). When that lookup fails, times out, is over the per-inventory limit (32 models, 4 at a time, 3 s each, successful answers cached for 10 minutes), or the node returns no capabilities, `vision` is the router's name guess and `capabilities_source` is `"name"`. The web UI trusts an `"ollama"` answer both ways and applies its own name guess only to `"name"`.
 
 ### `POST /conversations/from_template`
 
@@ -188,7 +188,7 @@ data: {"notice":"The model tried to use a tool (browser.run) instead of replying
 data: {"token":"","done":true,"message_count":1}
 ```
 
-Node failures (timeout, connection refused, non-2xx status, unexpected exception) are returned as SSE error events. The renderer promotes `error` events into the visible chat error state rather than treating them as JSON parse failures. An in-band Ollama `{"error": ...}` NDJSON line at any point, including before the first token, is not an error event: the stream ends with the normal terminal event and the partial reply (possibly empty) is persisted, exactly as the `/v1` transport behaved (its OpenAI layer rendered that line as an empty delta). The router records it as a `stream_node_error` entry in `GET /monitoring/health` `recent_errors`; DL-UX-01 owns turning it into a visible error.
+Node failures (timeout, connection refused, non-2xx status, unexpected exception) are returned as SSE error events. The renderer promotes `error` events into the visible chat error state rather than treating them as JSON parse failures. An in-band Ollama `{"error": ...}` NDJSON line at any point, including before the first token (for example a runner crash), is an error event too: `{"error": "Model stopped with an error: <node message, first 200 characters>", "done": true}`, then the normal terminal event. Partial text the model had already sent is saved first as an assistant message marked `"incomplete": true` with that `"error"` string, so `GET /conversations/{id}` still returns it after a reload; whitespace-only output saves nothing, and if that save fails the error event carries the persistence failure instead. No `stats` or tool-call notice follows, and the renderer keeps the partial text with an "Incomplete reply" note. (The `/v1` transport rendered that line as an empty delta, so a crash once looked like a complete reply.) The router also records it as a `stream_node_error` entry in `GET /monitoring/health` `recent_errors`.
 
 ### `GET /conversations/{conversation_id}/export`
 
