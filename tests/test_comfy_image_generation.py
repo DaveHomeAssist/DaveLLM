@@ -15,6 +15,21 @@ from davellm_image_store import ImageNotFound, ImageStore, parse_retention_days
 ROOT = Path(__file__).resolve().parents[1]
 AUTH = {"X-API-Key": TEST_API_KEY}
 
+
+def test_turbo_default_and_explicit_scheduler():
+    checkpoint = "sd_xl_turbo_1.0_fp16.safetensors"
+    spec = ImageSpec(prompt="road case", seed=3406450846279331269)
+    graph = build_workflow(spec, checkpoint)
+    assert graph["3"]["class_type"] == "SamplerCustom"
+    assert graph["3"]["inputs"]["noise_seed"] == spec.seed
+    assert graph["3"]["inputs"]["sigmas"] == ["22", 0]
+    assert graph["22"]["inputs"] == {"model": ["4", 0], "steps": 4, "denoise": 1.0}
+    assert graph["3"]["inputs"]["sampler"] == ["23", 0]
+    assert graph["23"]["inputs"]["sampler_name"] == "euler"
+    assert build_workflow(spec, "other.safetensors")["3"]["inputs"]["scheduler"] == "simple"
+    spec.scheduler = "simple"
+    assert build_workflow(spec, checkpoint)["3"]["class_type"] == "KSampler"
+
 _spec = importlib.util.spec_from_file_location("fake_comfyui", ROOT / "scripts" / "fake_comfyui.py")
 fake_comfyui = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fake_comfyui)
