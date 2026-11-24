@@ -178,7 +178,7 @@ def test_quality_pass_reuses_seed_and_links_draft(image_router):
     assert body["seed"] == 99 and (body["width"], body["height"]) == (768, 768)
     assert body["manifest"]["stage"] == "quality" and body["manifest"]["parent_id"] == draft["id"]
     graph = fake.graphs[-1]
-    assert graph["3"]["inputs"]["seed"] == graph["11"]["inputs"]["seed"] == 99
+    assert graph["3"]["inputs"]["noise_seed"] == graph["11"]["inputs"]["seed"] == 99
     assert graph["11"]["inputs"]["denoise"] == 0.45 and graph["8"]["inputs"]["samples"] == ["11", 0]
 
 
