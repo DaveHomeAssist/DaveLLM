@@ -3149,7 +3149,7 @@ class ImageGenerateRequest(ImagePolicyFields):
     steps: int = Field(default=4, ge=1, le=50)
     cfg: float = Field(default=1.0, ge=0.0, le=10.0)
     sampler: str = "euler"
-    scheduler: str = "simple"
+    scheduler: str = "auto"
     seed: Optional[int] = Field(default=None, ge=0, lt=2**63)
     save: bool = True
     # Image to image and inpainting. The source is a saved library image or an
@@ -5431,7 +5431,7 @@ def image_status(_auth=Depends(require_api_key)):
             "prompt_behavior": image_policy.DEFAULT_PROMPT_BEHAVIOR,
             "approval_mode": image_policy.DEFAULT_APPROVAL_MODE,
             "width": 768, "height": 768, "steps": 4, "cfg": 1.0,
-            "sampler": "euler", "scheduler": "simple", "strength": 0.6,
+            "sampler": "euler", "scheduler": "auto", "strength": 0.6,
         },
         "controls": {"samplers": list(SUPPORTED_SAMPLERS), "schedulers": list(SUPPORTED_SCHEDULERS),
                      "modes": ["txt2img", "img2img", "inpaint"], "max_variations": 4},

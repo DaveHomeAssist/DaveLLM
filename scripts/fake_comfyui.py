@@ -52,9 +52,12 @@ def _output_size(graph: dict[str, Any]) -> tuple[int, int]:
 
 
 def validate_graph(graph: dict[str, Any], uploads: dict[str, bytes] | None = None) -> None:
-    required = {"3": "KSampler", "4": "CheckpointLoaderSimple",
+    custom = graph.get("3", {}).get("class_type") == "SamplerCustom"
+    required = {"3": "SamplerCustom" if custom else "KSampler", "4": "CheckpointLoaderSimple",
                 "6": "CLIPTextEncode", "7": "CLIPTextEncode", "8": "VAEDecode", "9": "PreviewImage",
                 "20": "ImageScale", "21": "PreviewImage"}
+    if custom:
+        required.update({"22": "SDTurboScheduler", "23": "KSamplerSelect"})
     for node_id, class_type in required.items():
         if graph.get(node_id, {}).get("class_type") != class_type:
             raise ValueError(f"node {node_id} must be {class_type}")
@@ -203,8 +206,9 @@ class FakeComfy:
                 mask = graph.get("15", {}).get("inputs", {}).get("image")
                 key = json.dumps({
                     "positive": graph["6"]["inputs"]["text"], "negative": graph["7"]["inputs"]["text"],
-                    "seed": graph["3"]["inputs"]["seed"], "steps": graph["3"]["inputs"]["steps"],
-                    "denoise": graph["3"]["inputs"]["denoise"],
+                    "seed": graph["3"]["inputs"].get("noise_seed", graph["3"]["inputs"].get("seed")),
+                    "steps": graph.get("22", graph["3"])["inputs"]["steps"],
+                    "denoise": graph.get("22", graph["3"])["inputs"]["denoise"],
                     "size": [width, height], "quality": "10" in graph,
                     "source": hashlib.sha256(fake.uploads[source]).hexdigest() if source else None,
                     "mask": hashlib.sha256(fake.uploads[mask]).hexdigest() if mask else None,

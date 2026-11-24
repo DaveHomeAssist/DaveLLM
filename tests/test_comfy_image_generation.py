@@ -15,6 +15,21 @@ from davellm_image_store import ImageNotFound, ImageStore, parse_retention_days
 ROOT = Path(__file__).resolve().parents[1]
 AUTH = {"X-API-Key": TEST_API_KEY}
 
+
+def test_turbo_default_and_explicit_scheduler():
+    checkpoint = "sd_xl_turbo_1.0_fp16.safetensors"
+    spec = ImageSpec(prompt="road case", seed=3406450846279331269)
+    graph = build_workflow(spec, checkpoint)
+    assert graph["3"]["class_type"] == "SamplerCustom"
+    assert graph["3"]["inputs"]["noise_seed"] == spec.seed
+    assert graph["3"]["inputs"]["sigmas"] == ["22", 0]
+    assert graph["22"]["inputs"] == {"model": ["4", 0], "steps": 4, "denoise": 1.0}
+    assert graph["3"]["inputs"]["sampler"] == ["23", 0]
+    assert graph["23"]["inputs"]["sampler_name"] == "euler"
+    assert build_workflow(spec, "other.safetensors")["3"]["inputs"]["scheduler"] == "simple"
+    spec.scheduler = "simple"
+    assert build_workflow(spec, checkpoint)["3"]["class_type"] == "KSampler"
+
 _spec = importlib.util.spec_from_file_location("fake_comfyui", ROOT / "scripts" / "fake_comfyui.py")
 fake_comfyui = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fake_comfyui)
@@ -163,7 +178,7 @@ def test_quality_pass_reuses_seed_and_links_draft(image_router):
     assert body["seed"] == 99 and (body["width"], body["height"]) == (768, 768)
     assert body["manifest"]["stage"] == "quality" and body["manifest"]["parent_id"] == draft["id"]
     graph = fake.graphs[-1]
-    assert graph["3"]["inputs"]["seed"] == graph["11"]["inputs"]["seed"] == 99
+    assert graph["3"]["inputs"]["noise_seed"] == graph["11"]["inputs"]["seed"] == 99
     assert graph["11"]["inputs"]["denoise"] == 0.45 and graph["8"]["inputs"]["samples"] == ["11", 0]
 
 

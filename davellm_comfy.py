@@ -55,7 +55,7 @@ QUALITY_WORKFLOW_VERSION = WORKFLOW_VERSIONS[("txt2img", True)]
 MODES = ("txt2img", "img2img", "inpaint")
 THUMB_SIDE = 256
 SUPPORTED_SAMPLERS = ("euler", "euler_ancestral", "dpmpp_2m", "dpmpp_sde")
-SUPPORTED_SCHEDULERS = ("simple", "normal", "karras", "sgm_uniform")
+SUPPORTED_SCHEDULERS = ("auto", "simple", "normal", "karras", "sgm_uniform")
 _NO_PROXY = {"http": None, "https": None}
 
 
@@ -83,7 +83,7 @@ class ImageSpec:
     steps: int = 4
     cfg: float = 1.0
     sampler: str = "euler"
-    scheduler: str = "simple"
+    scheduler: str = "auto"
     seed: Optional[int] = None
     quality: Optional[QualityPass] = field(default=None)
     mode: str = "txt2img"
@@ -142,10 +142,11 @@ def build_workflow(spec: ImageSpec, checkpoint: str) -> dict[str, Any]:
         raise ValueError(f"unsupported sampler {spec.sampler!r}")
     if spec.scheduler not in SUPPORTED_SCHEDULERS:
         raise ValueError(f"unsupported scheduler {spec.scheduler!r}")
+    regular_scheduler = "simple" if spec.scheduler == "auto" else spec.scheduler
     graph: dict[str, Any] = {
         "3": {"class_type": "KSampler", "inputs": {
             "seed": spec.seed, "steps": spec.steps, "cfg": spec.cfg,
-            "sampler_name": spec.sampler, "scheduler": spec.scheduler,
+            "sampler_name": spec.sampler, "scheduler": regular_scheduler,
             "denoise": 1.0 if spec.mode == "txt2img" else spec.strength,
             "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0],
         }},
@@ -170,6 +171,17 @@ def build_workflow(spec: ImageSpec, checkpoint: str) -> dict[str, Any]:
         graph["19"] = {"class_type": "ImageToMask", "inputs": {"image": ["18", 0], "channel": "red"}}
         graph["16"] = {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["13", 0], "mask": ["19", 0]}}
         graph["3"]["inputs"]["latent_image"] = ["16", 0]
+    # SDTurboScheduler exposes ten distilled timesteps. Keep longer runs and
+    # partial-denoise editing passes on their existing regular schedule.
+    if (spec.scheduler == "auto" and spec.mode == "txt2img" and spec.steps <= 10
+            and checkpoint == "sd_xl_turbo_1.0_fp16.safetensors"):
+        graph["22"] = {"class_type": "SDTurboScheduler", "inputs": {
+            "model": ["4", 0], "steps": spec.steps, "denoise": 1.0}}
+        graph["23"] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": spec.sampler}}
+        graph["3"] = {"class_type": "SamplerCustom", "inputs": {
+            "add_noise": True, "noise_seed": spec.seed, "cfg": spec.cfg, "model": ["4", 0],
+            "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0],
+            "sampler": ["23", 0], "sigmas": ["22", 0]}}
     samples = ["3", 0]
     if spec.quality:
         out_w, out_h = spec.output_size()
@@ -178,7 +190,7 @@ def build_workflow(spec: ImageSpec, checkpoint: str) -> dict[str, Any]:
             "width": out_w, "height": out_h, "crop": "disabled"}}
         graph["11"] = {"class_type": "KSampler", "inputs": {
             "seed": spec.seed, "steps": spec.quality.steps, "cfg": spec.cfg,
-            "sampler_name": spec.sampler, "scheduler": spec.scheduler, "denoise": spec.quality.denoise,
+            "sampler_name": spec.sampler, "scheduler": regular_scheduler, "denoise": spec.quality.denoise,
             "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["10", 0]}}
         samples = ["11", 0]
     graph["8"] = {"class_type": "VAEDecode", "inputs": {"samples": samples, "vae": ["4", 2]}}
